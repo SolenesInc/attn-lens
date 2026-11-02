@@ -512,14 +512,14 @@ impl Render for Editor {
                             .font_weight(FontWeight::BOLD)
                             .text_color(rgb(theme.accent_fill))
                             .mr_2()
-                            .child("glance"),
+                            .child("attn lens"),
                     )
                     .child(self.compact_button(
-                        "Area · ⌘⌥2",
-                        "scan",
+                        "Send to attn · ⌘↩",
+                        "arrow-up-right",
                         false,
                         cx,
-                        Action::Capture { area: true },
+                        Action::SendToAttn,
                     ))
                     .child(self.compact_button(
                         "Screen · ⌘⌥3",

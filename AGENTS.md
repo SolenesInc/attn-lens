@@ -1,4 +1,26 @@
-# Working on Glance
+# Working on Attn Lens
+
+Attn Lens captures the screen, marks it up in place, and sends it to an attn
+agent session through the `attn` CLI. It is a fork of Glance, whose editor it
+keeps; the rest of this file describes Glance's rules, which still apply.
+
+## Lens entry points
+
+- `src/lens/mod.rs`: the ⌘⌥2 global shortcut, overlay and corner-tile lifecycle.
+- `src/lens/overlay.rs`: the in-place Send surface. Pointer, keys and automation
+  all dispatch `overlay::Action`; add new behavior there, not in input handlers.
+- `src/lens/attn.rs`: the only contract with attn: `attn send sessions`, `attn
+  send pair` and `attn send <session>` JSON, plus the Keychain token. Its tests
+  use a stand-in `attn`; attn's `cmd/attn/send_stack_test.go` pins the real JSON.
+- `src/lens/capture.rs`: stills through Hex's capture-core (ScreenCaptureKit).
+- `src/permission_guide.rs`, `native/permission_guide.m`: from Hex (MIT).
+- Lens automation: launch with `--automation`, then `AttnLens lens capture`,
+  `lens state`, `lens overlay '<action JSON>'`. The overlay is not an MCP surface;
+  agents send to sessions with `attn send` directly.
+- Sign dev bundles with a stable identity (`GLANCE_CODESIGN_IDENTITY`): an
+  ad-hoc rebuild silently invalidates the Screen Recording grant.
+
+# Glance
 
 Glance is a native macOS and experimental Omarchy screenshot editor in Rust/GPUI. It edits one document,
 exports PNG/GIF/MP4, shares images through glance.sh, and offers opt-in local MCP

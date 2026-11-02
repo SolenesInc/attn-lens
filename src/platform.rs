@@ -38,8 +38,9 @@ pub fn screen_capture_permission() -> Result<(), String> {
             return Ok(());
         }
     }
-    Err("macOS is not authorizing this Glance build to record the screen. Open System Settings → Privacy & Security → Screen & System Audio Recording. If Glance is already enabled, quit Glance, remove its entry with −, add /Applications/Glance.app with +, enable it, then reopen. Rebuilding an ad-hoc signed app can invalidate an older permission.".into())
+    Err("macOS is not authorizing this Attn Lens build to record the screen. Open System Settings → Privacy & Security → Screen & System Audio Recording. If Attn Lens is already enabled, quit it, remove its entry with −, add Attn Lens.app with +, enable it, then reopen. Rebuilding an ad-hoc signed app can invalidate an older permission.".into())
 }
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn capture_failure(area: bool, stderr: &[u8], code: Option<i32>) -> Option<String> {
     let detail = String::from_utf8_lossy(stderr);
     let detail = detail.trim();
@@ -55,33 +56,14 @@ fn capture_failure(area: bool, stderr: &[u8], code: Option<i32>) -> Option<Strin
         format!("Screen capture failed: {detail}")
     })
 }
+/// Captures the display under the pointer in-process through ScreenCaptureKit.
+/// `area` no longer opens an interactive selection: crop in the editor instead.
+/// `screencapture -i` added macOS 26's private-window-picker consent.
 #[cfg(target_os = "macos")]
-pub fn capture(area: bool) -> Result<Option<RgbaImage>, String> {
-    // A private directory prevents other local accounts from planting a
-    // symlink at the capture path or reading the unedited screenshot.
-    let capture_dir = tempfile::Builder::new()
-        .prefix("glance-capture-")
-        .tempdir()
-        .map_err(|e| e.to_string())?;
-    let path = capture_dir.path().join("capture.png");
+pub fn capture(_area: bool) -> Result<Option<RgbaImage>, String> {
+    // Let the hidden editor leave the screen first.
     std::thread::sleep(std::time::Duration::from_millis(250));
-    let mut command = Command::new("/usr/sbin/screencapture");
-    command.args(["-x", "-t", "png"]);
-    if area {
-        command.args(["-i", "-s"]);
-    } else {
-        command.arg("-m");
-    }
-    let output = command.arg(&path).output().map_err(|e| e.to_string())?;
-    let result = if path.exists() {
-        load(&path).map(Some)
-    } else if let Some(error) = capture_failure(area, &output.stderr, output.status.code()) {
-        Err(error)
-    } else {
-        Ok(None)
-    };
-    let _ = std::fs::remove_file(path);
-    result
+    crate::lens::capture::screenshot(crate::lens::capture::display_under_pointer()).map(Some)
 }
 #[cfg(target_os = "macos")]
 fn dialog(script: &str) -> Result<Option<PathBuf>, String> {

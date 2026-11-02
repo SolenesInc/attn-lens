@@ -65,8 +65,6 @@ pub(crate) enum Message {
     Lens(crate::effects::LensKey, Arc<RenderImage>),
     #[cfg(any(target_os = "macos", test))]
     Magnify(f32, (f32, f32), bool),
-    #[cfg(target_os = "macos")]
-    Hotkey(bool),
     Preview(u64, usize, u32, Arc<RenderImage>),
     MotionPreviewReady,
     Operation(OperationId, OperationResult),
@@ -244,10 +242,6 @@ impl Editor {
                     }
                 };
                 self.dispatch_ui(action, cx);
-            }
-            #[cfg(target_os = "macos")]
-            Message::Hotkey(area) => {
-                self.dispatch_ui(Action::Capture { area }, cx);
             }
             Message::Preview(revision, count, inside_padding, image) => {
                 self.preview.rendering = false;

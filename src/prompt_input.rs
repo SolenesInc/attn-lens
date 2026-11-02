@@ -2,15 +2,16 @@
 use crate::text::Buffer;
 use gpui::{prelude::*, *};
 use std::ops::Range;
-pub(in crate::editor) enum Event {
+pub(crate) enum Event {
     Changed(String),
     Submit,
     Close,
 }
-pub(in crate::editor) struct PromptInput {
-    pub(super) buffer: Buffer,
+pub(crate) struct PromptInput {
+    pub(crate) buffer: Buffer,
     focus: FocusHandle,
     return_focus: FocusHandle,
+    placeholder: SharedString,
     disabled: bool,
     bounds: Bounds<Pixels>,
     line: Option<ShapedLine>,
@@ -18,11 +19,16 @@ pub(in crate::editor) struct PromptInput {
 }
 impl EventEmitter<Event> for PromptInput {}
 impl PromptInput {
-    pub fn new(return_focus: FocusHandle, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        return_focus: FocusHandle,
+        placeholder: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self {
             buffer: Buffer::default(),
             focus: cx.focus_handle(),
             return_focus,
+            placeholder: placeholder.into(),
             disabled: false,
             bounds: Bounds::default(),
             line: None,
@@ -237,9 +243,10 @@ impl EntityInputHandler for PromptInput {
 }
 fn paint(entity: &Entity<PromptInput>, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
     let this = entity.read(cx);
+    let theme = crate::theme::Theme::get(cx);
     let empty = this.buffer.text().is_empty();
     let text: SharedString = if empty {
-        "What would you like to change?".into()
+        this.placeholder.clone()
     } else {
         this.buffer.text().to_owned().into()
     };
@@ -249,7 +256,7 @@ fn paint(entity: &Entity<PromptInput>, bounds: Bounds<Pixels>, window: &mut Wind
         &[TextRun {
             len: text.len(),
             font: font(crate::platform::UI_FONT),
-            color: rgb(if empty { 0x697386 } else { 0x263044 }).into(),
+            color: rgb(if empty { theme.muted } else { theme.text }).into(),
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -291,7 +298,7 @@ fn paint(entity: &Entity<PromptInput>, bounds: Bounds<Pixels>, window: &mut Wind
                     point(origin.x + line.x_for_index(cursor), origin.y),
                     size(px(1.5), px(19.)),
                 ),
-                rgb(0x263044),
+                rgb(theme.text),
             ));
         }
         if focused && let Some(r) = marked {
@@ -303,7 +310,7 @@ fn paint(entity: &Entity<PromptInput>, bounds: Bounds<Pixels>, window: &mut Wind
                     ),
                     size(line.x_for_index(r.end) - line.x_for_index(r.start), px(1.)),
                 ),
-                rgb(0x263044),
+                rgb(theme.text),
             ));
         }
     });
@@ -315,6 +322,7 @@ fn paint(entity: &Entity<PromptInput>, bounds: Bounds<Pixels>, window: &mut Wind
 }
 impl Render for PromptInput {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = crate::theme::Theme::get(cx);
         let entity = cx.entity();
         div()
             .id("ask-prompt-input")
@@ -323,10 +331,14 @@ impl Render for PromptInput {
             .h(px(42.))
             .track_focus(&self.focus)
             .key_context("AskPrompt")
-            .bg(rgb(if self.disabled { 0xf3f5f8 } else { 0xffffff }))
+            .bg(rgb(if self.disabled {
+                theme.workspace
+            } else {
+                theme.input
+            }))
             .rounded_md()
             .border_1()
-            .border_color(rgb(0xbcc5d3))
+            .border_color(rgb(theme.border))
             .on_key_down(cx.listener(Self::key))
             .on_action(cx.listener(|this, _: &crate::menus::Copy, _, cx| {
                 this.copy(false, cx);

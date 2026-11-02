@@ -1,5 +1,4 @@
 //! Native prompt bar and revision-scoped completion of a private agent draft.
-pub(super) mod input;
 mod view;
 use super::{
     Editor, Message,
@@ -18,7 +17,7 @@ use std::{
 
 pub(super) struct State {
     pub open: bool,
-    pub input: Entity<input::PromptInput>,
+    pub input: Entity<crate::prompt_input::PromptInput>,
     pub prompt: String,
     pub answer: String,
     pub status: String,

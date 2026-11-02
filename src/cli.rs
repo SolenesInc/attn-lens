@@ -141,6 +141,18 @@ pub(super) fn execute(
 
 pub(crate) fn run(args: &[String]) -> Result<(), String> {
     use std::io::Write;
+    #[cfg(target_os = "macos")]
+    if args.first().map(String::as_str) == Some("lens") {
+        let name = args
+            .get(1)
+            .ok_or("Usage: lens capture | lens state | lens overlay '<action JSON>'")?;
+        let action = match args.get(2) {
+            Some(json) => serde_json::from_str(json).map_err(|e| format!("Not JSON: {e}"))?,
+            None => Value::Null,
+        };
+        let output = automation::call_lens(name, action)?;
+        return writeln!(std::io::stdout().lock(), "{output}").map_err(|error| error.to_string());
+    }
     let output = execute(args, automation::call)?;
     writeln!(std::io::stdout().lock(), "{output}").map_err(|error| error.to_string())
 }

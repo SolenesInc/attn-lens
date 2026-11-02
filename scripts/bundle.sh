@@ -2,13 +2,14 @@
 set -eu
 cd "$(dirname "$0")/.."
 MODE="${1:-release}"
-export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-12.0}"
+# capture-core uses ScreenCaptureKit APIs from macOS 15.
+export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-15.0}"
 VERSION="$(sed -n '/^\[package\]/,/^\[/s/^version = "\([^"]*\)".*/\1/p' Cargo.toml)"
 if [ "$MODE" = "release" ]; then cargo build --release --locked; else cargo build --locked; fi
-APP_DEST="${GLANCE_BUNDLE_DEST:-$(pwd)/target/Glance.app}"
+APP_DEST="${GLANCE_BUNDLE_DEST:-$(pwd)/target/Attn Lens.app}"
 mkdir -p "$(pwd)/target" "$(dirname "$APP_DEST")"
 BUILD_DIR="$(mktemp -d "$(pwd)/target/.glance-bundle.XXXXXX")"
-APP="$BUILD_DIR/Glance.app"
+APP="$BUILD_DIR/Attn Lens.app"
 cleanup() {
     if [ ! -e "$APP_DEST" ] && [ -e "$BUILD_DIR/previous.app" ]; then
         mv "$BUILD_DIR/previous.app" "$APP_DEST"
@@ -34,22 +35,22 @@ cp assets/lucide/LICENSE "$APP/Contents/Resources/Lucide-LICENSE"
 cp assets/fonts/LICENSE "$APP/Contents/Resources/Roboto-LICENSE"
 cp LICENSE "$APP/Contents/Resources/LICENSE"
 cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
-cp "${CARGO_TARGET_DIR:-target}/$MODE/glance" "$APP/Contents/MacOS/Glance"
+cp "${CARGO_TARGET_DIR:-target}/$MODE/glance" "$APP/Contents/MacOS/AttnLens"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>Glance</string>
-<key>CFBundleIdentifier</key><string>sh.glance.desktop</string>
+<key>CFBundleExecutable</key><string>AttnLens</string>
+<key>CFBundleIdentifier</key><string>dev.attn.lens</string>
 <key>CFBundleIconFile</key><string>Glance.icns</string>
-<key>CFBundleName</key><string>Glance</string>
-<key>CFBundleDisplayName</key><string>Glance</string>
+<key>CFBundleName</key><string>Attn Lens</string>
+<key>CFBundleDisplayName</key><string>Attn Lens</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$VERSION</string>
 <key>CFBundleVersion</key><string>$VERSION</string>
-<key>LSMinimumSystemVersion</key><string>12.0</string>
+<key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
-<key>NSScreenCaptureUsageDescription</key><string>Glance captures your selected screen area for annotation.</string>
+<key>NSScreenCaptureUsageDescription</key><string>Attn Lens captures your screen so you can mark it up and send it to an agent.</string>
 </dict></plist>
 PLIST
 /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile $ICON_NAME" "$APP/Contents/Info.plist"

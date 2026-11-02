@@ -14,8 +14,10 @@ and exported media keep their colors.
 
 ## Capture or open an image
 
-- **⌘⌥2** captures an area; Escape cancels the selector.
-- **⌘⌥3** captures the main display. Glance hides itself before capture.
+- **⌘⌥2**, from anywhere, captures the display under the pointer into the
+  in-place Send overlay ([Send to an attn session](send.md)).
+- **⌘⌥3** in the editor captures the display under the pointer into the editor.
+  There is no interactive area selector: crop in the editor.
 - **⌘O** opens PNG/JPEG. You can also drop a file onto the canvas.
 - **⌘V** loads a clipboard image when you are outside text editing.
 

@@ -37,7 +37,7 @@ pub enum Request {
 pub fn directory() -> Result<PathBuf, String> {
     let home = std::env::var_os("HOME").ok_or("HOME is unavailable")?;
     #[cfg(target_os = "macos")]
-    let dir = PathBuf::from(home).join("Library/Caches/sh.glance.desktop/automation");
+    let dir = PathBuf::from(home).join("Library/Caches/dev.attn.lens/automation");
     #[cfg(target_os = "linux")]
     let dir = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
@@ -161,6 +161,88 @@ fn serve(stream: &mut UnixStream, sender: &async_channel::Sender<Message>) {
         Err(e) => json!({"error":e}),
     };
     let _ = writeln!(stream, "{response}");
+}
+/// Lens automation: `capture`, `state`, and `overlay <action JSON>`, served on
+/// the app's own socket and run on the UI thread like the person's input.
+#[cfg(target_os = "macos")]
+pub fn listen_lens(cx: &mut gpui::App) -> Result<(), String> {
+    type Request = (String, Value, mpsc::Sender<Result<Value, String>>);
+    let path = directory()?.join("lens.sock");
+    if path.exists() {
+        if UnixStream::connect(&path).is_ok() {
+            return Err("Another Attn Lens with --automation is already running".into());
+        }
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    let listener = UnixListener::bind(&path).map_err(|e| e.to_string())?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| e.to_string())?;
+    let (sender, receiver) = async_channel::unbounded::<Request>();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { break };
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+            let result = (|| {
+                let line = read_line(&mut BufReader::new(&stream))?.ok_or("Empty request")?;
+                let request: Value = serde_json::from_str(&line).map_err(|e| e.to_string())?;
+                let name = request["name"]
+                    .as_str()
+                    .ok_or("Missing command name")?
+                    .to_owned();
+                let (reply, response) = mpsc::channel();
+                sender
+                    .send_blocking((name, request["arguments"].clone(), reply))
+                    .map_err(|_| "Attn Lens is quitting")?;
+                response
+                    .recv()
+                    .map_err(|_| "Attn Lens dropped the request".to_string())?
+            })();
+            let response = match result {
+                Ok(v) => json!({"result": v}),
+                Err(e) => json!({"error": e}),
+            };
+            let _ = writeln!(stream, "{response}");
+        }
+        let _ = std::fs::remove_file(path);
+    });
+    cx.spawn(async move |cx| {
+        while let Ok((name, args, reply)) = receiver.recv().await {
+            let result = cx.update(|cx| match name.as_str() {
+                "capture" => {
+                    crate::lens::start_capture(cx);
+                    Ok(json!({"started": true}))
+                }
+                "state" => Ok(crate::lens::state(cx)),
+                "overlay" => serde_json::from_value(args)
+                    .map_err(|e| format!("Not an overlay action: {e}"))
+                    .and_then(|action| crate::lens::automate(action, cx))
+                    .map(|_| crate::lens::state(cx)),
+                other => Err(format!(
+                    "Unknown Lens command: {other}. Use capture, state or overlay."
+                )),
+            });
+            let _ = reply.send(result.unwrap_or_else(|e| Err(e.to_string())));
+        }
+    })
+    .detach();
+    Ok(())
+}
+
+/// Calls a running Attn Lens started with `--automation`.
+#[cfg(target_os = "macos")]
+pub fn call_lens(name: &str, args: Value) -> Result<Value, String> {
+    let mut stream = UnixStream::connect(directory()?.join("lens.sock"))
+        .map_err(|_| "Attn Lens is not running with --automation".to_string())?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .map_err(|e| e.to_string())?;
+    writeln!(stream, "{}", json!({"name": name, "arguments": args})).map_err(|e| e.to_string())?;
+    let line = read_line(&mut BufReader::new(stream))?.ok_or("Attn Lens disconnected")?;
+    let response: Value = serde_json::from_str(&line).map_err(|e| e.to_string())?;
+    match response["error"].as_str() {
+        Some(error) => Err(error.into()),
+        None => Ok(response["result"].clone()),
+    }
 }
 pub fn call(name: &str, args: Value) -> Result<Value, String> {
     let mut stream = UnixStream::connect(socket()?).map_err(|_| {
