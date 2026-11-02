@@ -233,6 +233,17 @@ pub fn send_from_editor(document: &Document, cx: &mut App) {
     );
 }
 
+/// Reopens the capture in the corner tile, as clicking it does.
+pub fn reopen(cx: &mut App) -> Result<(), String> {
+    let tile = lens(cx).tile.ok_or("No capture is in the corner tile.")?;
+    let capture = tile
+        .read_with(cx, |tile, _| tile.capture().cloned())
+        .map_err(|e| e.to_string())?
+        .ok_or("The corner tile holds a notice, not a capture.")?;
+    open_overlay(capture, cx);
+    Ok(())
+}
+
 /// Runs an overlay action from automation; errors name what is missing.
 pub fn automate(action: overlay::Action, cx: &mut App) -> Result<(), String> {
     let handle = lens(cx)

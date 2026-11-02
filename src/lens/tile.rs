@@ -16,6 +16,14 @@ pub struct Tile {
 }
 
 impl Tile {
+    /// The capture this tile reopens, if it holds one.
+    pub fn capture(&self) -> Option<&Capture> {
+        match &self.content {
+            Content::Capture(capture) => Some(capture),
+            Content::Notice(_) => None,
+        }
+    }
+
     pub fn new(content: Content) -> Self {
         let thumbnail = match &content {
             Content::Capture(capture) => Some(crate::editor::render_image(
@@ -61,7 +69,7 @@ impl Render for Tile {
             .text_xs()
             .cursor_pointer()
             .on_click(cx.listener(|this, _, _, cx| {
-                if let Content::Capture(capture) = &this.content {
+                if let Some(capture) = this.capture() {
                     let capture = capture.clone();
                     cx.defer(move |cx| super::open_overlay(capture, cx));
                 }

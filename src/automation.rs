@@ -213,12 +213,13 @@ pub fn listen_lens(cx: &mut gpui::App) -> Result<(), String> {
                     Ok(json!({"started": true}))
                 }
                 "state" => Ok(crate::lens::state(cx)),
+                "reopen" => crate::lens::reopen(cx).map(|_| crate::lens::state(cx)),
                 "overlay" => serde_json::from_value(args)
                     .map_err(|e| format!("Not an overlay action: {e}"))
                     .and_then(|action| crate::lens::automate(action, cx))
                     .map(|_| crate::lens::state(cx)),
                 other => Err(format!(
-                    "Unknown Lens command: {other}. Use capture, state or overlay."
+                    "Unknown Lens command: {other}. Use capture, reopen, state or overlay."
                 )),
             });
             let _ = reply.send(result.unwrap_or_else(|e| Err(e.to_string())));

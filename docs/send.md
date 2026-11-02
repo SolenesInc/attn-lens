@@ -74,6 +74,7 @@ use, for tests and scripted proofs:
 
 ```sh
 AttnLens lens capture                         # same as ⌘⌥2
+AttnLens lens reopen                          # same as clicking the corner tile
 AttnLens lens state                           # open capture, status, sessions
 AttnLens lens overlay '{"type":"add_mark","tool":"arrow","points":[[900,300],[700,200]]}'
 AttnLens lens overlay '{"type":"set_message","text":"This button does nothing"}'
