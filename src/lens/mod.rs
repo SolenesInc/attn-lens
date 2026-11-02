@@ -196,9 +196,6 @@ fn show_tile(content: tile::Content, display: u32, cx: &mut App) {
     };
     if let Ok(handle) = cx.open_window(options, |window, cx| {
         crate::theme::Theme::install(window, cx);
-        if let Some(panel) = mac::ns_window(window) {
-            mac::never_key(panel);
-        }
         cx.new(|_| Tile::new(content))
     }) {
         lens(cx).tile = Some(handle);
@@ -286,7 +283,6 @@ pub(crate) mod mac {
     #![allow(unexpected_cfgs)] // objc 0.2 macros use a legacy cargo-clippy feature.
     use cocoa::base::{BOOL, NO, id, nil};
     use objc::{class, msg_send, sel, sel_impl};
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
     /// A retained `NSRunningApplication`.
     pub struct RunningApp(id);
@@ -320,45 +316,6 @@ pub(crate) mod mac {
             }
             let _: id = msg_send![app, retain];
             Some(RunningApp(app))
-        }
-    }
-
-    pub fn ns_window(window: &gpui::Window) -> Option<id> {
-        let handle = HasWindowHandle::window_handle(window).ok()?;
-        let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
-            return None;
-        };
-        let view = handle.ns_view.as_ptr() as id;
-        Some(unsafe { msg_send![view, window] })
-    }
-
-    /// GPUI's panel class can become key; the corner tile must not take typing
-    /// from the app the person returned to.
-    pub fn never_key(window: id) {
-        use objc::declare::ClassDecl;
-        use objc::runtime::{Class, Object, Sel, object_getClass};
-        extern "C" fn no(_: &Object, _: Sel) -> BOOL {
-            NO
-        }
-        unsafe extern "C" {
-            fn object_setClass(obj: *mut Object, cls: *const Class) -> *const Class;
-        }
-        unsafe {
-            let current = object_getClass(window as *const Object);
-            let name = "AttnLensNonKeyPanel";
-            let class = Class::get(name).unwrap_or_else(|| {
-                let mut decl = ClassDecl::new(name, &*current).expect("a new panel class");
-                decl.add_method(
-                    sel!(canBecomeKeyWindow),
-                    no as extern "C" fn(&Object, Sel) -> BOOL,
-                );
-                decl.add_method(
-                    sel!(canBecomeMainWindow),
-                    no as extern "C" fn(&Object, Sel) -> BOOL,
-                );
-                decl.register()
-            });
-            object_setClass(window, class);
         }
     }
 }

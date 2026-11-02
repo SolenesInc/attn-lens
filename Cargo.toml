@@ -65,3 +65,7 @@ resvg = { version = "=0.45.1", default-features = false }
 [profile.release]
 lto = "thin"
 strip = true
+
+[patch.crates-io]
+# GPUI with two macOS window fixes; see AGENTS.md.
+gpui = { path = "vendor/gpui" }
