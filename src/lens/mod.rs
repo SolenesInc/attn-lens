@@ -254,12 +254,16 @@ pub fn automate(action: overlay::Action, cx: &mut App) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+fn screen_recording() -> bool {
+    crate::permission_guide::granted(crate::permission_guide::Permission::ScreenRecording)
+}
+
 /// What automation reads back: the open capture, its status and its sessions.
 pub fn state(cx: &mut App) -> serde_json::Value {
     let lens = lens(cx);
     let tile = lens.tile;
     let Some(handle) = lens.overlay else {
-        return serde_json::json!({ "overlay": null, "tile": tile.is_some() });
+        return serde_json::json!({ "overlay": null, "tile": tile.is_some(), "screen_recording": screen_recording() });
     };
     handle
         .read_with(cx, |o, _| {
@@ -272,6 +276,7 @@ pub fn state(cx: &mut App) -> serde_json::Value {
                     "sessions": o.sessions.iter().map(|s| serde_json::json!({"id": s.id, "label": s.label, "host": s.host})).collect::<Vec<_>>(),
                 },
                 "tile": tile.is_some(),
+                "screen_recording": screen_recording(),
             })
         })
         .unwrap_or(serde_json::Value::Null)
