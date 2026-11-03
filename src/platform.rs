@@ -40,22 +40,6 @@ pub fn screen_capture_permission() -> Result<(), String> {
     }
     Err("macOS is not authorizing this Attn Lens build to record the screen. Open System Settings → Privacy & Security → Screen & System Audio Recording. If Attn Lens is already enabled, quit it, remove its entry with −, add Attn Lens.app with +, enable it, then reopen. Rebuilding an ad-hoc signed app can invalidate an older permission.".into())
 }
-#[cfg_attr(target_os = "macos", allow(dead_code))]
-fn capture_failure(area: bool, stderr: &[u8], code: Option<i32>) -> Option<String> {
-    let detail = String::from_utf8_lossy(stderr);
-    let detail = detail.trim();
-    if area && detail.is_empty() && matches!(code, Some(0 | 1)) {
-        return None;
-    }
-    Some(if detail.is_empty() {
-        format!(
-            "Screen capture produced no image (exit {}). Try again with the screen unlocked.",
-            code.map_or("unknown".into(), |c| c.to_string())
-        )
-    } else {
-        format!("Screen capture failed: {detail}")
-    })
-}
 /// Captures the display under the pointer in-process through ScreenCaptureKit.
 /// `area` no longer opens an interactive selection: crop in the editor instead.
 /// `screencapture -i` added macOS 26's private-window-picker consent.
@@ -345,7 +329,6 @@ fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
 }
 #[cfg(test)]
 mod tests {
-    use super::capture_failure;
     use super::checked_export_path;
     #[test]
     fn startup_rejects_missing_or_conflicting_image_arguments() {
@@ -431,21 +414,5 @@ mod tests {
         std::os::unix::fs::symlink(dir.path().join("missing"), &link).unwrap();
         assert!(checked_export_path(dir.path().join("dangling"), "png").is_err());
         assert!(link.is_symlink());
-    }
-    #[test]
-    fn capture_errors_preserve_real_cause_and_cancellation_is_quiet() {
-        assert!(capture_failure(true, b"", Some(1)).is_none());
-        assert!(capture_failure(true, b" \n", Some(0)).is_none());
-        assert!(
-            capture_failure(false, b"", Some(1))
-                .unwrap()
-                .contains("produced no image")
-        );
-        assert!(
-            capture_failure(true, b"could not create image from display", Some(1))
-                .unwrap()
-                .contains("could not create image from display")
-        );
-        assert!(capture_failure(true, b"", None).is_some());
     }
 }

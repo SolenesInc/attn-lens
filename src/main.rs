@@ -26,7 +26,6 @@ mod ocr;
 #[cfg(test)]
 mod performance;
 #[cfg(target_os = "macos")]
-#[allow(dead_code)]
 mod permission_guide;
 mod platform;
 mod prompt_input;
@@ -71,7 +70,9 @@ fn main() {
     };
     let application = Application::new().with_assets(icons::Icons);
     #[cfg(target_os = "macos")]
-    application.on_reopen(lens::start_capture);
+    application.on_reopen(|cx| {
+        lens::start_capture(cx);
+    });
     #[cfg(target_os = "linux")]
     application.on_reopen(|cx| cx.activate(true));
     application.run(move |cx: &mut App| {

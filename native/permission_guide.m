@@ -3,12 +3,10 @@
 // Copyright (c) 2026 Christopher Langton. See THIRD_PARTY_NOTICES.md.
 //
 // Opens System Settings' Privacy & Security pane for one permission and floats
-// Attn Lens beside it as a tile to drag into the list (or, for a refused
-// microphone, a prompt to switch Lens on), closing once the permission is
-// granted or System Settings closes.
+// Attn Lens beside it as a tile to drag into the list, closing once the
+// permission is granted or System Settings closes.
 
 #import <AppKit/AppKit.h>
-#import <AVFoundation/AVFoundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreImage/CoreImage.h>
 #import <QuartzCore/QuartzCore.h>
@@ -16,7 +14,6 @@
 /// Matches `Permission` in src/permission_guide.rs.
 typedef NS_ENUM(NSInteger, LensPermission) {
     LensPermissionScreenRecording = 1,
-    LensPermissionMicrophone = 2,
 };
 
 static NSPanel *guidePanel;
@@ -56,37 +53,12 @@ static NSString *lensAppName(NSURL *bundleURL) {
 }
 
 /// The name of the Privacy & Security list each permission lives in.
-const char *lens_permission_list_name(int permission) {
-    switch ((LensPermission)permission) {
+static NSString *permissionListName(LensPermission permission) {
+    switch (permission) {
         case LensPermissionScreenRecording:
-            return "Screen & System Audio Recording";
-        case LensPermissionMicrophone:
-            return "Microphone";
+            return @"Screen & System Audio Recording";
     }
-    return "Privacy & Security";
-}
-
-/// Writes the running `.app` bundle's identifier as UTF-8 into `buf`,
-/// returning its byte length, or 0 outside a `.app` bundle.
-size_t lens_running_app_bundle_id(char *buf, size_t cap) {
-    if (buf == NULL || cap == 0) {
-        return 0;
-    }
-    NSURL *bundleURL = NSBundle.mainBundle.bundleURL.standardizedURL;
-    if (![bundleURL.pathExtension.lowercaseString isEqualToString:@"app"]) {
-        return 0;
-    }
-    NSString *identifier = NSBundle.mainBundle.bundleIdentifier;
-    const char *utf8 = identifier.UTF8String;
-    if (utf8 == NULL) {
-        return 0;
-    }
-    size_t len = strlen(utf8);
-    if (len == 0 || len > cap) {
-        return 0;
-    }
-    memcpy(buf, utf8, len);
-    return len;
+    return @"Privacy & Security";
 }
 
 static BOOL isDark(NSAppearance *appearance) {
@@ -283,9 +255,6 @@ bool lens_permission_granted(int permission) {
     switch ((LensPermission)permission) {
         case LensPermissionScreenRecording:
             return CGPreflightScreenCaptureAccess();
-        case LensPermissionMicrophone:
-            return [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] ==
-                   AVAuthorizationStatusAuthorized;
     }
     return NO;
 }
@@ -492,20 +461,14 @@ void lens_show_permission_guide(int permission) {
     activePermission = (LensPermission)permission;
 
     NSURL *bundleURL = NSBundle.mainBundle.bundleURL.standardizedURL;
-    NSString *listName = [NSString stringWithUTF8String:lens_permission_list_name(permission)];
+    NSString *listName = permissionListName(activePermission);
     NSString *appName = lensAppName(bundleURL);
     NSString *pane;
     switch (activePermission) {
         case LensPermissionScreenRecording:
             pane = @"Privacy_ScreenCapture";
             break;
-        case LensPermissionMicrophone:
-            pane = @"Privacy_Microphone";
-            break;
     }
-    // The Microphone list only holds apps that asked, so a refused
-    // microphone is switched on rather than dragged in.
-    BOOL draggable = activePermission != LensPermissionMicrophone;
     NSURL *settingsURL = [NSURL URLWithString:[NSString stringWithFormat:
         @"x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?%@", pane]];
     openSettingsPane(settingsURL);
@@ -514,7 +477,7 @@ void lens_show_permission_guide(int permission) {
         return;
     }
 
-    NSSize panelSize = NSMakeSize(480, draggable ? 116 : 60);
+    NSSize panelSize = NSMakeSize(480, 116);
     guidePanel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
                   styleMask:NSWindowStyleMaskBorderless |
@@ -539,24 +502,21 @@ void lens_show_permission_guide(int permission) {
     content.layer.borderWidth = 1;
     content.layer.borderColor = [NSColor colorWithWhite:0 alpha:0.10].CGColor;
 
-    NSString *text = draggable
-        ? [NSString stringWithFormat:@"↑  Drag %@ into the %@ list above", appName, listName]
-        : [NSString stringWithFormat:@"↑  Switch on %@ in the %@ list above", appName, listName];
+    NSString *text =
+        [NSString stringWithFormat:@"↑  Drag %@ into the %@ list above", appName, listName];
     NSTextField *instruction = [NSTextField labelWithString:text];
-    instruction.frame = NSMakeRect(18, draggable ? 73 : 18, panelSize.width - 36, 24);
+    instruction.frame = NSMakeRect(18, 73, panelSize.width - 36, 24);
     instruction.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
     instruction.textColor = NSColor.labelColor;
     [content addSubview:instruction];
 
-    if (draggable) {
-        LensDragView *dragView = [[LensDragView alloc]
-            initWithFrame:NSMakeRect(18, 17, panelSize.width - 36, 44)
-                 bundleURL:bundleURL];
-        [content addSubview:dragView];
-        guideTile = dragView;
-    }
+    LensDragView *dragView = [[LensDragView alloc]
+        initWithFrame:NSMakeRect(18, 17, panelSize.width - 36, 44)
+             bundleURL:bundleURL];
+    [content addSubview:dragView];
+    guideTile = dragView;
     guidePanel.contentView = content;
-    if (draggable && fly) {
+    if (fly) {
         guideTile.hidden = YES;
         guidePanel.alphaValue = 0;
         beginFlight(click, bundleURL, guideTile.frame.size);
