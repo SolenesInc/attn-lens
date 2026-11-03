@@ -23,11 +23,6 @@ mod view;
 use crate::document::{self, Document, Tool};
 #[cfg(target_os = "macos")]
 use crate::gestures;
-#[cfg(target_os = "macos")]
-use global_hotkey::{
-    GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
-    hotkey::{Code, HotKey, Modifiers},
-};
 use gpui::*;
 pub(crate) use jobs::Message;
 use jobs::OperationState;
@@ -62,8 +57,6 @@ pub(crate) struct Editor {
     pub(crate) focus: FocusHandle,
     operations: OperationState,
     sender: async_channel::Sender<Message>,
-    #[cfg(target_os = "macos")]
-    _hotkeys: Option<GlobalHotKeyManager>,
 }
 #[derive(serde::Serialize)]
 struct Extraction {
@@ -93,11 +86,11 @@ fn preview_base(doc: &Document) -> image::RgbaImage {
 }
 
 impl Editor {
-    pub(crate) fn new(cx: &mut Context<Self>, image: Option<image::RgbaImage>) -> Self {
+    pub(crate) fn from_document(cx: &mut Context<Self>, document: Option<Document>) -> Self {
         Self::with_document(
             cx,
             true,
-            Document::new(image.unwrap_or_else(document::demo)),
+            document.unwrap_or_else(|| Document::new(document::demo())),
         )
     }
     #[cfg(test)]
@@ -121,53 +114,15 @@ impl Editor {
             }),
         ));
         #[cfg(target_os = "macos")]
-        let mut status = "Practice on this canvas, or capture your screen with ⌘⌥2".to_string();
+        let status = "Practice on this canvas, or capture your screen with ⌘⌥2".to_string();
         #[cfg(target_os = "linux")]
         let status =
             "Practice here, or launch glance --capture-area from a Hyprland binding".to_string();
-        #[cfg(target_os = "macos")]
-        let area = HotKey::new(Some(Modifiers::SUPER | Modifiers::ALT), Code::Digit2);
-        #[cfg(target_os = "macos")]
-        let full = HotKey::new(Some(Modifiers::SUPER | Modifiers::ALT), Code::Digit3);
-        #[cfg(target_os = "macos")]
-        let hotkeys = if !native {
-            None
-        } else {
-            match GlobalHotKeyManager::new() {
-                Ok(manager) => {
-                    for key in [area, full] {
-                        if let Err(e) = manager.register(key) {
-                            status = format!("Shortcut unavailable: {e}. Use the capture buttons.");
-                        }
-                    }
-                    Some(manager)
-                }
-                Err(e) => {
-                    status = format!("Global shortcuts unavailable: {e}");
-                    None
-                }
-            }
-        };
         if native
             && std::env::args().any(|arg| arg == "--automation")
             && let Err(error) = crate::automation::listen(sender.clone())
         {
             eprintln!("Glance automation: {error}");
-        }
-        #[cfg(target_os = "macos")]
-        let hotkey_sender = sender.clone();
-        #[cfg(target_os = "macos")]
-        if native {
-            GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
-                if event.state == HotKeyState::Pressed {
-                    if event.id == area.id() {
-                        let _ = hotkey_sender.try_send(Message::Hotkey(true));
-                    }
-                    if event.id == full.id() {
-                        let _ = hotkey_sender.try_send(Message::Hotkey(false));
-                    }
-                }
-            }));
         }
         cx.spawn(async move |view, cx| {
             while let Ok(message) = receiver.recv().await {
@@ -238,19 +193,27 @@ impl Editor {
         #[cfg(target_os = "macos")]
         let gestures =
             native.then(|| gestures::Monitor::new(sender.clone(), canvas_bounds.clone()));
-        let ask_input = cx.new(|cx| ask::input::PromptInput::new(focus.clone(), cx));
+        let ask_input = cx.new(|cx| {
+            crate::prompt_input::PromptInput::new(
+                focus.clone(),
+                "What would you like to change?",
+                cx,
+            )
+        });
         color_subscriptions.push(cx.subscribe(&ask_input, |this, _, event, cx| {
             let action = match event {
-                ask::input::Event::Changed(prompt) => actions::Action::SetAskGlancePrompt {
-                    prompt: prompt.clone(),
-                },
-                ask::input::Event::Submit => actions::Action::AskGlance {
+                crate::prompt_input::Event::Changed(prompt) => {
+                    actions::Action::SetAskGlancePrompt {
+                        prompt: prompt.clone(),
+                    }
+                }
+                crate::prompt_input::Event::Submit => actions::Action::AskGlance {
                     prompt: this.ask.prompt.clone(),
                 },
-                ask::input::Event::Close if this.ask.running.is_some() => {
+                crate::prompt_input::Event::Close if this.ask.running.is_some() => {
                     actions::Action::CancelAskGlance
                 }
-                ask::input::Event::Close => actions::Action::ToggleAskGlance,
+                crate::prompt_input::Event::Close => actions::Action::ToggleAskGlance,
             };
             this.dispatch_ui(action, cx);
         }));
@@ -348,8 +311,6 @@ impl Editor {
             focus,
             operations: OperationState::default(),
             sender,
-            #[cfg(target_os = "macos")]
-            _hotkeys: hotkeys,
         }
     }
 }

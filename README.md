@@ -1,4 +1,16 @@
-# Glance
+# Attn Lens
+
+Attn Lens captures your screen, lets you mark it up in place, and sends it to an
+[attn](https://github.com/victorarias/attn) agent session, on this Mac or on an
+outpost. Press **⌘⌥2**, drag arrows over the frozen screen, type a message, press
+**↩**. The agent gets the message and a command that saves the image where it runs.
+See [Send to an attn session](docs/send.md).
+
+Attn Lens is a fork of [Glance](https://github.com/modem-dev/glance-desktop) (MIT).
+It keeps Glance's editor (**⌘E** from a capture) for crop, pixelate, backdrops and
+GIF/MP4 export. The rest of this README describes that editor.
+
+## Glance
 
 Glance is a native screenshot editor for macOS, with experimental support for Omarchy.
 Capture a screenshot, add arrows and labels, then copy, save, or share it.

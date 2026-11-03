@@ -6,12 +6,28 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
+- **Attn Lens**: ⌘⌥2 freezes the display under the pointer and opens an ink
+  layer with a Send bar. Drag for arrows, ⇧drag for boxes, ⌥T for labels, type a
+  message and press ↩ to send to an attn session, local or on an outpost. Tab
+  opens a palette of sessions grouped by host plus Copy, Save and Edit; ⌘E opens
+  the editor, and the editor's ⌘↩ sends from there. Lens pairs with attn once and
+  keeps the token in the Keychain. A sent or closed capture stays in a corner
+  tile you can reopen.
+- Missing Screen Recording access opens System Settings with a tile of the app
+  to drag into the list (from Hex, MIT).
 - Terminal commands for the running, opt-in editor: inspect, import, crop,
   resize, annotate, change settings and export using shared UI/MCP validation.
   Commands return JSON, expose help and schemas, and preserve native undo,
   revision checks and safe exports. Plain `glance` still opens the editor.
 - The editor interface follows the system’s light or dark appearance, including
   changes while Glance is running. Image content and exported media keep their colors.
+
+### Changed
+
+- Stills are taken in-process through ScreenCaptureKit instead of the
+  `screencapture` tool, which avoids macOS 26's private window picker consent.
+  The area selector is gone; crop in the editor. Requires macOS 15.
+- The app is Attn Lens (`dev.attn.lens`), and no window opens at launch.
 
 ## [0.5.0] - 2026-10-07
 

@@ -170,3 +170,39 @@ pub fn clipboard_image() -> Result<RgbaImage, String> {
         .map(|i| i.to_rgba8())
         .map_err(|e| e.to_string())
 }
+fn capture_failure(area: bool, stderr: &[u8], code: Option<i32>) -> Option<String> {
+    let detail = String::from_utf8_lossy(stderr);
+    let detail = detail.trim();
+    if area && detail.is_empty() && matches!(code, Some(0 | 1)) {
+        return None;
+    }
+    Some(if detail.is_empty() {
+        format!(
+            "Screen capture produced no image (exit {}). Try again with the screen unlocked.",
+            code.map_or("unknown".into(), |c| c.to_string())
+        )
+    } else {
+        format!("Screen capture failed: {detail}")
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::capture_failure;
+    #[test]
+    fn capture_errors_preserve_real_cause_and_cancellation_is_quiet() {
+        assert!(capture_failure(true, b"", Some(1)).is_none());
+        assert!(capture_failure(true, b" \n", Some(0)).is_none());
+        assert!(
+            capture_failure(false, b"", Some(1))
+                .unwrap()
+                .contains("produced no image")
+        );
+        assert!(
+            capture_failure(true, b"could not create image from display", Some(1))
+                .unwrap()
+                .contains("could not create image from display")
+        );
+        assert!(capture_failure(true, b"", None).is_some());
+    }
+}

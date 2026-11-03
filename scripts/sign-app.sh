@@ -3,7 +3,7 @@
 # Trust setup is a separate explicit step; no privacy database edits are made.
 set -eu
 umask 077
-APP="${1:?Usage: scripts/sign-app.sh /path/to/Glance.app}"
+APP="${1:?Usage: scripts/sign-app.sh "/path/to/Attn Lens.app"}"
 SIGN_DIR="${GLANCE_SIGNING_DIR:-$HOME/Library/Application Support/Glance/Signing}"
 SIGN_IDENTITY="${GLANCE_CODESIGN_IDENTITY:-}"
 # Reuse the existing certificate during the app rename. Replacing it would

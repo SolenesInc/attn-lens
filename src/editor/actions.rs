@@ -23,6 +23,8 @@ pub(crate) enum Action {
     Capture {
         area: bool,
     },
+    /// Hands the edited image to Attn Lens's in-place Send bar.
+    SendToAttn,
     OpenImage,
     OpenPath {
         path: PathBuf,

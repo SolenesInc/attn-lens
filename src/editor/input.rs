@@ -635,6 +635,8 @@ impl Editor {
         }
         let action = if command && m.alt && matches!(key, "2" | "3") {
             Some(Action::Capture { area: key == "2" })
+        } else if command && key == "enter" {
+            Some(Action::SendToAttn)
         } else if command {
             match key {
                 "a" => Some(Action::SelectAll),

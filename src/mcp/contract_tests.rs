@@ -69,6 +69,10 @@ fn every_serializable_action_is_exposed_or_explicitly_excluded() {
             "begin_animation_adjustment",
             "set_animation_control instead of pointer gestures",
         ),
+        (
+            "send_to_attn",
+            "agents send files to sessions with `attn send` directly; this hands the image to the person's Send bar",
+        ),
     ];
     for (name, reason) in excluded {
         assert!(!exposed.contains(name), "{name}: {reason}");

@@ -388,6 +388,16 @@ impl Editor {
             }
             Action::Show => crate::platform::show_editor(cx),
             Action::Capture { area } => self.capture(area, cx)?,
+            Action::SendToAttn => {
+                self.commit_text(cx);
+                #[cfg(target_os = "macos")]
+                {
+                    let document = self.document.render_snapshot();
+                    cx.defer(move |cx| crate::lens::send_from_editor(&document, cx));
+                }
+                #[cfg(not(target_os = "macos"))]
+                return Err("Send to attn needs macOS".into());
+            }
             Action::OpenImage => self.open(cx),
             Action::OpenPath { path } => self.open_path(path, cx),
             Action::SaveImage => self.export(true, cx),
