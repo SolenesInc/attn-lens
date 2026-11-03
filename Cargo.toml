@@ -67,5 +67,5 @@ lto = "thin"
 strip = true
 
 [patch.crates-io]
-# GPUI with two macOS window fixes; see AGENTS.md.
+# GPUI with three macOS window fixes; see AGENTS.md.
 gpui = { path = "vendor/gpui" }

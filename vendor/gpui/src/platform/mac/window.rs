@@ -108,9 +108,9 @@ unsafe extern "C" {
 #[ctor]
 unsafe fn build_classes() {
     unsafe {
-        WINDOW_CLASS = build_window_class("GPUIWindow", class!(NSWindow), true);
-        PANEL_CLASS = build_window_class("GPUIPanel", class!(NSPanel), true);
-        NON_KEY_PANEL_CLASS = build_window_class("GPUINonKeyPanel", class!(NSPanel), false);
+        WINDOW_CLASS = build_window_class("GPUIWindow", WindowClass::Window);
+        PANEL_CLASS = build_window_class("GPUIPanel", WindowClass::PopUp);
+        NON_KEY_PANEL_CLASS = build_window_class("GPUINonKeyPanel", WindowClass::NonKeyPopUp);
         VIEW_CLASS = {
             let mut decl = ClassDecl::new("GPUIView", class!(NSView)).unwrap();
             decl.add_ivar::<*mut c_void>(WINDOW_STATE_IVAR);
@@ -281,23 +281,40 @@ pub(crate) fn convert_mouse_position(position: NSPoint, window_height: Pixels) -
     )
 }
 
-unsafe fn build_window_class(
-    name: &'static str,
-    superclass: &Class,
-    can_become_key: bool,
-) -> *const Class {
+#[derive(Clone, Copy, PartialEq)]
+enum WindowClass {
+    Window,
+    PopUp,
+    NonKeyPopUp,
+}
+
+unsafe fn build_window_class(name: &'static str, kind: WindowClass) -> *const Class {
     unsafe {
+        let superclass = if kind == WindowClass::Window {
+            class!(NSWindow)
+        } else {
+            class!(NSPanel)
+        };
         let mut decl = ClassDecl::new(name, superclass).unwrap();
         decl.add_ivar::<*mut c_void>(WINDOW_STATE_IVAR);
         decl.add_method(sel!(dealloc), dealloc_window as extern "C" fn(&Object, Sel));
 
-        let can_become_key = if can_become_key {
-            yes as extern "C" fn(&Object, Sel) -> BOOL
-        } else {
+        let can_become_key = if kind == WindowClass::NonKeyPopUp {
             no as extern "C" fn(&Object, Sel) -> BOOL
+        } else {
+            yes as extern "C" fn(&Object, Sel) -> BOOL
         };
         decl.add_method(sel!(canBecomeMainWindow), can_become_key);
         decl.add_method(sel!(canBecomeKeyWindow), can_become_key);
+        if kind != WindowClass::Window {
+            // Attn Lens: AppKit moves a window whose top is above the menu bar
+            // down below it. A pop-up sits above the menu bar by design, so it
+            // keeps the frame GPUI gave it, for example one covering the display.
+            decl.add_method(
+                sel!(constrainFrameRect:toScreen:),
+                unconstrained_frame as extern "C" fn(&Object, Sel, NSRect, id) -> NSRect,
+            );
+        }
         decl.add_method(
             sel!(windowDidResize:),
             window_did_resize as extern "C" fn(&Object, Sel, id),
@@ -1619,6 +1636,10 @@ extern "C" fn yes(_: &Object, _: Sel) -> BOOL {
 
 extern "C" fn no(_: &Object, _: Sel) -> BOOL {
     NO
+}
+
+extern "C" fn unconstrained_frame(_: &Object, _: Sel, frame: NSRect, _: id) -> NSRect {
+    frame
 }
 
 extern "C" fn dealloc_window(this: &Object, _: Sel) {
