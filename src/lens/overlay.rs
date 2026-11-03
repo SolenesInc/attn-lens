@@ -594,7 +594,7 @@ impl Render for Overlay {
 impl Overlay {
     fn chip(&self, theme: &Theme) -> Div {
         let body: SharedString = match (&self.status, self.target()) {
-            (Status::Unpaired(_), _) => "Not paired with attn".into(),
+            (Status::Unpaired(_) | Status::Pairing { .. }, _) => "Not paired with attn".into(),
             (Status::Loading, _) => "Loading sessions…".into(),
             (_, Some(s)) => format!("{} · {}", s.label, s.host_label()).into(),
             (_, None) if self.sessions.is_empty() => "No sessions in attn".into(),
