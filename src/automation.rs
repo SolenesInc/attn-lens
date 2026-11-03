@@ -208,10 +208,7 @@ pub fn listen_lens(cx: &mut gpui::App) -> Result<(), String> {
     cx.spawn(async move |cx| {
         while let Ok((name, args, reply)) = receiver.recv().await {
             let result = cx.update(|cx| match name.as_str() {
-                "capture" => {
-                    crate::lens::start_capture(cx);
-                    Ok(json!({"started": true}))
-                }
+                "capture" => Ok(json!({"started": crate::lens::start_capture(cx)})),
                 "state" => Ok(crate::lens::state(cx)),
                 "reopen" => crate::lens::reopen(cx).map(|_| crate::lens::state(cx)),
                 "overlay" => serde_json::from_value(args)

@@ -19,13 +19,16 @@ keeps; the rest of this file describes Glance's rules, which still apply.
   agents send to sessions with `attn send` directly.
 - Sign dev bundles with a stable identity (`GLANCE_CODESIGN_IDENTITY`): an
   ad-hoc rebuild silently invalidates the Screen Recording grant.
-- `vendor/gpui` is GPUI 0.2.2 with two macOS window fixes, each marked
+- `vendor/gpui` is GPUI 0.2.2 with three macOS window fixes, each marked
   `Attn Lens:` in `src/platform/mac/window.rs`: the key-status handler releases
-  its state lock before `resignKeyWindow` re-enters it (without this, Lens hangs on reopening
-  a capture), and `PopUp` windows opened with `focus: false` use a panel class
-  that never becomes key (the corner tile). Drop the vendored copy once upstream
-  GPUI has both. `scripts/lens-lifecycle.sh` replays the window orders that hung
-  or crashed; run it after touching window lifecycle code or GPUI.
+  its state lock before `resignKeyWindow` re-enters it (without this, Lens hangs
+  on reopening a capture); `PopUp` windows opened with `focus: false` use a
+  panel class that never becomes key (the corner tile); and pop-ups keep their
+  frame instead of being pushed below the menu bar (the overlay covers the whole
+  display). Drop the vendored copy once upstream GPUI has all three.
+- `scripts/lens-live.sh` drives a signed Lens on the real display through the
+  window and send orders that once broke it, against a stand-in `attn`. Run it
+  after changing window lifecycle, pairing, sending or GPUI.
 
 # Glance
 

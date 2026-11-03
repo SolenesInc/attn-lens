@@ -22,11 +22,14 @@ the same as a local one.
 The overlay closes, focus returns to the app you were in, and the capture
 shrinks into a tile in the corner. Click the tile to reopen it with its marks,
 message and target, for example to send it to a second session. **Esc** closes
-a capture without sending and keeps it in the tile too.
+a capture without sending and keeps it in the tile too. A send already on its
+way still arrives, and the tile then says where it went.
 
 If attn refuses a send, the overlay stays open with your marks and message and
 shows attn's error text as it printed it. Fix the cause, or press **Tab** to
-pick another session, and press **↩** again.
+pick another session, and press **↩** again. If Lens cannot list attn's
+sessions, for example because attn is not running, the bar shows attn's error
+instead; once attn is back, **↩** or **Tab** lists them again.
 
 ## Other keys
 
@@ -43,7 +46,8 @@ Attn only accepts input as you from a program you paired. Until Lens is
 paired, the bar says so and its button reads **Pair**. Press **↩** and attn asks
 you to allow “Attn Lens”, showing a 4-digit code. The bar shows the same code.
 Check they match and click **Allow** in attn. Lens then lists the sessions and
-the chip shows where **↩** will send.
+the chip shows where **↩** will send. Closing the capture while attn waits for
+Allow does not cancel the pairing: once you allow it, the next capture is paired.
 
 Lens keeps the token in your login Keychain (service `dev.attn.lens.sender`) and
 stays paired until you remove it in attn under **Settings → Paired senders**.

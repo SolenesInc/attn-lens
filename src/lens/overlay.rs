@@ -45,7 +45,11 @@ pub enum Action {
 pub enum Status {
     Loading,
     Unpaired(String),
-    Pairing { code: Option<String> },
+    Pairing {
+        code: Option<String>,
+    },
+    /// attn could not list the sessions; ↩ and Tab ask again.
+    Unlisted(String),
     Ready,
     Sending,
     Failed(attn::Failure),
@@ -134,6 +138,9 @@ impl Overlay {
                     Some(_) => None,
                     None => Some(0),
                 };
+                if self.palette.is_some() && matches!(self.status, Status::Unlisted(_)) {
+                    self.load_sessions(cx);
+                }
             }
             Action::Send => self.send(cx),
             Action::Pair => self.pair(cx),
@@ -230,7 +237,7 @@ impl Overlay {
                         attn::forget_token();
                         this.status = Status::Unpaired(text);
                     }
-                    Err(failure) => this.status = Status::Failed(failure),
+                    Err(attn::Failure::Error(text)) => this.status = Status::Unlisted(text),
                 }
                 cx.notify();
             })
@@ -244,12 +251,14 @@ impl Overlay {
         }
         self.status = Status::Pairing { code: None };
         let (codes, code) = async_channel::bounded(1);
+        // The token is stored here, not in the overlay, so a pairing finished
+        // after the person closed the overlay still counts.
         let task = cx.background_executor().spawn(async move {
-            attn::locate().and_then(|bin| {
-                attn::pair(&bin, |request| {
-                    let _ = codes.try_send(request.code);
-                })
-            })
+            let bin = attn::locate()?;
+            let token = attn::pair(&bin, |request| {
+                let _ = codes.try_send(request.code);
+            })?;
+            attn::store_token(&token)
         });
         cx.spawn(async move |this, cx| {
             if let Ok(code) = code.recv().await {
@@ -261,11 +270,10 @@ impl Overlay {
             let result = task.await;
             this.update(cx, |this, cx| {
                 match result {
-                    Ok(token) => match attn::store_token(&token) {
-                        Ok(()) => this.load_sessions(cx),
-                        Err(failure) => this.status = Status::Failed(failure),
-                    },
-                    Err(failure) => this.status = Status::Failed(failure),
+                    Ok(()) => this.load_sessions(cx),
+                    Err(attn::Failure::NotPaired(text) | attn::Failure::Error(text)) => {
+                        this.status = Status::Unpaired(text)
+                    }
                 }
                 cx.notify();
             })
@@ -277,6 +285,7 @@ impl Overlay {
         match &self.status {
             Status::Unpaired(_) => return self.pair(cx),
             Status::Failed(attn::Failure::NotPaired(_)) => return self.pair(cx),
+            Status::Unlisted(_) => return self.load_sessions(cx),
             Status::Sending | Status::Pairing { .. } | Status::Loading => return,
             Status::Ready | Status::Failed(_) => {}
         }
@@ -304,26 +313,42 @@ impl Overlay {
                 .save_with_format(&file, image::ImageFormat::Png)
                 .map_err(|e| attn::Failure::Error(format!("Could not write the image: {e}")))?;
             let bin = attn::locate()?;
-            attn::send(&bin, &token, &id, &file, &message)
+            let sent = attn::send(&bin, &token, &id, &file, &message);
+            if let Err(attn::Failure::NotPaired(_)) = sent {
+                attn::forget_token();
+            }
+            sent
         });
-        cx.spawn(async move |this, cx| {
+        // The result goes to Lens, which finds the capture whether the overlay
+        // is still open or the person closed it into the tile.
+        let (capture, label) = (self.capture.id, session.label.clone());
+        cx.spawn(async move |_, cx| {
             let result = task.await;
-            this.update(cx, |this, cx| {
-                match result {
-                    Ok(_) => {
-                        this.capture.sent_to = Some(session.label.clone());
-                        super::close_overlay(this.capture.clone(), cx);
-                    }
-                    Err(attn::Failure::NotPaired(text)) => {
-                        attn::forget_token();
-                        this.status = Status::Failed(attn::Failure::NotPaired(text));
-                    }
-                    Err(failure) => this.status = Status::Failed(failure),
-                }
-                cx.notify();
-            })
+            cx.update(|cx| super::finish_send(capture, label, result, cx))
         })
         .detach();
+    }
+
+    /// Applies a send's result if this overlay shows capture `id`.
+    pub(super) fn finish_send(
+        &mut self,
+        id: u64,
+        label: &str,
+        result: &Result<attn::Sent, attn::Failure>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.capture.id != id {
+            return false;
+        }
+        match result {
+            Ok(_) => {
+                self.capture.sent_to = Some(label.to_owned());
+                super::close_overlay(self.capture.clone(), cx);
+            }
+            Err(failure) => self.status = Status::Failed(failure.clone()),
+        }
+        cx.notify();
+        true
     }
 
     fn target(&self) -> Option<&attn::Session> {
@@ -596,6 +621,7 @@ impl Overlay {
         let body: SharedString = match (&self.status, self.target()) {
             (Status::Unpaired(_) | Status::Pairing { .. }, _) => "Not paired with attn".into(),
             (Status::Loading, _) => "Loading sessions…".into(),
+            (Status::Unlisted(_), _) => "Sessions unavailable".into(),
             (_, Some(s)) => format!("{} · {}", s.label, s.host_label()).into(),
             (_, None) if self.sessions.is_empty() => "No sessions in attn".into(),
             (_, None) => "Choose a session".into(),
@@ -651,6 +677,10 @@ impl Overlay {
                 theme.error,
             )),
             Status::Failed(attn::Failure::Error(text)) => Some((text.clone().into(), theme.error)),
+            Status::Unlisted(text) => Some((
+                format!("{text}\nPress ↩ to list the sessions again.").into(),
+                theme.error,
+            )),
             Status::Loading | Status::Ready => None,
         };
         let hints = format!(
@@ -818,9 +848,15 @@ impl Overlay {
                     "No live sessions in attn. Start one there, or copy or save the capture."
                 }
                 Status::Loading => "Loading sessions…",
+                Status::Unlisted(text) => text,
                 _ => "Pair with attn to list its sessions.",
             };
-            list = list.child(div().p_3().text_color(rgb(theme.muted)).child(text));
+            list = list.child(
+                div()
+                    .p_3()
+                    .text_color(rgb(theme.muted))
+                    .child(text.to_owned()),
+            );
         }
         div()
             .absolute()

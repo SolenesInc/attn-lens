@@ -6,7 +6,7 @@ use gpui::{prelude::*, *};
 use std::sync::Arc;
 
 pub enum Content {
-    Capture(Capture),
+    Capture(Box<Capture>),
     Notice(SharedString),
 }
 
@@ -41,15 +41,14 @@ impl Render for Tile {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::get(cx);
         let (title, detail, ok): (SharedString, SharedString, bool) = match &self.content {
-            Content::Capture(Capture {
-                sent_to: Some(label),
-                ..
-            }) => (
-                format!("Sent to {label}").into(),
-                "Click to reopen".into(),
-                true,
-            ),
-            Content::Capture(_) => ("Not sent".into(), "Click to reopen".into(), false),
+            Content::Capture(capture) => match &capture.sent_to {
+                Some(label) => (
+                    format!("Sent to {label}").into(),
+                    "Click to reopen".into(),
+                    true,
+                ),
+                None => ("Not sent".into(), "Click to reopen".into(), false),
+            },
             Content::Notice(text) => ("Attn Lens".into(), text.clone(), false),
         };
         div()

@@ -14,6 +14,8 @@ use tile::Tile;
 /// One capture as the person left it: image, marks, message and target.
 #[derive(Clone)]
 pub struct Capture {
+    /// Tells a send's result which capture it belongs to, wherever it is shown by then.
+    pub id: u64,
     pub display: u32,
     pub document: Document,
     pub message: String,
@@ -22,9 +24,25 @@ pub struct Capture {
     pub sent_to: Option<String>,
 }
 
+impl Capture {
+    fn new(display: u32, document: Document) -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self {
+            id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            display,
+            document,
+            message: String::new(),
+            target: None,
+            sent_to: None,
+        }
+    }
+}
+
 #[derive(Default)]
 struct Lens {
     overlay: Option<WindowHandle<Overlay>>,
+    /// A screenshot is being taken; its overlay opens when it arrives.
+    capturing: bool,
     tile: Option<WindowHandle<Tile>>,
     /// The app that was frontmost when the overlay opened, to give focus back.
     previous_app: Option<mac::RunningApp>,
@@ -64,36 +82,40 @@ pub fn install(cx: &mut App) -> Result<(), String> {
     registered
 }
 
-/// Captures the display under the pointer and opens the overlay on it.
-pub fn start_capture(cx: &mut App) {
-    if lens(cx).overlay.is_some() {
-        return;
+/// Captures the display under the pointer and opens the overlay on it. Does
+/// nothing, and returns false, while a capture is open or being taken.
+pub fn start_capture(cx: &mut App) -> bool {
+    if lens(cx).overlay.is_some() || lens(cx).capturing {
+        return false;
     }
     use crate::permission_guide::{Permission, granted, show};
     if !granted(Permission::ScreenRecording) {
         show(Permission::ScreenRecording);
-        return;
+        return false;
     }
     let display = capture::display_under_pointer();
     let previous = mac::frontmost();
+    lens(cx).capturing = true;
     cx.spawn(async move |cx| {
         let shot = cx.background_executor().spawn(async move { capture::screenshot(display) }).await;
         let _ = cx.update(|cx| match shot {
             Ok(image) => {
+                lens(cx).capturing = false;
                 lens(cx).previous_app = previous;
-                open_overlay(
-                    Capture { display, document: Document::new(image), message: String::new(), target: None, sent_to: None },
-                    cx,
-                );
+                open_overlay(Capture::new(display, Document::new(image)), cx);
             }
-            Err(error) => notify(
+            Err(error) => {
+                lens(cx).capturing = false;
+                notify(
                 format!("{error}\nIf you just allowed Screen Recording, quit and reopen Attn Lens: macOS applies it to new processes only."),
                 display,
                 cx,
-            ),
+                )
+            }
         });
     })
     .detach();
+    true
 }
 
 fn lens(cx: &mut App) -> &mut Lens {
@@ -103,7 +125,11 @@ fn lens(cx: &mut App) -> &mut Lens {
     cx.global_mut::<Lens>()
 }
 
+/// Shows `capture` in the one overlay, replacing any capture open there.
 pub fn open_overlay(capture: Capture, cx: &mut App) {
+    if let Some(open) = lens(cx).overlay.take() {
+        let _ = open.update(cx, |_, window, _| window.remove_window());
+    }
     close_tile(cx);
     let Some(display) = cx
         .displays()
@@ -152,7 +178,7 @@ pub fn close_overlay(capture: Capture, cx: &mut App) {
 
 fn open_tile(capture: Capture, cx: &mut App) {
     let display = capture.display;
-    show_tile(tile::Content::Capture(capture), display, cx);
+    show_tile(tile::Content::Capture(Box::new(capture)), display, cx);
 }
 
 /// Shows `text` in the corner, for failures that have no capture to hold them.
@@ -218,16 +244,37 @@ pub fn open_editor(document: Document, cx: &mut App) {
 pub fn send_from_editor(document: &Document, cx: &mut App) {
     let display = capture::display_under_pointer();
     lens(cx).previous_app = None;
-    open_overlay(
-        Capture {
-            display,
-            document: Document::new(document.export()),
-            message: String::new(),
-            target: None,
-            sent_to: None,
-        },
-        cx,
-    );
+    open_overlay(Capture::new(display, Document::new(document.export())), cx);
+}
+
+/// A send's result, for the capture with `id` wherever it is now: the overlay
+/// shows it, or, if the person closed the overlay meanwhile, the tile is marked sent.
+pub(super) fn finish_send(
+    id: u64,
+    label: String,
+    result: Result<attn::Sent, attn::Failure>,
+    cx: &mut App,
+) {
+    let lens = lens(cx);
+    let (overlay, tile) = (lens.overlay, lens.tile);
+    if let Some(overlay) = overlay
+        && overlay
+            .update(cx, |overlay, _, cx| {
+                overlay.finish_send(id, &label, &result, cx)
+            })
+            .unwrap_or(false)
+    {
+        return;
+    }
+    let held = tile.and_then(|tile| {
+        tile.read_with(cx, |tile, _| tile.capture().filter(|c| c.id == id).cloned())
+            .ok()
+            .flatten()
+    });
+    if let (Ok(_), Some(mut capture)) = (result, held) {
+        capture.sent_to = Some(label);
+        open_tile(capture, cx);
+    }
 }
 
 /// Reopens the capture in the corner tile, as clicking it does.
@@ -258,21 +305,33 @@ fn screen_recording() -> bool {
 /// What automation reads back: the open capture, its status and its sessions.
 pub fn state(cx: &mut App) -> serde_json::Value {
     let lens = lens(cx);
-    let tile = lens.tile;
-    let Some(handle) = lens.overlay else {
-        return serde_json::json!({ "overlay": null, "tile": tile.is_some(), "screen_recording": screen_recording() });
+    let (tile, overlay) = (lens.tile, lens.overlay);
+    // The tile: null, a notice, or a capture with the session it was sent to.
+    let tile = tile.and_then(|tile| {
+        tile.read_with(cx, |tile, _| match tile.capture() {
+            Some(capture) => serde_json::json!({ "sent_to": capture.sent_to }),
+            None => serde_json::json!({ "notice": true }),
+        })
+        .ok()
+    });
+    let Some(handle) = overlay else {
+        return serde_json::json!({ "overlay": null, "tile": tile, "screen_recording": screen_recording() });
     };
     handle
-        .read_with(cx, |o, _| {
+        .update(cx, |o, window, cx| {
+            let frame = window.bounds();
+            let display = window.display(cx).map(|d| d.bounds().size);
             serde_json::json!({
                 "overlay": {
+                    "frame": [f32::from(frame.origin.x), f32::from(frame.origin.y), f32::from(frame.size.width), f32::from(frame.size.height)],
+                    "display": display.map(|d| [f32::from(d.width), f32::from(d.height)]),
                     "marks": o.capture.document.marks.len(),
                     "message": o.capture.message,
                     "target": o.capture.target,
                     "status": format!("{:?}", o.status),
                     "sessions": o.sessions.iter().map(|s| serde_json::json!({"id": s.id, "label": s.label, "host": s.host})).collect::<Vec<_>>(),
                 },
-                "tile": tile.is_some(),
+                "tile": tile,
                 "screen_recording": screen_recording(),
             })
         })
