@@ -6,6 +6,12 @@ outpost. Press **⌘⌥2**, drag arrows over the frozen screen, type a message, 
 **↩**. The agent gets the message and a command that saves the image where it runs.
 See [Send to an attn session](docs/send.md).
 
+To install or update it from a checkout, run `scripts/install.sh`. It builds the
+source, installs `~/Applications/Attn Lens.app`, and restarts Lens if it is
+running. Screen Recording permission and the attn pairing carry over because
+every build is signed with the same identity: your Apple Development certificate,
+or the one `GLANCE_CODESIGN_IDENTITY` names.
+
 Attn Lens is a fork of [Glance](https://github.com/modem-dev/glance-desktop) (MIT).
 It keeps Glance's editor (**⌘E** from a capture) for crop, pixelate, backdrops and
 GIF/MP4 export. The rest of this README describes that editor.

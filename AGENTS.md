@@ -19,6 +19,11 @@ keeps; the rest of this file describes Glance's rules, which still apply.
   agents send to sessions with `attn send` directly.
 - Sign dev bundles with a stable identity (`GLANCE_CODESIGN_IDENTITY`): an
   ad-hoc rebuild silently invalidates the Screen Recording grant.
+- `scripts/install.sh` builds this checkout, replaces
+  `~/Applications/Attn Lens.app`, quits the running copy and opens the new one.
+  It signs with this Mac's Apple Development identity unless
+  `GLANCE_CODESIGN_IDENTITY` names another, and refuses ad-hoc. It replaces the
+  user's installed app, so run it only when asked to install.
 - `vendor/gpui` is GPUI 0.2.2 with three macOS window fixes, each marked
   `Attn Lens:` in `src/platform/mac/window.rs`: the key-status handler releases
   its state lock before `resignKeyWindow` re-enters it (without this, Lens hangs
