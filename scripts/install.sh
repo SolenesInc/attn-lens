@@ -15,6 +15,8 @@ fi
 export GLANCE_CODESIGN_IDENTITY
 
 GLANCE_BUNDLE_DEST="$DEST" ./scripts/bundle.sh release
-osascript -e 'if application id "dev.attn.lens" is running then tell application id "dev.attn.lens" to quit'
+osascript \
+    -e 'if application id "dev.attn.lens" is running then tell application id "dev.attn.lens" to quit' \
+    -e 'repeat while application id "dev.attn.lens" is running' -e 'delay 0.1' -e 'end repeat'
 open "$DEST"
 printf 'Installed and opened %s\n' "$DEST"
