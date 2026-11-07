@@ -5,16 +5,16 @@ pub fn sample_screen_color() -> Result<async_channel::Receiver<SampleResult>, St
     let (sender, receiver) = async_channel::bounded(1);
     #[cfg(target_os = "macos")]
     unsafe {
-        use cocoa::base::{id, nil};
-        use objc::{class, msg_send, sel, sel_impl};
-        let sampler: id = msg_send![class!(NSColorSampler), new];
-        let handler = block::ConcreteBlock::new(move |color: id| {
-            let result = if color == nil {
+        use objc::{class, msg_send, runtime::Object, sel, sel_impl};
+        type Id = *mut Object;
+        let sampler: Id = msg_send![class!(NSColorSampler), new];
+        let handler = block::ConcreteBlock::new(move |color: Id| {
+            let result = if color.is_null() {
                 Ok(None)
             } else {
-                let space: id = msg_send![class!(NSColorSpace), sRGBColorSpace];
-                let color: id = msg_send![color, colorUsingColorSpace: space];
-                if color == nil {
+                let space: Id = msg_send![class!(NSColorSpace), sRGBColorSpace];
+                let color: Id = msg_send![color, colorUsingColorSpace: space];
+                if color.is_null() {
                     Err("The sampled color could not be converted to sRGB".into())
                 } else {
                     let r: f64 = msg_send![color, redComponent];
