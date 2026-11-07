@@ -39,6 +39,7 @@ fn stand_in(dir: &Path) -> PathBuf {
 cat > /dev/null
 if [ "$2" = "sessions" ]; then echo '[{{"id":"s1","label":"one","agent":"claude","state":"idle"}}]'; exit 0; fi
 if [ "$2" = "closed" ]; then echo 'send: session closed is closed' >&2; exit 1; fi
+if [ "$2" = "gated" ]; then echo entered > "{dir}/entered"; cat "{dir}/gate" > /dev/null; echo '{{"id":"cap"}}'; exit 0; fi
 echo "$@" > "{dir}/args"
 for arg in "$@"; do case "$arg" in *.png) cp "$arg" "{dir}/";; esac; done
 echo '{{"id":"cap"}}'
@@ -102,6 +103,32 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
         let image = image::open(dir.join(frame)).unwrap();
         assert_eq!((image.width(), image.height()), (1280, 800));
     }
+
+    // A send that finishes after its capture was replaced leaves the new capture open.
+    for fifo in ["entered", "gate"] {
+        let made = std::process::Command::new("mkfifo")
+            .arg(dir.join(fifo))
+            .status()
+            .unwrap();
+        assert!(made.success());
+    }
+    lens.ask(r#"{"cmd":"key","key":"capture"}"#);
+    let first = lens.state()["capture"]["id"].clone();
+    let socket = lens.socket.clone();
+    let send = std::thread::spawn(move || {
+        automation::request(&socket, r#"{"cmd":"send","target":"gated"}"#).unwrap()
+    });
+    std::fs::read(dir.join("entered")).unwrap();
+    lens.ask(r#"{"cmd":"end"}"#);
+    lens.ask(r#"{"cmd":"key","key":"capture"}"#);
+    let second = lens.state()["capture"]["id"].clone();
+    assert_ne!(first, second);
+    std::fs::write(dir.join("gate"), b"go").unwrap();
+    send.join().unwrap();
+    let after = lens.state();
+    assert_eq!(after["send"]["state"], "sent");
+    assert_eq!(after["capture"]["id"], second);
+    lens.ask(r#"{"cmd":"end"}"#);
 
     // Requests that cannot work say what is missing.
     let no_capture = lens.ask(r#"{"cmd":"send","target":"s1"}"#);

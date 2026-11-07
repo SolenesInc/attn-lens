@@ -185,7 +185,10 @@ impl Lens {
             });
             state.watch = Some(watch);
             state.error = None;
-            state.send = SendStatus::Idle;
+            // A send still running reports its own result, and holds off this capture's.
+            if state.send != SendStatus::Sending {
+                state.send = SendStatus::Idle;
+            }
         }
         self.port.capture_keys(true);
         self.changed();
@@ -292,7 +295,7 @@ impl Lens {
         target: Option<String>,
         message: Option<String>,
     ) -> Result<(), String> {
-        let needs_still = {
+        let (id, needs_still, voice) = {
             let mut state = self.state.lock().unwrap();
             if state.send == SendStatus::Sending {
                 return Err("A send is already running.".into());
@@ -310,35 +313,38 @@ impl Lens {
             if capture.target.is_none() {
                 return Err("The capture has no target session.".into());
             }
-            let needs_still = capture.stills.is_empty();
+            let (id, needs_still) = (capture.id, capture.stills.is_empty());
             state.send = SendStatus::Sending;
-            needs_still
+            (id, needs_still, state.voice.take())
         };
         self.changed();
         if needs_still {
             self.take_still(Cause::Send);
         }
         let lens = self.clone();
-        self.port.run(Box::new(move || lens.finish_send()));
+        self.port.run(Box::new(move || lens.finish_send(id, voice)));
         Ok(())
     }
 
-    fn finish_send(self: &Arc<Self>) {
-        let voice = self.state.lock().unwrap().voice.take();
+    /// Finishes the send of capture `id`. The user may have closed it and opened
+    /// another by now, so only that capture is read or closed.
+    fn finish_send(self: &Arc<Self>, id: u64, voice: Option<Voice>) {
         let voice = voice.map_or(Ok(()), Voice::finish);
         let mut pending = self.pending_stills.0.lock().unwrap();
         while *pending > 0 {
             pending = self.pending_stills.1.wait(pending).unwrap();
         }
         drop(pending);
-        let delivered = voice.and_then(|()| self.deliver());
+        let delivered = voice.and_then(|()| self.deliver(id));
         {
             let mut state = self.state.lock().unwrap();
             state.send = match delivered {
                 Ok(target) => {
-                    state.capture = None;
-                    state.input = Input::None;
-                    state.watch = None;
+                    if state.capture.as_ref().is_some_and(|c| c.id == id) {
+                        state.capture = None;
+                        state.input = Input::None;
+                        state.watch = None;
+                    }
                     SendStatus::Sent(target)
                 }
                 Err(error) => SendStatus::Failed(error),
@@ -350,10 +356,14 @@ impl Lens {
         self.changed();
     }
 
-    fn deliver(&self) -> Result<String, String> {
+    fn deliver(&self, id: u64) -> Result<String, String> {
         let (docs, target, message) = {
             let state = self.state.lock().unwrap();
-            let capture = state.capture.as_ref().ok_or("The capture was closed.")?;
+            let capture = state
+                .capture
+                .as_ref()
+                .filter(|c| c.id == id)
+                .ok_or("The capture was closed before it was sent.")?;
             (
                 capture
                     .stills
