@@ -1,5 +1,5 @@
 use image::{ImageReader, RgbaImage};
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 mod color_sampler;
 pub use color_sampler::sample_screen_color;
 pub fn load(path: &std::path::Path) -> Result<RgbaImage, String> {

@@ -2,7 +2,7 @@
 use super::*;
 use std::{
     io::{Read, Write},
-    process::Stdio,
+    process::{Command, Stdio},
 };
 pub fn permission() -> Result<(), String> {
     if std::env::var_os("WAYLAND_DISPLAY").is_none() {
