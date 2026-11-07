@@ -100,6 +100,9 @@ struct State {
     /// The Tab palette's selected row, while it is open.
     palette: Option<usize>,
     input: Input,
+    /// A corner handle is being dragged. The handles hold still until it ends, so
+    /// the window that owns the drag never moves under the pointer.
+    resizing: bool,
     send: SendStatus,
     /// The capture a running send is delivering. It takes no more stills: the
     /// send has its copies and closes the capture when it succeeds.
@@ -178,6 +181,10 @@ impl Lens {
             KeyEvent::DrawUp => self.set_input(Input::None),
             KeyEvent::Pressed(Chord::Capture) => {
                 if self.is_open() {
+                    // The asked-for still begins a new view, so the next stroke takes its own.
+                    if let Some(capture) = self.state.lock().unwrap().capture.as_mut() {
+                        capture.view_still = None;
+                    }
                     self.take_still(Cause::Hotkey);
                     self.give_keys_to_bar();
                 } else {
@@ -289,6 +296,17 @@ impl Lens {
         self.pick(area.display, Some(area.rect)).is_ok()
     }
 
+    /// A corner handle's drag begins or ends.
+    pub fn set_resizing(&self, resizing: bool) {
+        let mut state = self.state.lock().unwrap();
+        let resizing = resizing && state.capture.is_some();
+        if state.resizing != resizing {
+            state.resizing = resizing;
+            drop(state);
+            self.changed();
+        }
+    }
+
     /// Moves the open capture's area, which the next still will cover. The screen stays live.
     pub fn set_area(&self, rect: [f64; 4]) {
         let mut state = self.state.lock().unwrap();
@@ -296,6 +314,8 @@ impl Lens {
             return;
         };
         capture.area.rect = select::clamp(rect, capture.display);
+        // The next stroke needs a still of the new area.
+        capture.view_still = None;
         state.last_area = state.capture.as_ref().map(|c| c.area);
         drop(state);
         self.changed();
@@ -610,6 +630,7 @@ impl Lens {
             let mut state = self.state.lock().unwrap();
             state.capture = None;
             state.input = Input::None;
+            state.resizing = false;
             state.watch = None;
             state.label = None;
             state.palette = None;
@@ -738,6 +759,7 @@ impl Lens {
         target: Option<String>,
         message: Option<String>,
     ) -> Result<(), String> {
+        let in_flight = *self.pending_stills.0.lock().unwrap();
         let (id, needs_still, voice) = {
             let mut state = self.state.lock().unwrap();
             if state.send == SendStatus::Sending {
@@ -756,10 +778,8 @@ impl Lens {
             if capture.target.is_none() {
                 return Err("The capture has no target session.".into());
             }
-            let (id, needs_still) = (
-                capture.id,
-                capture.stills.is_empty() && capture.next_still == 0,
-            );
+            // None kept and none on the way, as when × dropped every one.
+            let (id, needs_still) = (capture.id, capture.stills.is_empty() && in_flight == 0);
             state.send = SendStatus::Sending;
             state.sending = Some(id);
             (id, needs_still, state.voice.take())
@@ -908,6 +928,7 @@ impl Lens {
             sessions: state.sessions.clone(),
             palette: state.palette,
             voice: state.voice.is_some(),
+            resizing: state.resizing,
             send: state.send.clone(),
             error: state.error.clone(),
         }
@@ -1014,6 +1035,7 @@ pub struct Summary {
     pub sessions: Vec<attn::Session>,
     pub palette: Option<usize>,
     pub input: Input,
+    pub resizing: bool,
     pub capture: Option<CaptureSummary>,
     pub voice: bool,
     pub send: SendStatus,

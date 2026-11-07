@@ -32,6 +32,9 @@ pub struct Area {
 pub struct DisplayFrame {
     pub id: u32,
     pub frame: [f64; 4],
+    /// Points the menu bar takes at the display's top. The corner handles stay
+    /// below it, since they sit above the menu bar and would take its clicks.
+    pub menu_bar: f64,
 }
 
 impl DisplayFrame {

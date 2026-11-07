@@ -117,15 +117,27 @@ fn label<'a>(tree: &'a Value, key: &str) -> Option<&'a str> {
     element(tree, key).and_then(|e| e["label"].as_str())
 }
 
+const HANDLES: [&str; 4] = [
+    "handle-top-left",
+    "handle-top-right",
+    "handle-bottom-left",
+    "handle-bottom-right",
+];
+
+/// The outline on the ink layer, and a handle window at each corner, inside the area.
 fn has_area_frame(tree: &Value) {
-    for key in [
-        "area-outline",
-        "handle-top-left",
-        "handle-top-right",
-        "handle-bottom-left",
-        "handle-bottom-right",
-    ] {
-        assert!(element(tree, key).is_some(), "{key} is missing");
+    assert!(element(tree, "area-outline").is_some(), "no outline");
+    let ink = frame(tree, "ink");
+    for key in HANDLES {
+        assert!(visible(tree, key), "{key} is hidden");
+        let handle = frame(tree, key);
+        assert!(
+            handle[0] >= ink[0]
+                && handle[1] >= ink[1]
+                && handle[0] + handle[2] <= ink[0] + ink[2]
+                && handle[1] + handle[3] <= ink[1] + ink[3],
+            "{key} at {handle:?} is outside the area {ink:?}"
+        );
     }
 }
 
@@ -242,8 +254,10 @@ fn a_click_takes_the_whole_second_display_and_keeps_its_outline() {
     // The outline stays inside the display, where it can be seen.
     let outline = element(&whole, "area-outline").unwrap();
     assert_eq!(outline["rect"], serde_json::json!([0., 0., 1024., 768.]));
-    let corner = &element(&whole, "handle-bottom-right").unwrap()["rect"];
-    assert_eq!(corner, &serde_json::json!([1000., 744., 24., 24.]));
+    assert_eq!(
+        frame(&whole, "handle-bottom-right"),
+        [2280., 744., 24., 24.]
+    );
     // No room outside a whole display, so the bar stays on it, inside the bottom edge.
     let bar = frame(&whole, "bar");
     assert!(bar[0] >= 1280., "the bar left the display: {bar:?}");
@@ -272,13 +286,24 @@ fn an_area_on_the_second_display_adjusts_by_its_corners() {
     let top_left = run.tree("ink", "top-left-moved");
     assert_eq!(frame(&top_left, "ink"), [1380., 90., 370., 250.]);
     has_area_frame(&top_left);
+
+    // On the display with the menu bar, the top handles sit below it, where they
+    // cannot take the Apple menu's or the clock's clicks.
+    let whole = run.tree("ink", "whole-display-1");
+    assert_eq!(frame(&whole, "ink"), [0., 0., 1280., 800.]);
+    assert_eq!(frame(&whole, "handle-top-left"), [0., 24., 24., 24.]);
+    assert_eq!(frame(&whole, "handle-top-right"), [1256., 24., 24., 24.]);
+    assert_eq!(
+        frame(&whole, "handle-bottom-right"),
+        [1256., 776., 24., 24.]
+    );
 }
 
 #[test]
 fn the_draw_key_gives_an_arrow_a_freehand_stroke_and_a_box() {
     let run = Run::new("capture.json", ONE_SESSION);
 
-    // With the draw key up, the handles take the pointer and nothing is drawn.
+    // With the draw key up, nothing is drawn.
     let open = run.tree("ink", "area-picked");
     assert_eq!(label(&open, "mark-0"), None);
 
@@ -291,6 +316,10 @@ fn the_draw_key_gives_an_arrow_a_freehand_stroke_and_a_box() {
     // During a stroke, what is drawn so far shows.
     let mid = run.tree("ink", "mid-stroke");
     assert_eq!(label(&mid, "draft"), Some("freehand"));
+    // The handles are off while drawing, so a stroke can start on a corner.
+    for key in HANDLES {
+        assert!(!visible(&mid, key), "{key} shows while drawing");
+    }
 
     // A crooked drag stays freehand, and joins the still that press began.
     let freehand = run.tree("ink", "freehand-drawn");
@@ -310,6 +339,28 @@ fn the_draw_key_gives_an_arrow_a_freehand_stroke_and_a_box() {
         label(&run.tree("bar", "press-with-key-up"), "still-1"),
         None
     );
+
+    // A ⌘⌥X still ends the view, so the next stroke takes a still of its own.
+    let bar = run.tree("bar", "hotkey-still");
+    assert_eq!(label(&bar, "still-1"), Some("Hotkey 800×600"));
+    let bar = run.tree("bar", "drawn-after-still");
+    assert_eq!(label(&bar, "still-2"), Some("Draw 800×600"));
+
+    // So does moving a corner: the next stroke's still covers the new area.
+    let resized = run.tree("ink", "drawn-after-resize");
+    assert_eq!(frame(&resized, "ink"), [200., 100., 440., 330.]);
+    assert_eq!(label(&resized, "mark-4"), Some("arrow"));
+    let bar = run.tree("bar", "drawn-after-resize");
+    assert_eq!(label(&bar, "still-3"), Some("Draw 880×660"));
+
+    // With every still dropped, ⌘⌥↩ takes one of the area and sends it (D7).
+    let dropped = run.tree("bar", "all-dropped");
+    assert_eq!(label(&dropped, "still-0"), None);
+    let sent = run.tree("bar", "sent-after-drops");
+    assert!(!visible(&sent, "bar"), "the capture stayed open");
+    let args = std::fs::read_to_string(run.path("args")).unwrap();
+    assert!(args.starts_with("send s1 "), "{args}");
+    assert!(run.path("frame-01.png").exists(), "{args}");
 }
 
 #[test]

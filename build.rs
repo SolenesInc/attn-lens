@@ -4,6 +4,7 @@ fn main() {
         // dependency's rpath link args do not reach this binary.
         println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
         compile_permission_guide();
+        compile_displays();
     }
 }
 
@@ -16,4 +17,12 @@ fn compile_permission_guide() {
         .file("native/permission_guide.m")
         .flag("-fobjc-arc")
         .compile("lens_permission_guide");
+}
+
+fn compile_displays() {
+    println!("cargo:rerun-if-changed=native/displays.m");
+    cc::Build::new()
+        .file("native/displays.m")
+        .flag("-fobjc-arc")
+        .compile("lens_displays");
 }

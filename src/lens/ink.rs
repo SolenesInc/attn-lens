@@ -1,7 +1,11 @@
-//! The ink layer over the area: its outline and corner handles for the whole
-//! capture, and the marks drawn while the draw key is held (D3, D4 and D5 on the
-//! plan). Marks are in points on the display, so a moved area leaves them in place.
-use super::{Input, Lens, StrokeStart, session::Area};
+//! The ink layer over the area: its outline for the whole capture, and the marks
+//! drawn while the draw key is held (D3, D4 and D5 on the plan). Marks are in points
+//! on the display, so a moved area leaves them in place. The corner handles are
+//! small windows of their own, so the ink layer takes no pointer while the key is up.
+use super::{
+    Lens, StrokeStart,
+    session::{Area, DisplayFrame},
+};
 use crate::{
     arrow,
     document::{Mark, Tool},
@@ -26,7 +30,7 @@ const MAX_POINTS: usize = 2000;
 const OUTLINE: f32 = 2.;
 /// The corner handle's grab zone, inside the area so it stays on screen when the
 /// area is the whole display.
-const HANDLE_ZONE: f32 = 24.;
+pub const HANDLE_ZONE: f32 = 24.;
 const HANDLE_DOT: f32 = 10.;
 
 /// What the next stroke makes, set on the bar's tool row.
@@ -142,7 +146,7 @@ pub fn on_still(mark: &Mark, area: Area, scale: f32) -> Mark {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Corner {
+pub enum Corner {
     TopLeft,
     TopRight,
     BottomLeft,
@@ -150,14 +154,14 @@ enum Corner {
 }
 
 impl Corner {
-    const ALL: [Corner; 4] = [
+    pub const ALL: [Corner; 4] = [
         Corner::TopLeft,
         Corner::TopRight,
         Corner::BottomLeft,
         Corner::BottomRight,
     ];
 
-    fn key(self) -> &'static str {
+    pub fn key(self) -> &'static str {
         match self {
             Corner::TopLeft => "handle-top-left",
             Corner::TopRight => "handle-top-right",
@@ -187,12 +191,12 @@ impl Corner {
         }
     }
 
-    fn at(x: f32, y: f32, width: f32, height: f32) -> Option<Corner> {
-        Corner::ALL.into_iter().find(|corner| {
-            let (zone_x, zone_y) = corner.zone(width, height);
-            (zone_x..zone_x + HANDLE_ZONE).contains(&x)
-                && (zone_y..zone_y + HANDLE_ZONE).contains(&y)
-        })
+    /// The handle's window, in points from the display's top-left. It stays
+    /// below the menu bar, which it would otherwise cover and take clicks from.
+    pub fn rect(self, area: Area, display: DisplayFrame) -> [f32; 4] {
+        let (x, y) = self.zone(area.rect[2] as f32, area.rect[3] as f32);
+        let top = (area.rect[1] as f32 + y).max(display.menu_bar as f32);
+        [area.rect[0] as f32 + x, top, HANDLE_ZONE, HANDLE_ZONE]
     }
 
     /// `rect` with this corner moved to the point `(x, y)`; the opposite corner stays.
@@ -209,27 +213,19 @@ impl Corner {
     }
 }
 
-enum Gesture {
-    Stroke {
-        start: StrokeStart,
-        points: Vec<(f32, f32)>,
-    },
-    /// A corner and where the press sat from it, so the corner moves by the
-    /// pointer's travel and does not jump to the pointer.
-    Handle(Corner, (f32, f32)),
+struct Stroke {
+    start: StrokeStart,
+    points: Vec<(f32, f32)>,
 }
 
 pub struct Ink {
     pub lens: Arc<Lens>,
-    gesture: Option<Gesture>,
+    stroke: Option<Stroke>,
 }
 
 impl Ink {
     pub fn new(lens: Arc<Lens>) -> Self {
-        Self {
-            lens,
-            gesture: None,
-        }
+        Self { lens, stroke: None }
     }
 }
 
@@ -328,9 +324,9 @@ fn mark_element(index: usize, mark: &Mark, origin: (f32, f32)) -> El {
 }
 
 pub fn ink_view(s: &Ink, _: &mut Cx<Ink>) -> El {
-    let (area, input) = s
+    let area = s
         .lens
-        .read(|summary| (summary.capture.as_ref().map(|c| c.area), summary.input));
+        .read(|summary| summary.capture.as_ref().map(|c| c.area));
     let Some(area) = area else {
         return el().key("ink").w_full().h_full();
     };
@@ -341,14 +337,13 @@ pub fn ink_view(s: &Ink, _: &mut Cx<Ink>) -> El {
     for mark in &marks {
         shape = draw(shape, mark, origin);
     }
-    let draft = match &s.gesture {
-        Some(Gesture::Stroke { start, points }) => draft_mark(start, points),
-        _ => None,
-    };
+    let draft = s
+        .stroke
+        .as_ref()
+        .and_then(|stroke| draft_mark(&stroke.start, &stroke.points));
     if let Some(mark) = &draft {
         shape = draw(shape, mark, origin);
     }
-    let accent = rune::color::hex("#0a84ff").expect("six hex digits");
     let mut root = el()
         .key("ink")
         .w_full()
@@ -358,7 +353,7 @@ pub fn ink_view(s: &Ink, _: &mut Cx<Ink>) -> El {
             el().key("area-outline")
                 .absolute(0., 0.)
                 .size(width, height)
-                .border(OUTLINE, accent),
+                .border(OUTLINE, accent()),
         );
     for (index, mark) in marks.iter().enumerate() {
         root = root.child(mark_element(index, mark, origin));
@@ -371,25 +366,7 @@ pub fn ink_view(s: &Ink, _: &mut Cx<Ink>) -> El {
                 .size(1., 1.),
         );
     }
-    for corner in Corner::ALL {
-        let (x, y) = corner.zone(width, height);
-        let mut handle = el()
-            .key(corner.key())
-            .absolute(x, y)
-            .size(HANDLE_ZONE, HANDLE_ZONE)
-            .center()
-            .child(
-                el().size(HANDLE_DOT, HANDLE_DOT)
-                    .radius(2.)
-                    .fill(Color::WHITE)
-                    .border(OUTLINE, accent),
-            );
-        // Off while drawing, so a stroke can start on a corner.
-        if input == Input::None {
-            handle = handle.hit().cursor(Cursor::Crosshair);
-        }
-        root = root.child(handle);
-    }
+    // The layer takes the pointer only while the draw key is held (D5).
     root.on_drag(|s: &mut Ink, d: &mut Drag, _: &mut Tx| {
         let area = s
             .lens
@@ -398,37 +375,107 @@ pub fn ink_view(s: &Ink, _: &mut Cx<Ink>) -> El {
         let point = (d.x + area.rect[0] as f32, d.y + area.rect[1] as f32);
         match d.phase {
             Phase::Down => {
-                s.gesture = match s.lens.begin_stroke() {
-                    Some(start) => Some(Gesture::Stroke {
-                        start,
-                        points: vec![point],
-                    }),
-                    None => {
-                        let (width, height) = (area.rect[2] as f32, area.rect[3] as f32);
-                        Corner::at(d.x, d.y, width, height).map(|corner| {
-                            let at = corner.point(width, height);
-                            Gesture::Handle(corner, (at.0 - d.x, at.1 - d.y))
-                        })
-                    }
-                };
+                s.stroke = s.lens.begin_stroke().map(|start| Stroke {
+                    start,
+                    points: vec![point],
+                });
             }
-            Phase::Move => match &mut s.gesture {
-                Some(Gesture::Stroke { points, .. }) => points.push(point),
-                Some(Gesture::Handle(corner, grab)) => {
-                    s.lens.set_area(corner.moved(
-                        area.rect,
-                        f64::from(point.0 + grab.0),
-                        f64::from(point.1 + grab.1),
-                    ));
+            Phase::Move => {
+                if let Some(stroke) = &mut s.stroke {
+                    stroke.points.push(point);
                 }
-                None => {}
-            },
+            }
             Phase::Up => {
-                if let Some(Gesture::Stroke { start, points }) = s.gesture.take()
+                if let Some(stroke) = s.stroke.take()
                     && !d.cancelled()
                 {
-                    s.lens.finish_stroke(start, points);
+                    s.lens.finish_stroke(stroke.start, stroke.points);
                 }
+            }
+        }
+    })
+}
+
+fn accent() -> Color {
+    rune::color::hex("#0a84ff").expect("six hex digits")
+}
+
+/// One corner handle's window. It holds still while any corner is dragged, so
+/// the drag it owns stays in its own points.
+pub struct Handle {
+    pub lens: Arc<Lens>,
+    pub corner: Corner,
+    grab: Option<Grab>,
+}
+
+/// Where the handle's window sat when pressed, and how far the press sat from
+/// the corner, so the corner moves by the pointer's travel and does not jump.
+struct Grab {
+    window: (f32, f32),
+    offset: (f32, f32),
+}
+
+impl Handle {
+    pub fn new(lens: Arc<Lens>, corner: Corner) -> Self {
+        Self {
+            lens,
+            corner,
+            grab: None,
+        }
+    }
+}
+
+pub fn handle_view(s: &Handle, _: &mut Cx<Handle>) -> El {
+    let resizing = s.lens.read(|summary| summary.resizing);
+    let mut handle = el()
+        .key(s.corner.key())
+        .w_full()
+        .h_full()
+        .center()
+        .hit()
+        .cursor(Cursor::Crosshair);
+    // The outline shows the corner while it moves; the dots return where it lands.
+    if !resizing {
+        handle = handle.child(
+            el().size(HANDLE_DOT, HANDLE_DOT)
+                .radius(2.)
+                .fill(Color::WHITE)
+                .border(OUTLINE, accent()),
+        );
+    }
+    handle.on_drag(|s: &mut Handle, d: &mut Drag, _: &mut Tx| {
+        let capture = s
+            .lens
+            .read(|summary| summary.capture.as_ref().map(|c| (c.area, c.display)));
+        let Some((area, display)) = capture else {
+            return;
+        };
+        match d.phase {
+            Phase::Down => {
+                let [x, y, ..] = s.corner.rect(area, display);
+                let (width, height) = (area.rect[2] as f32, area.rect[3] as f32);
+                let corner = s.corner.point(width, height);
+                let press = (x + d.x, y + d.y);
+                s.grab = Some(Grab {
+                    window: (x, y),
+                    offset: (
+                        area.rect[0] as f32 + corner.0 - press.0,
+                        area.rect[1] as f32 + corner.1 - press.1,
+                    ),
+                });
+                s.lens.set_resizing(true);
+            }
+            Phase::Move => {
+                if let Some(grab) = &s.grab {
+                    let x = grab.window.0 + d.x + grab.offset.0;
+                    let y = grab.window.1 + d.y + grab.offset.1;
+                    s.lens
+                        .set_area(s.corner.moved(area.rect, f64::from(x), f64::from(y)));
+                }
+            }
+            Phase::Up => {
+                s.grab = None;
+                s.lens.set_resizing(false);
             }
         }
     })

@@ -5,8 +5,10 @@
 # `scripts/lens-vm.sh live OUT`; on a real Mac, only in a window agreed with the user
 # (LENS_DRIVER_WINDOW=agreed).
 #   scripts/lens-live.sh <output dir>
-# Writes driver.log, underlay.log, receipts.txt and capture.mov. Sent frames land where
-# the `attn` on PATH puts them. Exits non-zero on the first thing that does not hold.
+# Writes driver.log, underlay.log, outline.log, receipts.txt and capture.mov. Sent
+# frames land where the `attn` on PATH puts them. The recording leaves out the ink
+# layer, handles and pickers, as every capture does. Exits non-zero on the first
+# thing that does not hold.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT="${1:?usage: lens-live.sh <output dir>}"
@@ -16,11 +18,14 @@ mkdir -p "$OUT"
 
 /usr/bin/swiftc -O tools/driver/driver.swift -o "$OUT/driver"
 /usr/bin/swiftc -O tools/driver/underlay.swift -o "$OUT/underlay"
+/usr/bin/swiftc -O tools/driver/outline.swift -o "$OUT/outline"
 
 UNDERLAY=
 RECORDER=
 finish() {
-    [ -z "$RECORDER" ] || kill -INT "$RECORDER" 2>/dev/null || true
+    # A failed run keeps its logs; its recording is lost, since screencapture
+    # cannot stop early and still save (in the VM it hangs after SIGINT).
+    [ -z "$RECORDER" ] || kill -KILL "$RECORDER" 2>/dev/null || true
     [ -z "$UNDERLAY" ] || kill "$UNDERLAY" 2>/dev/null || true
     osascript -e 'if application id "dev.attn.lens" is running then tell application id "dev.attn.lens" to quit' || true
 }
@@ -36,7 +41,8 @@ until "$LENS" lens '{"cmd":"state"}' >/dev/null 2>&1; do sleep 0.1; done
 UNDERLAY=$!
 until grep -q ready "$OUT/underlay.log"; do sleep 0.1; done
 
-screencapture -v -V 60 "$OUT/capture.mov" &
+# It must outlast the driven run, which waits for it to finish and save.
+screencapture -v -V "${LENS_RECORD_SECONDS:-60}" "$OUT/capture.mov" &
 RECORDER=$!
 
 cat >"$OUT/script.txt" <<'SCRIPT'
@@ -47,12 +53,17 @@ await-window
 expect "picking":[
 tap esc
 expect "picking":null
+watch-window Attn Lens
 chord cmd+opt x
+await-window
 expect "picking":[
+# A person points at the corner before pressing; a press the instant the picker
+# shows lands a point or two off.
+move 100 150
+wait 100
 drag 100 150 600 450 10 16
 expect "rect":[100.0,150.0,500.0,300.0]
 expect "bar":true
-expect "ink":true
 expect "keys":"Bar"
 mark pick-done
 
@@ -93,6 +104,11 @@ mark still
 drag 592 442 642 482 8 16
 expect "rect":[100.0,150.0,550.0,340.0]
 mark handle-moved
+# The top-left corner moves the area's origin, under the window that owns the drag.
+wait 100
+drag 108 158 88 148 8 16
+expect "rect":[80.0,140.0,570.0,350.0]
+mark top-left-moved
 
 lens {"cmd":"state"}
 chord cmd+opt return
@@ -103,6 +119,8 @@ lens {"cmd":"state"}
 SCRIPT
 
 "$OUT/driver" --front "Attn Lens" --front underlay "$OUT/script.txt" | tee "$OUT/driver.log"
+wait "$RECORDER"
+RECORDER=
 
 # Each line the page must have heard while the draw key was up.
 for heard in click scroll selected; do
@@ -116,6 +134,10 @@ if grep -q "underlay typed" "$OUT/underlay.log"; then
     echo "Typing meant for the bar reached the page." >&2
     exit 1
 fi
+
+# Real ScreenCaptureKit stills, sent through the stand-in attn: no outline in any.
+sent="$(ls -td "$HOME/lens-check/sent"/*/ | head -1)"
+"$OUT/outline" "$sent"/*.png | tee "$OUT/outline.log"
 
 {
     grep 'window-visible' "$OUT/driver.log"

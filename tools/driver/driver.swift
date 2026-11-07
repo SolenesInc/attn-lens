@@ -24,7 +24,7 @@
 //   expect TEXT            polls {"cmd":"state"} until the reply contains TEXT
 //   watch-window OWNER     before a chord: logs how long after its key went down OWNER
 //                          first shows a window it was not showing
-//   await-window           waits for that log line
+//   await-window           waits for that log line; stops the run if no window showed
 //   mark NAME              logs a named time
 // Every command logs its time in nanoseconds on the host clock Lens uses.
 import AppKit
@@ -172,6 +172,7 @@ func windows(owner: String? = nil) -> [[String: Any]] {
     return list.filter { $0[kCGWindowOwnerName as String] as? String == owner }
 }
 let windowWatch = DispatchSemaphore(value: 0)
+var windowShown = false
 func visibleWindows(_ owner: String) -> Set<Int> {
     Set(
         windows(owner: owner).filter { ($0[kCGWindowAlpha as String] as? Double ?? 0) > 0 }
@@ -290,11 +291,18 @@ func run(_ line: String) {
     case "drag":
         let (x0, y0, x1, y1) = (number(1), number(2), number(3), number(4))
         let steps = Int(number(5))
+        mouse(.mouseMoved, CGPoint(x: x0, y: y0))
+        pause(5)
+        buttonDown = true
+        mouse(.leftMouseDown, CGPoint(x: x0, y: y0))
+        pause(number(6))
         for step in 1...steps {
             let f = Double(step) / Double(steps)
             mouse(.leftMouseDragged, CGPoint(x: x0 + (x1 - x0) * f, y: y0 + (y1 - y0) * f))
             pause(number(6))
         }
+        mouse(.leftMouseUp, pointer)
+        buttonDown = false
         log("posted drag")
     case "scroll":
         let event = CGEvent(
@@ -323,14 +331,19 @@ func run(_ line: String) {
         fail("expected \(text) in \(ask("{\"cmd\":\"state\"}"))", 4)
     case "watch-window":
         let owner = rest(1)
+        // Time from the next chord, not one an earlier watch already timed.
+        lastChordKeyDown = 0
+        windowShown = false
         let thread = Thread {
             var seen = visibleWindows(owner)
-            // 5 s is far past the 841 ms worst case the spike measured.
-            while lastChordKeyDown == 0 || now() < lastChordKeyDown + 5_000_000_000 {
+            // The spike's worst case on a real Mac was 841 ms; a first ⌘⌥X in the VM
+            // took 2.5 to 4.3 s with the host's load at 50 to 90. 15 s is past both.
+            while lastChordKeyDown == 0 || now() < lastChordKeyDown + 15_000_000_000 {
                 let current = visibleWindows(owner)
                 if lastChordKeyDown != 0, !current.isSubset(of: seen) {
                     let ms = Double(now() - lastChordKeyDown) / 1e6
                     log("window-visible \(owner) \(ms) ms after key down")
+                    windowShown = true
                     windowWatch.signal()
                     return
                 }
@@ -341,7 +354,9 @@ func run(_ line: String) {
             windowWatch.signal()
         }
         thread.start()
-    case "await-window": windowWatch.wait()
+    case "await-window":
+        windowWatch.wait()
+        if !windowShown { fail("no window showed within 15 s of the chord", 4) }
     case "mark": log("mark \(rest(1))")
     default: fail("unknown command: \(line)", 2)
     }

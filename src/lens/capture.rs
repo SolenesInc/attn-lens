@@ -64,6 +64,11 @@ pub fn display_size(display: u32) -> (f64, f64) {
     (bounds.size[0], bounds.size[1])
 }
 
+unsafe extern "C" {
+    /// From `native/displays.m`.
+    fn lens_menu_bar_points(display: u32) -> f64;
+}
+
 /// The displays connected now. CoreGraphics reports how many there are first.
 pub fn displays() -> Vec<DisplayFrame> {
     let mut count = 0u32;
@@ -89,6 +94,8 @@ pub fn displays() -> Vec<DisplayFrame> {
                     bounds.size[0],
                     bounds.size[1],
                 ],
+                // SAFETY: reads NSScreen's list; no other effect.
+                menu_bar: unsafe { lens_menu_bar_points(id) },
             }
         })
         .collect()

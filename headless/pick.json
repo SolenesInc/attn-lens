@@ -34,5 +34,10 @@
  {"t":2.9,"type":"mark","name":"bottom-right-moved"},
  {"t":3.0,"type":"drag","x":1410,"y":110,"dx":-20,"dy":-10,"dur":0.1},
  {"t":3.2,"type":"mark","name":"top-left-moved"},
- {"t":3.3,"type":"mark","name":"end"}
+ {"t":3.25,"type":"mark","name":"key:keyboard"},
+ {"t":3.3,"type":"key","name":"Escape"},
+ {"t":3.4,"type":"mark","name":"key:capture"},
+ {"t":3.5,"type":"tap","x":600,"y":400},
+ {"t":3.7,"type":"mark","name":"whole-display-1"},
+ {"t":3.8,"type":"mark","name":"end"}
 ]}

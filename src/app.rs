@@ -4,7 +4,7 @@ use crate::{
     lens::{
         Input, KeyOwner, Lens, Summary, automation,
         bar::{self, Bar},
-        ink::{Ink, ink_view},
+        ink::{Corner, Handle, Ink, handle_view, ink_view},
         select::{self, PICKER_SLOTS, Picker},
         session::{Area, DisplayFrame},
     },
@@ -134,8 +134,8 @@ fn host<O: 'static, T: 'static>(
 
 fn overlay_input(input: Input) -> OverlayInput {
     match input {
-        // Only the corner handles take the pointer; all else reaches the page.
-        Input::None => OverlayInput::Regions,
+        // The page gets the pointer; the handles are windows of their own.
+        Input::None => OverlayInput::None,
         Input::All => OverlayInput::All,
     }
 }
@@ -147,6 +147,9 @@ struct Shown {
     picking: Option<Vec<DisplayFrame>>,
     area: Option<Area>,
     input: Input,
+    /// Each corner handle's window, while the draw key is up.
+    handles: Option<[[f32; 4]; 4]>,
+    resizing: bool,
     bar_rect: Option<[f32; 4]>,
     bar_key_requests: u64,
 }
@@ -158,6 +161,10 @@ impl Shown {
             picking: summary.picking.clone(),
             area: capture.map(|c| c.area),
             input: summary.input,
+            handles: capture
+                .filter(|_| summary.input == Input::None)
+                .map(|c| Corner::ALL.map(|corner| corner.rect(c.area, c.display))),
+            resizing: summary.resizing,
             bar_rect: capture.map(|c| bar::placement(c.area.rect, c.display, bar::height(summary))),
             bar_key_requests: summary.bar_key_requests,
         }
@@ -167,6 +174,7 @@ impl Shown {
 struct Surfaces {
     pickers: Vec<Surface<Picker>>,
     ink: Surface<Ink>,
+    handles: Vec<Surface<Handle>>,
     bar: AppHandle<Bar>,
 }
 
@@ -216,6 +224,30 @@ impl Surfaces {
         if was.input != now.input {
             self.ink.set_input(overlay_input(now.input));
         }
+        // A handle that owns a drag must not move under it; they land when it ends.
+        let landed = was.resizing && !now.resizing;
+        if !now.resizing && (was.handles != now.handles || landed) {
+            for (index, handle) in self.handles.iter().enumerate() {
+                match (now.area, now.handles) {
+                    (Some(area), Some(rects)) => {
+                        let [x, y, width, height] = rects[index];
+                        handle.place(
+                            area.display,
+                            OverlayPlacement::Rect {
+                                x,
+                                y,
+                                width,
+                                height,
+                            },
+                        );
+                        if was.handles.is_none() {
+                            handle.show();
+                        }
+                    }
+                    _ => handle.hide(),
+                }
+            }
+        }
         if let (Some(area), true) = (now.area, was.bar_rect != now.bar_rect)
             && let Some([x, y, width, height]) = now.bar_rect
         {
@@ -242,6 +274,9 @@ impl Surfaces {
             picker.refresh();
         }
         self.ink.refresh();
+        for handle in &self.handles {
+            handle.refresh();
+        }
         self.bar.wake();
     }
 }
@@ -265,6 +300,8 @@ pub fn run() -> Result<(), String> {
                         f64::from(display.size.0) / display.scale,
                         f64::from(display.size.1) / display.scale,
                     ],
+                    // A headless display has no menu bar; the fake gives one.
+                    menu_bar: 0.,
                 })
                 .collect(),
         );
@@ -343,15 +380,35 @@ pub fn run() -> Result<(), String> {
             None,
             OverlayOptions {
                 exclude_from_capture: true,
-                input: OverlayInput::Regions,
+                input: OverlayInput::None,
                 ..Default::default()
             },
             Ink::new(lens.clone()),
         );
+        // After the ink layer, so they sit above it.
+        let handles = Corner::ALL
+            .into_iter()
+            .map(|corner| {
+                host(
+                    &mut bar,
+                    &mut windows,
+                    corner.key().into(),
+                    handle_view,
+                    None,
+                    OverlayOptions {
+                        exclude_from_capture: true,
+                        input: OverlayInput::All,
+                        ..Default::default()
+                    },
+                    Handle::new(lens.clone(), corner),
+                )
+            })
+            .collect();
 
         let surfaces = Surfaces {
             pickers,
             ink,
+            handles,
             bar: handle.clone(),
         };
         let shown = Mutex::new(Shown::default());

@@ -21,6 +21,9 @@ use std::{
 };
 
 /// The display a fake capture covers, in points.
+/// The menu bar's height on a Mac display without a notch.
+const MENU_BAR: f64 = 24.;
+
 pub const DISPLAY: Area = Area {
     display: 1,
     rect: [0., 0., 640., 400.],
@@ -56,6 +59,7 @@ impl FakePort {
             displays: Mutex::new(vec![DisplayFrame {
                 id: DISPLAY.display,
                 frame: DISPLAY.rect,
+                menu_bar: MENU_BAR,
             }]),
             shift: AtomicBool::new(false),
         }
@@ -136,7 +140,11 @@ impl PlatformPort for FakePort {
     fn displays(&self) -> Vec<DisplayFrame> {
         self.displays.lock().unwrap().clone()
     }
-    fn launch_displays(&self, displays: Vec<DisplayFrame>) {
+    /// The first display is the main one and has the menu bar, as on a Mac.
+    fn launch_displays(&self, mut displays: Vec<DisplayFrame>) {
+        if let Some(main) = displays.first_mut() {
+            main.menu_bar = MENU_BAR;
+        }
         *self.displays.lock().unwrap() = displays;
     }
     fn shift_held(&self) -> bool {
