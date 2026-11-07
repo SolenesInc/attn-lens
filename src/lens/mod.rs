@@ -1,380 +1,504 @@
-//! Attn Lens: capture the screen, mark it up in place, and send it to an attn
-//! session. The controller owns the global shortcut, the one overlay, and the
-//! corner tile a closed or sent capture shrinks into.
+//! Attn Lens's live capture: what a capture holds, and the state every window
+//! and the automation socket read. Input arrives through the platform port and
+//! changes state here; each change wakes the windows, because a Rune window does
+//! not redraw from another window's change.
 pub mod attn;
+pub mod automation;
+#[cfg(target_os = "macos")]
 pub mod capture;
-pub mod overlay;
-mod tile;
+pub mod session;
 
-use crate::document::Document;
-use gpui::*;
-use overlay::Overlay;
-use tile::Tile;
+use crate::{
+    document::Document,
+    platform_port::{Chord, KeyEvent, PlatformPort, Sink, Voice, Watch, WatchEvent},
+};
+use serde_json::{Value, json};
+use session::{Capture, Cause, Segment, Still};
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc, Condvar, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
-/// One capture as the person left it: image, marks, message and target.
-#[derive(Clone)]
-pub struct Capture {
-    /// Tells a send's result which capture it belongs to, wherever it is shown by then.
-    pub id: u64,
-    pub display: u32,
-    pub document: Document,
-    pub message: String,
-    pub target: Option<String>,
-    /// The label of the session it was last sent to.
-    pub sent_to: Option<String>,
+/// Whether the ink layer takes the pointer: `All` while the draw key is down.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Input {
+    #[default]
+    None,
+    All,
 }
 
-impl Capture {
-    fn new(display: u32, document: Document) -> Self {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        Self {
-            id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-            display,
-            document,
-            message: String::new(),
-            target: None,
-            sent_to: None,
-        }
-    }
+/// The last send, whichever capture it belonged to.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum SendStatus {
+    #[default]
+    Idle,
+    Sending,
+    Sent(String),
+    /// attn's error, verbatim. The capture stays whole.
+    Failed(String),
 }
 
 #[derive(Default)]
-struct Lens {
-    overlay: Option<WindowHandle<Overlay>>,
-    /// A screenshot is being taken; its overlay opens when it arrives.
-    capturing: bool,
-    tile: Option<WindowHandle<Tile>>,
-    /// The app that was frontmost when the overlay opened, to give focus back.
-    previous_app: Option<mac::RunningApp>,
-    _hotkeys: Option<global_hotkey::GlobalHotKeyManager>,
+struct State {
+    capture: Option<Capture>,
+    input: Input,
+    send: SendStatus,
+    /// A failure with no capture to hold it, such as a refused still.
+    error: Option<String>,
+    next_capture: u64,
+    voice: Option<Voice>,
+    watch: Option<Watch>,
 }
-impl Global for Lens {}
 
-/// ⌘⌥2 captures the display under the pointer, from anywhere.
-pub fn install(cx: &mut App) -> Result<(), String> {
-    use global_hotkey::{
-        GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
-        hotkey::{Code, HotKey, Modifiers},
-    };
-    let mut lens = Lens::default();
-    let key = HotKey::new(Some(Modifiers::SUPER | Modifiers::ALT), Code::Digit2);
-    let manager =
-        GlobalHotKeyManager::new().map_err(|e| format!("Global shortcuts unavailable: {e}"))?;
-    let registered = manager
-        .register(key)
-        .map_err(|e| format!("⌘⌥2 is unavailable: {e}"));
-    lens._hotkeys = Some(manager);
-    cx.set_global(lens);
-    let (sender, receiver) = async_channel::unbounded::<()>();
-    GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
-        if event.id == key.id() && event.state == HotKeyState::Pressed {
-            let _ = sender.try_send(());
+pub struct Lens {
+    port: Arc<dyn PlatformPort>,
+    state: Mutex<State>,
+    /// Stills being taken; a send waits for them so none is left out.
+    pending_stills: (Mutex<usize>, Condvar),
+    generation: AtomicU64,
+    wakers: Mutex<Vec<Box<dyn Fn() + Send>>>,
+    /// Each window's name and how to ask whether it shows, for automation.
+    windows: Mutex<Vec<(&'static str, Box<dyn Fn() -> bool + Send>)>>,
+}
+
+impl Lens {
+    pub fn new(port: Arc<dyn PlatformPort>) -> Arc<Self> {
+        Arc::new(Self {
+            port,
+            state: Default::default(),
+            pending_stills: Default::default(),
+            generation: AtomicU64::new(0),
+            wakers: Default::default(),
+            windows: Default::default(),
+        })
+    }
+
+    pub fn port(&self) -> &Arc<dyn PlatformPort> {
+        &self.port
+    }
+
+    /// Calls `wake` after every change.
+    pub fn on_change(&self, wake: impl Fn() + Send + 'static) {
+        self.wakers.lock().unwrap().push(Box::new(wake));
+    }
+
+    /// Reports `window` in the automation state.
+    pub fn report_window(&self, window: &'static str, visible: impl Fn() -> bool + Send + 'static) {
+        self.windows
+            .lock()
+            .unwrap()
+            .push((window, Box::new(visible)));
+    }
+
+    /// Changes each time the state does; a window redraws when it differs from what it saw.
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::SeqCst)
+    }
+
+    fn changed(&self) {
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        for wake in self.wakers.lock().unwrap().iter() {
+            wake();
         }
-    }));
-    cx.spawn(async move |cx| {
-        while receiver.recv().await.is_ok() {
-            if cx.update(start_capture).is_err() {
-                break;
+    }
+
+    /// Starts listening for keys.
+    pub fn listen(self: &Arc<Self>) {
+        let lens = self.clone();
+        let sink: Sink<KeyEvent> = Arc::new(move |event| lens.key(event));
+        self.port.keys(sink);
+    }
+
+    pub fn key(self: &Arc<Self>, event: KeyEvent) {
+        match event {
+            KeyEvent::DrawDown => self.set_input(Input::All),
+            KeyEvent::DrawUp => self.set_input(Input::None),
+            KeyEvent::Pressed(Chord::Capture) => {
+                if self.is_open() {
+                    self.take_still(Cause::Hotkey);
+                } else {
+                    self.start_capture();
+                }
+            }
+            KeyEvent::Pressed(Chord::Voice) => self.toggle_voice(),
+            KeyEvent::Pressed(Chord::Keyboard) => {}
+            KeyEvent::Pressed(Chord::Send) => {
+                if let Err(error) = self.send(None, None) {
+                    self.fail(error);
+                }
             }
         }
-    })
-    .detach();
-    registered
-}
-
-/// Captures the display under the pointer and opens the overlay on it. Does
-/// nothing, and returns false, while a capture is open or being taken.
-pub fn start_capture(cx: &mut App) -> bool {
-    if lens(cx).overlay.is_some() || lens(cx).capturing {
-        return false;
     }
-    use crate::permission_guide::{Permission, granted, show};
-    if !granted(Permission::ScreenRecording) {
-        show(Permission::ScreenRecording);
-        return false;
+
+    fn is_open(&self) -> bool {
+        self.state.lock().unwrap().capture.is_some()
     }
-    let display = capture::display_under_pointer();
-    let previous = mac::frontmost();
-    lens(cx).capturing = true;
-    cx.spawn(async move |cx| {
-        let shot = cx.background_executor().spawn(async move { capture::screenshot(display) }).await;
-        let _ = cx.update(|cx| match shot {
-            Ok(image) => {
-                lens(cx).capturing = false;
-                lens(cx).previous_app = previous;
-                open_overlay(Capture::new(display, Document::new(image)), cx);
-            }
-            Err(error) => {
-                lens(cx).capturing = false;
-                notify(
-                format!("{error}\nIf you just allowed Screen Recording, quit and reopen Attn Lens: macOS applies it to new processes only."),
-                display,
-                cx,
-                )
-            }
-        });
-    })
-    .detach();
-    true
-}
 
-fn lens(cx: &mut App) -> &mut Lens {
-    if !cx.has_global::<Lens>() {
-        cx.set_global(Lens::default());
-    }
-    cx.global_mut::<Lens>()
-}
-
-/// Shows `capture` in the one overlay, replacing any capture open there.
-pub fn open_overlay(capture: Capture, cx: &mut App) {
-    if let Some(open) = lens(cx).overlay.take() {
-        let _ = open.update(cx, |_, window, _| window.remove_window());
-    }
-    close_tile(cx);
-    let Some(display) = cx
-        .displays()
-        .into_iter()
-        .find(|d| u32::from(d.id()) == capture.display)
-        .or_else(|| cx.primary_display())
-    else {
-        return;
-    };
-    let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(display.bounds())),
-        titlebar: None,
-        focus: true,
-        show: true,
-        kind: WindowKind::PopUp,
-        is_movable: false,
-        display_id: Some(display.id()),
-        window_background: WindowBackgroundAppearance::Opaque,
-        ..Default::default()
-    };
-    cx.activate(true);
-    match cx.open_window(options, |window, cx| {
-        crate::theme::Theme::install(window, cx);
-        cx.new(|cx| Overlay::new(capture, window, cx))
-    }) {
-        Ok(handle) => lens(cx).overlay = Some(handle),
-        Err(error) => eprintln!("Attn Lens: could not open the overlay: {error}"),
-    }
-}
-
-/// Closes the overlay, keeps the capture in the corner tile, and hands focus back.
-pub fn close_overlay(capture: Capture, cx: &mut App) {
-    let lens = lens(cx);
-    let overlay = lens.overlay.take();
-    let previous = lens.previous_app.take();
-    cx.defer(move |cx| {
-        if let Some(overlay) = overlay {
-            let _ = overlay.update(cx, |_, window, _| window.remove_window());
-        }
-        open_tile(capture, cx);
-        if let Some(app) = previous {
-            app.activate();
-        }
-    });
-}
-
-fn open_tile(capture: Capture, cx: &mut App) {
-    let display = capture.display;
-    show_tile(tile::Content::Capture(Box::new(capture)), display, cx);
-}
-
-/// Shows `text` in the corner, for failures that have no capture to hold them.
-pub fn notify(text: String, display: u32, cx: &mut App) {
-    show_tile(tile::Content::Notice(text.into()), display, cx);
-}
-
-fn show_tile(content: tile::Content, display: u32, cx: &mut App) {
-    close_tile(cx);
-    let Some(display) = cx
-        .displays()
-        .into_iter()
-        .find(|d| u32::from(d.id()) == display)
-        .or_else(|| cx.primary_display())
-    else {
-        return;
-    };
-    let area = display.bounds();
-    let size = size(
-        px(340.),
-        px(if matches!(content, tile::Content::Notice(_)) {
-            120.
+    fn set_input(&self, input: Input) {
+        let mut state = self.state.lock().unwrap();
+        // The ink layer exists only during a capture.
+        let input = if state.capture.is_some() {
+            input
         } else {
-            84.
-        }),
-    );
-    let origin = point(
-        area.right() - size.width - px(22.),
-        area.bottom() - size.height - px(22.),
-    );
-    let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds::new(origin, size))),
-        titlebar: None,
-        focus: false,
-        show: true,
-        kind: WindowKind::PopUp,
-        is_movable: false,
-        display_id: Some(display.id()),
-        window_background: WindowBackgroundAppearance::Transparent,
-        ..Default::default()
-    };
-    if let Ok(handle) = cx.open_window(options, |window, cx| {
-        crate::theme::Theme::install(window, cx);
-        cx.new(|_| Tile::new(content))
-    }) {
-        lens(cx).tile = Some(handle);
-    }
-}
-
-fn close_tile(cx: &mut App) {
-    if let Some(tile) = lens(cx).tile.take() {
-        let _ = tile.update(cx, |_, window, _| window.remove_window());
-    }
-}
-
-/// Opens a capture in the editor window for crop, pixelate, backdrop or export.
-pub fn open_editor(document: Document, cx: &mut App) {
-    crate::open_editor(Some(document), cx);
-    cx.activate(true);
-}
-
-/// The editor's Send: back to the in-place bar with the edited image.
-pub fn send_from_editor(document: &Document, cx: &mut App) {
-    let display = capture::display_under_pointer();
-    lens(cx).previous_app = None;
-    open_overlay(Capture::new(display, Document::new(document.export())), cx);
-}
-
-/// A send's result, for the capture with `id` wherever it is now: the overlay
-/// shows it, or, if the person closed the overlay meanwhile, the tile is marked sent.
-pub(super) fn finish_send(
-    id: u64,
-    label: String,
-    result: Result<attn::Sent, attn::Failure>,
-    cx: &mut App,
-) {
-    let lens = lens(cx);
-    let (overlay, tile) = (lens.overlay, lens.tile);
-    if let Some(overlay) = overlay
-        && overlay
-            .update(cx, |overlay, _, cx| {
-                overlay.finish_send(id, &label, &result, cx)
-            })
-            .unwrap_or(false)
-    {
-        return;
-    }
-    let held = tile.and_then(|tile| {
-        tile.read_with(cx, |tile, _| tile.capture().filter(|c| c.id == id).cloned())
-            .ok()
-            .flatten()
-    });
-    if let (Ok(_), Some(mut capture)) = (result, held) {
-        capture.sent_to = Some(label);
-        open_tile(capture, cx);
-    }
-}
-
-/// Reopens the capture in the corner tile, as clicking it does.
-pub fn reopen(cx: &mut App) -> Result<(), String> {
-    let tile = lens(cx).tile.ok_or("No capture is in the corner tile.")?;
-    let capture = tile
-        .read_with(cx, |tile, _| tile.capture().cloned())
-        .map_err(|e| e.to_string())?
-        .ok_or("The corner tile holds a notice, not a capture.")?;
-    open_overlay(capture, cx);
-    Ok(())
-}
-
-/// Runs an overlay action from automation; errors name what is missing.
-pub fn automate(action: overlay::Action, cx: &mut App) -> Result<(), String> {
-    let handle = lens(cx)
-        .overlay
-        .ok_or("No capture is open. Start one with ⌘⌥2 or `capture`.")?;
-    handle
-        .update(cx, |overlay, _, cx| overlay.dispatch(action, cx))
-        .map_err(|e| e.to_string())
-}
-
-fn screen_recording() -> bool {
-    crate::permission_guide::granted(crate::permission_guide::Permission::ScreenRecording)
-}
-
-/// What automation reads back: the open capture, its status and its sessions.
-pub fn state(cx: &mut App) -> serde_json::Value {
-    let lens = lens(cx);
-    let (tile, overlay) = (lens.tile, lens.overlay);
-    // The tile: null, a notice, or a capture with the session it was sent to.
-    let tile = tile.and_then(|tile| {
-        tile.read_with(cx, |tile, _| match tile.capture() {
-            Some(capture) => serde_json::json!({ "sent_to": capture.sent_to }),
-            None => serde_json::json!({ "notice": true }),
-        })
-        .ok()
-    });
-    let Some(handle) = overlay else {
-        return serde_json::json!({ "overlay": null, "tile": tile, "screen_recording": screen_recording() });
-    };
-    handle
-        .update(cx, |o, window, cx| {
-            let frame = window.bounds();
-            let display = window.display(cx).map(|d| d.bounds().size);
-            serde_json::json!({
-                "overlay": {
-                    "frame": [f32::from(frame.origin.x), f32::from(frame.origin.y), f32::from(frame.size.width), f32::from(frame.size.height)],
-                    "display": display.map(|d| [f32::from(d.width), f32::from(d.height)]),
-                    "marks": o.capture.document.marks.len(),
-                    "message": o.capture.message,
-                    "target": o.capture.target,
-                    "status": format!("{:?}", o.status),
-                    "sessions": o.sessions.iter().map(|s| serde_json::json!({"id": s.id, "label": s.label, "host": s.host})).collect::<Vec<_>>(),
-                },
-                "tile": tile,
-                "screen_recording": screen_recording(),
-            })
-        })
-        .unwrap_or(serde_json::Value::Null)
-}
-
-pub(crate) mod mac {
-    #![allow(unexpected_cfgs)] // objc 0.2 macros use a legacy cargo-clippy feature.
-    use cocoa::base::{BOOL, NO, id, nil};
-    use objc::{class, msg_send, sel, sel_impl};
-
-    /// A retained `NSRunningApplication`.
-    pub struct RunningApp(id);
-    impl RunningApp {
-        pub fn activate(self) {
-            unsafe {
-                let _: BOOL = msg_send![self.0, activateWithOptions: 0usize];
-            }
-        }
-    }
-    impl Drop for RunningApp {
-        fn drop(&mut self) {
-            unsafe {
-                let _: () = msg_send![self.0, release];
-            }
+            Input::None
+        };
+        if state.input != input {
+            state.input = input;
+            drop(state);
+            self.changed();
         }
     }
 
-    pub fn frontmost() -> Option<RunningApp> {
-        unsafe {
-            let ws: id = msg_send![class!(NSWorkspace), sharedWorkspace];
-            let app: id = msg_send![ws, frontmostApplication];
-            let me: id = msg_send![class!(NSRunningApplication), currentApplication];
-            let same: BOOL = if app == nil {
-                NO
-            } else {
-                msg_send![app, isEqual: me]
+    fn fail(&self, error: String) {
+        self.state.lock().unwrap().error = Some(error);
+        self.changed();
+    }
+
+    /// Opens a capture of the display under the pointer.
+    fn start_capture(self: &Arc<Self>) {
+        if !self.port.screen_recording() {
+            return;
+        }
+        let area = match self.port.pointer_display() {
+            Ok(area) => area,
+            Err(error) => return self.fail(error),
+        };
+        let lens = self.clone();
+        let sink: Sink<WatchEvent> = Arc::new(move |event| lens.watched(event));
+        let watch = self.port.watch(area, sink);
+        {
+            let mut state = self.state.lock().unwrap();
+            state.next_capture += 1;
+            state.capture = Some(Capture {
+                id: state.next_capture,
+                area,
+                started: self.port.now(),
+                stills: vec![],
+                segments: vec![],
+                target: None,
+                message: String::new(),
+            });
+            state.watch = Some(watch);
+            state.error = None;
+            state.send = SendStatus::Idle;
+        }
+        self.port.capture_keys(true);
+        self.changed();
+    }
+
+    /// Closes the open capture and lets go of everything it held.
+    pub fn end_capture(&self) {
+        let voice = {
+            let mut state = self.state.lock().unwrap();
+            state.capture = None;
+            state.input = Input::None;
+            state.watch = None;
+            state.voice.take()
+        };
+        if let Some(voice) = voice
+            && let Err(error) = voice.finish()
+        {
+            self.state.lock().unwrap().error = Some(error);
+        }
+        self.port.capture_keys(false);
+        self.changed();
+    }
+
+    fn watched(self: &Arc<Self>, event: WatchEvent) {
+        match event {
+            WatchEvent::Click => self.take_still(Cause::Click),
+            WatchEvent::WindowSwitch => self.take_still(Cause::WindowSwitch),
+            WatchEvent::Scroll | WatchEvent::Change(_) => {}
+        }
+    }
+
+    /// Takes a still of the open capture's area off the UI thread. Its time is now,
+    /// whenever the frame arrives, so stills stay in the order they were asked for.
+    pub fn take_still(self: &Arc<Self>, cause: Cause) {
+        let at = self.port.now();
+        let Some((id, area)) = self
+            .state
+            .lock()
+            .unwrap()
+            .capture
+            .as_ref()
+            .map(|c| (c.id, c.area))
+        else {
+            return;
+        };
+        *self.pending_stills.0.lock().unwrap() += 1;
+        let lens = self.clone();
+        self.port.run(Box::new(move || {
+            let frame = lens.port.still(area);
+            {
+                let mut state = lens.state.lock().unwrap();
+                match frame {
+                    Ok(frame) => {
+                        // A capture closed while its frame was on the way drops the frame.
+                        if let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) {
+                            let still = Still {
+                                at,
+                                cause,
+                                doc: Document::new(frame),
+                                times: vec![],
+                            };
+                            let index = capture.stills.partition_point(|s| s.at <= at);
+                            capture.stills.insert(index, still);
+                        }
+                    }
+                    Err(error) => state.error = Some(error),
+                }
+            }
+            *lens.pending_stills.0.lock().unwrap() -= 1;
+            lens.pending_stills.1.notify_all();
+            lens.changed();
+        }));
+    }
+
+    fn toggle_voice(self: &Arc<Self>) {
+        let running = self.state.lock().unwrap().voice.take();
+        if let Some(voice) = running {
+            if let Err(error) = voice.finish() {
+                self.fail(error);
+            }
+            return self.changed();
+        }
+        if !self.is_open() {
+            return;
+        }
+        let lens = self.clone();
+        let sink: Sink<Segment> = Arc::new(move |segment| {
+            if let Some(capture) = lens.state.lock().unwrap().capture.as_mut() {
+                capture.segments.push(segment);
+            }
+            lens.changed();
+        });
+        match self.port.voice(sink) {
+            Ok(voice) => self.state.lock().unwrap().voice = Some(voice),
+            Err(error) => self.state.lock().unwrap().error = Some(error),
+        }
+        self.changed();
+    }
+
+    /// Sends the open capture: every still as a PNG, with the message. `target`
+    /// and `message` replace what the capture holds. The result lands in `SendStatus`.
+    pub fn send(
+        self: &Arc<Self>,
+        target: Option<String>,
+        message: Option<String>,
+    ) -> Result<(), String> {
+        let needs_still = {
+            let mut state = self.state.lock().unwrap();
+            if state.send == SendStatus::Sending {
+                return Err("A send is already running.".into());
+            }
+            let capture = state
+                .capture
+                .as_mut()
+                .ok_or("No capture is open. Start one with ⌘⌥X.")?;
+            if let Some(target) = target {
+                capture.target = Some(target);
+            }
+            if let Some(message) = message {
+                capture.message = message;
+            }
+            if capture.target.is_none() {
+                return Err("The capture has no target session.".into());
+            }
+            let needs_still = capture.stills.is_empty();
+            state.send = SendStatus::Sending;
+            needs_still
+        };
+        self.changed();
+        if needs_still {
+            self.take_still(Cause::Send);
+        }
+        let lens = self.clone();
+        self.port.run(Box::new(move || lens.finish_send()));
+        Ok(())
+    }
+
+    fn finish_send(self: &Arc<Self>) {
+        let voice = self.state.lock().unwrap().voice.take();
+        let voice = voice.map_or(Ok(()), Voice::finish);
+        let mut pending = self.pending_stills.0.lock().unwrap();
+        while *pending > 0 {
+            pending = self.pending_stills.1.wait(pending).unwrap();
+        }
+        drop(pending);
+        let delivered = voice.and_then(|()| self.deliver());
+        {
+            let mut state = self.state.lock().unwrap();
+            state.send = match delivered {
+                Ok(target) => {
+                    state.capture = None;
+                    state.input = Input::None;
+                    state.watch = None;
+                    SendStatus::Sent(target)
+                }
+                Err(error) => SendStatus::Failed(error),
             };
-            if app == nil || same != NO {
-                return None;
-            }
-            let _: id = msg_send![app, retain];
-            Some(RunningApp(app))
+        }
+        if !self.is_open() {
+            self.port.capture_keys(false);
+        }
+        self.changed();
+    }
+
+    fn deliver(&self) -> Result<String, String> {
+        let (docs, target, message) = {
+            let state = self.state.lock().unwrap();
+            let capture = state.capture.as_ref().ok_or("The capture was closed.")?;
+            (
+                capture
+                    .stills
+                    .iter()
+                    .map(|s| s.doc.clone())
+                    .collect::<Vec<_>>(),
+                capture
+                    .target
+                    .clone()
+                    .ok_or("The capture has no target session.")?,
+                capture.message.clone(),
+            )
+        };
+        if docs.is_empty() {
+            return Err("The capture has no still to send.".into());
+        }
+        let token = self
+            .port
+            .token()
+            .ok_or("Attn Lens is not paired with attn.")?;
+        let dir = tempfile::Builder::new()
+            .prefix("attn-lens-send-")
+            .tempdir()
+            .map_err(|e| e.to_string())?;
+        let mut files: Vec<PathBuf> = vec![];
+        for (index, doc) in docs.iter().enumerate() {
+            let path = dir.path().join(format!("frame-{:02}.png", index + 1));
+            doc.export()
+                .save_with_format(&path, image::ImageFormat::Png)
+                .map_err(|e| e.to_string())?;
+            files.push(path);
+        }
+        let bin = attn::locate().map_err(failure_text)?;
+        attn::send(&bin, &token, &target, &files, &message).map_err(failure_text)?;
+        Ok(target)
+    }
+
+    /// Lists the sessions the pairing can send to, for automation.
+    pub fn sessions(&self) -> Result<Vec<attn::Session>, String> {
+        let token = self
+            .port
+            .token()
+            .ok_or("Attn Lens is not paired with attn.")?;
+        let bin = attn::locate().map_err(failure_text)?;
+        attn::sessions(&bin, &token).map_err(failure_text)
+    }
+
+    /// Runs `view` over what a window shows.
+    pub fn read<R>(&self, view: impl FnOnce(&Summary) -> R) -> R {
+        view(&self.summary())
+    }
+
+    fn summary(&self) -> Summary {
+        let state = self.state.lock().unwrap();
+        Summary {
+            input: state.input,
+            capture: state.capture.as_ref().map(|c| CaptureSummary {
+                id: c.id,
+                area: c.area,
+                started: c.started,
+                stills: c
+                    .stills
+                    .iter()
+                    .map(|s| StillSummary {
+                        at: s.at,
+                        cause: s.cause,
+                        width: s.doc.base.width(),
+                        height: s.doc.base.height(),
+                    })
+                    .collect(),
+                segments: c.segments.clone(),
+                target: c.target.clone(),
+                message: c.message.clone(),
+            }),
+            voice: state.voice.is_some(),
+            send: state.send.clone(),
+            error: state.error.clone(),
         }
     }
+
+    /// What automation reads back.
+    pub fn state_json(&self) -> Value {
+        let summary = self.summary();
+        let send = match &summary.send {
+            SendStatus::Idle => json!({"state": "idle"}),
+            SendStatus::Sending => json!({"state": "sending"}),
+            SendStatus::Sent(target) => json!({"state": "sent", "target": target}),
+            SendStatus::Failed(error) => json!({"state": "failed", "error": error}),
+        };
+        let windows: serde_json::Map<String, Value> = self
+            .windows
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(name, visible)| (name.to_string(), json!(visible())))
+            .collect();
+        json!({
+            "windows": windows,
+            "input": format!("{:?}", summary.input),
+            "voice": summary.voice,
+            "send": send,
+            "error": summary.error,
+            "capture": summary.capture.map(|c| json!({
+                "id": c.id,
+                "area": c.area,
+                "started": c.started,
+                "stills": c.stills.iter().map(|s| json!({
+                    "at": s.at,
+                    "cause": s.cause,
+                    "width": s.width,
+                    "height": s.height,
+                })).collect::<Vec<_>>(),
+                "segments": c.segments,
+                "target": c.target,
+                "message": c.message,
+            })),
+        })
+    }
+}
+
+fn failure_text(failure: attn::Failure) -> String {
+    match failure {
+        attn::Failure::NotPaired(text) | attn::Failure::Error(text) => text,
+    }
+}
+
+pub struct StillSummary {
+    pub at: session::HostTime,
+    pub cause: Cause,
+    pub width: u32,
+    pub height: u32,
+}
+
+pub struct CaptureSummary {
+    pub id: u64,
+    pub area: session::Area,
+    pub started: session::HostTime,
+    pub stills: Vec<StillSummary>,
+    pub segments: Vec<Segment>,
+    pub target: Option<String>,
+    pub message: String,
+}
+
+pub struct Summary {
+    pub input: Input,
+    pub capture: Option<CaptureSummary>,
+    pub voice: bool,
+    pub send: SendStatus,
+    pub error: Option<String>,
 }

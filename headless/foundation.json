@@ -1,0 +1,19 @@
+{"events":[
+ {"t":0.2,"type":"mark","name":"launched"},
+ {"t":0.3,"reopen":true},
+ {"t":0.5,"type":"mark","name":"dock-clicked"},
+ {"t":0.6,"type":"mark","name":"key:capture"},
+ {"t":0.7,"type":"mark","name":"capture-open"},
+ {"t":0.8,"type":"mark","name":"key:draw-down"},
+ {"t":0.9,"type":"mark","name":"drawing"},
+ {"t":1.0,"type":"mark","name":"key:draw-up"},
+ {"t":1.1,"type":"mark","name":"key:capture"},
+ {"t":1.2,"type":"mark","name":"watch:click"},
+ {"t":1.3,"type":"mark","name":"watch:switch"},
+ {"t":1.4,"type":"mark","name":"key:voice"},
+ {"t":1.5,"type":"mark","name":"say:1.45:1.5:this button does nothing"},
+ {"t":1.6,"type":"mark","name":"stills-taken"},
+ {"t":1.7,"type":"mark","name":"key:send"},
+ {"t":1.8,"type":"mark","name":"send-refused"},
+ {"t":1.9,"type":"mark","name":"end"}
+]}

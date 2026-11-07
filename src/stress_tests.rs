@@ -119,7 +119,7 @@ fn randomized_edit_sequences_roundtrip_history_and_png() {
 }
 #[test]
 fn tiny_crop_edges_remain_reachable_when_zoomed_out() {
-    let l = crate::Layout {
+    let l = crate::navigation::Layout {
         width: 10.,
         height: 10.,
         scale: 0.1,

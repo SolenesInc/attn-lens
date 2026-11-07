@@ -3,8 +3,9 @@
 Glance's original code is licensed under [MIT](LICENSE). Third-party code and
 assets retain their own licenses; the project license does not replace them.
 
-- **GPUI**, by Zed Industries, is licensed under Apache-2.0.
-  `src/animation.rs` also adapts GPUI's Gaussian shadow integration from
+- **Rune**, by Anomaly, is licensed under the [MIT license](assets/rune/LICENSE).
+- **GPUI**, by Zed Industries, is licensed under Apache-2.0. Lens no longer links
+  it, but `src/animation.rs` adapts GPUI's Gaussian shadow integration from
   `src/platform/mac/shaders.metal`. See [source attribution](assets/gpui/SOURCE)
   and the [Apache-2.0 license](assets/gpui/LICENSE-APACHE).
 - **Lucide icons** are licensed under ISC, with some icons derived from Feather
@@ -42,6 +43,6 @@ assets retain their own licenses; the project license does not replace them.
   > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   > SOFTWARE.
 
-The app bundle includes this notice, Glance's license, and the GPUI, Lucide and Roboto
+The app bundle includes this notice, Glance's license, and the GPUI, Rune, Lucide and Roboto
 license files. Other Rust dependencies are recorded in `Cargo.lock`; their
 upstream license terms apply to distributions that include them.

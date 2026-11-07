@@ -31,11 +31,12 @@ cp target/glance-ocr "$APP/Contents/MacOS/glance-ocr"
 cp target/glance-video-frame "$APP/Contents/MacOS/glance-video-frame"
 cp target/glance-video-encoder "$APP/Contents/MacOS/glance-video-encoder"
 cp assets/gpui/LICENSE-APACHE "$APP/Contents/Resources/GPUI-LICENSE"
+cp assets/rune/LICENSE "$APP/Contents/Resources/Rune-LICENSE"
 cp assets/lucide/LICENSE "$APP/Contents/Resources/Lucide-LICENSE"
 cp assets/fonts/LICENSE "$APP/Contents/Resources/Roboto-LICENSE"
 cp LICENSE "$APP/Contents/Resources/LICENSE"
 cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
-cp "${CARGO_TARGET_DIR:-target}/$MODE/glance" "$APP/Contents/MacOS/AttnLens"
+cp "${CARGO_TARGET_DIR:-target}/$MODE/attn-lens" "$APP/Contents/MacOS/AttnLens"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

@@ -4,7 +4,7 @@ use crate::backdrop::{Backdrop, PRESETS};
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum DocumentAction {
+pub enum DocumentAction {
     AddAnnotation {
         mark: Mark,
     },
@@ -49,18 +49,18 @@ fn remember_default() -> bool {
     true
 }
 
-pub(crate) enum Selection {
+pub enum Selection {
     Keep,
     Clear,
     Select(usize),
     SelectMany(Vec<usize>),
 }
-pub(crate) struct EditOutcome {
-    pub(crate) changed: bool,
-    pub(crate) reset_view: bool,
-    pub(crate) selection: Selection,
+pub struct EditOutcome {
+    pub changed: bool,
+    pub reset_view: bool,
+    pub selection: Selection,
 }
-pub(crate) fn validate_mark(mark: &Mark) -> Result<(), String> {
+pub fn validate_mark(mark: &Mark) -> Result<(), String> {
     mark.style.validate()?;
     if matches!(mark.tool, Tool::Select | Tool::Crop)
         || mark.points.is_empty()
@@ -104,7 +104,7 @@ pub(crate) fn validate_mark(mark: &Mark) -> Result<(), String> {
 }
 impl DocumentAction {
     /// Validation happens before history or document mutation, including moves.
-    pub(crate) fn apply(self, document: &mut Document) -> Result<EditOutcome, String> {
+    pub fn apply(self, document: &mut Document) -> Result<EditOutcome, String> {
         let mut outcome = EditOutcome {
             changed: true,
             reset_view: false,

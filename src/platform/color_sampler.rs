@@ -55,7 +55,7 @@ pub fn sample_screen_color() -> Result<async_channel::Receiver<SampleResult>, St
                     if text.trim().is_empty() {
                         return Ok(None);
                     }
-                    crate::color_picker::parse_hex(&text)
+                    parse_hex(&text)
                         .map(Some)
                         .ok_or_else(|| "Screen sampler returned an invalid hex color".into())
                 });
@@ -63,4 +63,22 @@ pub fn sample_screen_color() -> Result<async_channel::Receiver<SampleResult>, St
         });
     }
     Ok(receiver)
+}
+
+/// Parses the helper's `#RGB` or `#RRGGBB` output.
+#[cfg(target_os = "linux")]
+fn parse_hex(text: &str) -> Option<[u8; 3]> {
+    let text = text.trim().strip_prefix('#').unwrap_or(text.trim());
+    if !text.is_ascii() || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    match text.len() {
+        3 => Some(std::array::from_fn(|i| {
+            u8::from_str_radix(&text[i..i + 1], 16).unwrap() * 17
+        })),
+        6 => Some(std::array::from_fn(|i| {
+            u8::from_str_radix(&text[i * 2..i * 2 + 2], 16).unwrap()
+        })),
+        _ => None,
+    }
 }

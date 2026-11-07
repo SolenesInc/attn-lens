@@ -39,16 +39,15 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Run tests
         run: cargo test --locked
-      - name: Build native helpers and test video and OCR
+      - name: Build native helpers and test OCR
         run: |
           /usr/bin/swiftc -target "$(uname -m)-apple-macosx12.0" -O native/video_encoder.swift -o target/glance-video-encoder
           /usr/bin/swiftc -target "$(uname -m)-apple-macosx12.0" -O native/video_frame.swift -o target/glance-video-frame
           /usr/bin/swiftc -target "$(uname -m)-apple-macosx12.0" -O native/ocr.swift -o target/glance-ocr
-          cargo test --locked native_mcp_video_roundtrip -- --ignored
           cargo test --locked native_ocr_recognizes_synthetic_text_and_regions -- --ignored
 
-  omarchy:
-    name: Check (Omarchy x86_64)
+  linux:
+    name: Check (Linux x86_64, headless)
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     env:
@@ -61,7 +60,7 @@ jobs:
         run: |
           pacman -Syu --needed --noconfirm git rust clang cmake \
             fontconfig freetype2 libx11 libxcb libxkbcommon libxkbcommon-x11 \
-            wayland vulkan-icd-loader desktop-file-utils xdg-utils ttf-dejavu grim slurp wl-clipboard zenity ffmpeg
+            wayland vulkan-icd-loader vulkan-swrast ttf-dejavu
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -76,7 +75,3 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Run tests
         run: cargo test --locked
-      - name: Test FFmpeg encode and frame decode
-        run: |
-          cp native/linux/glance-video-* target/
-          cargo test --locked native_mcp_video_roundtrip -- --ignored
