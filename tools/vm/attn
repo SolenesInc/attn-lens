@@ -1,0 +1,30 @@
+#!/bin/sh
+# A stand-in for attn inside the VM: prints what cmd/attn/send_stack_test.go in attn
+# pins and keeps each send's arguments and files in ~/lens-check/sent.
+sent="$HOME/lens-check/sent"
+mkdir -p "$sent"
+[ "$1" = send ] || {
+    echo "stand-in attn: only send is known" >&2
+    exit 2
+}
+shift
+case "$1" in
+sessions)
+    cat >/dev/null
+    echo '[{"agent":"claude","id":"vm-target","label":"VM stand-in","last_focused_at":"2026-11-07T00:00:00Z","state":"idle"}]'
+    ;;
+pair)
+    echo '{"id":"p1","name":"Attn Lens","code":"0420","requested_at":"2026-11-07T00:00:00Z"}'
+    echo '{"sender":{"id":"x","name":"Attn Lens","created_at":"2026-11-07T00:00:00Z"},"token":"vm-stand-in-token"}'
+    ;;
+*)
+    cat >/dev/null
+    dir="$(mktemp -d "$sent/XXXXXX")"
+    printf '%s\n' "$*" >"$dir/args"
+    while [ $# -gt 0 ]; do
+        [ "$1" = --file ] && cp "$2" "$dir/"
+        shift
+    done
+    echo '{"id":"cap","attachments":[]}'
+    ;;
+esac

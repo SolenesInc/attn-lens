@@ -25,8 +25,15 @@ editor replaces it. This file's Glance rules still apply to the code that remain
 - `src/lens/capture.rs`: stills through Hex's capture-core (ScreenCaptureKit).
 - `src/lens/automation.rs`: the development socket. Launch with `--automation`, then
   `AttnLens lens '{"cmd":"state"}'`; the module's header lists the requests.
-- `tools/driver/driver.swift`: posts synthetic keys and drags on the Mac. Use it only
-  in a window agreed with the user; it stops if real input arrives.
+- `tools/driver/driver.swift`: posts synthetic keys and drags. Run it in the VM below;
+  on a real Mac only in a window agreed with the user. It stops if real input arrives.
+- `scripts/lens-vm.sh`: a macOS VM (Tart) for driven checks, so no key reaches this Mac.
+  `setup` once, then `push` to install this checkout signed ad hoc, `driver SCRIPT` to run
+  a driver script in the VM's GUI session, `check OUT` to run `scripts/lens-mac-check.sh`
+  against the stand-in `tools/vm/attn`, and `stop` when done: it holds 8 GB. `tools/vm/`
+  grants the VM's permissions without a click. Nothing of this Mac's goes in: no shared
+  folders, Keychain, tokens or signing identity. Speed budgets and the feel of drawing
+  stay on the real Mac; VM numbers do not count for them.
 - `headless/`: Rune scripts, asserted by `tests/headless.rs`. Assert on trees, read with
   `--window KEY --tree out.json --at mark:NAME`, not only on snapshots.
 - `src/permission_guide.rs`, `native/permission_guide.m`: from Hex (MIT).

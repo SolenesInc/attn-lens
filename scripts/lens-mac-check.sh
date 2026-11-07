@@ -1,6 +1,7 @@
 #!/bin/bash
 # The Mac half of the foundation check, against the app `scripts/install.sh` installed.
-# Run it only inside a window agreed with the user: the driver posts real keys.
+# The driver posts real keys, so the caller says where: LENS_DRIVER_WINDOW=vm inside
+# the VM (scripts/lens-vm.sh check), or =agreed in a window agreed with the user.
 #   scripts/lens-mac-check.sh <session id to send to> <output dir>
 # Writes driver.log and receipts.txt: ⌘⌥X to the bar's window, then idle CPU and memory.
 set -euo pipefail
@@ -51,6 +52,6 @@ lens {"cmd":"send","target":"$TARGET","message":"Attn Lens on Rune: foundation c
 expect "state":"sent"
 lens {"cmd":"state"}
 SCRIPT
-LENS_DRIVER_WINDOW=agreed "$OUT/driver" --front "Attn Lens" "$OUT/script.txt" | tee "$OUT/driver.log"
+"$OUT/driver" --front "Attn Lens" "$OUT/script.txt" | tee "$OUT/driver.log"
 grep 'window-visible' "$OUT/driver.log" >>"$OUT/receipts.txt"
 cat "$OUT/receipts.txt"

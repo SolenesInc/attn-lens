@@ -1,10 +1,11 @@
 // Posts synthetic keys and drags so an agent can prove a Mac check, in a window of
 // time agreed with the user. Reads one command per line from the script it is given.
 //
-//   LENS_DRIVER_WINDOW=agreed driver --front "Attn Lens" script.txt
+//   LENS_DRIVER_WINDOW=vm driver --front "Attn Lens" script.txt      inside the VM
+//   LENS_DRIVER_WINDOW=agreed driver --front "Attn Lens" script.txt  on a real Mac
 //
-// It refuses to start without LENS_DRIVER_WINDOW=agreed or without Accessibility,
-// which posting events and watching for real input both need. It stops at once, and
+// It refuses to start without one of those, with =vm outside a virtual machine, or
+// without Accessibility, which posting events and watching for real input both need. It stops at once, and
 // releases everything it holds, when:
 //   - the frontmost normal window does not belong to an app named by --front, checked
 //     before each posted key, click and scroll (exit 3);
@@ -47,8 +48,20 @@ while arguments.first == "--front", arguments.count >= 2 {
     allowedFront.append(arguments[1])
     arguments.removeFirst(2)
 }
-guard ProcessInfo.processInfo.environment["LENS_DRIVER_WINDOW"] == "agreed" else {
-    print("refusing: set LENS_DRIVER_WINDOW=agreed only inside a window agreed with the user")
+func inVM() -> Bool {
+    var present: Int32 = 0
+    var size = MemoryLayout<Int32>.size
+    return sysctlbyname("kern.hv_vmm_present", &present, &size, nil, 0) == 0 && present == 1
+}
+switch ProcessInfo.processInfo.environment["LENS_DRIVER_WINDOW"] {
+case "agreed": break
+case "vm":
+    guard inVM() else {
+        print("refusing: LENS_DRIVER_WINDOW=vm, but this is not a virtual machine")
+        exit(2)
+    }
+default:
+    print("refusing: set LENS_DRIVER_WINDOW=vm in the VM (scripts/lens-vm.sh), or =agreed only inside a window agreed with the user")
     exit(2)
 }
 guard !allowedFront.isEmpty, let scriptPath = arguments.first else {
