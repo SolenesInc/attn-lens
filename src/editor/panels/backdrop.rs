@@ -235,11 +235,21 @@ impl Editor {
                     }),
             );
         }
-        panel = panel.child(controls::field(
-            cx,
-            if stops == 2 { "Colors" } else { "Color" },
-            colors,
-        ));
+        // Pick from screen sets the colour being edited, otherwise the first.
+        let stop = self.picker.stop.filter(|_| self.picker.open).unwrap_or(0);
+        panel = panel
+            .child(controls::field(
+                cx,
+                if stops == 2 { "Colors" } else { "Color" },
+                colors,
+            ))
+            .child(controls::button(
+                cx,
+                "pick-screen",
+                "Pick from screen",
+                true,
+                move |s: &mut Editor, tx| s.dispatch_ui(Action::PickBackdropScreenColor(stop), tx),
+            ));
         if self.picker.open && self.picker.stop.is_some() {
             panel = panel.child(self.color_picker_view(cx));
         }

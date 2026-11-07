@@ -496,7 +496,11 @@ impl Editor {
                 self.cancel_gesture();
                 self.edit(DocumentAction::Rotate, tx);
             }
-            Action::PickScreenColor => {
+            Action::PickScreenColor | Action::PickBackdropScreenColor(_) => {
+                self.picker.stop = match action {
+                    Action::PickBackdropScreenColor(stop) => Some(stop),
+                    _ => None,
+                };
                 self.commit_text(tx);
                 let id = self.start(Operation::ColorSample);
                 self.status = "Pick a screen color • Escape to cancel".into();
@@ -966,7 +970,11 @@ fn validate(action: &Action) -> Result<(), String> {
             "Backdrop palette must be 0..{}, got {preset}",
             PRESETS.len() - 1
         )),
-        Action::SetBackdropColor { stop, .. } | Action::EditBackdropColor(stop) if *stop > 1 => {
+        Action::SetBackdropColor { stop, .. }
+        | Action::EditBackdropColor(stop)
+        | Action::PickBackdropScreenColor(stop)
+            if *stop > 1 =>
+        {
             Err("Backdrop color stop must be 0 or 1".into())
         }
         Action::SetBackdropControl { control, value, .. }

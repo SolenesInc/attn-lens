@@ -1,0 +1,821 @@
+{
+ "row": "Backdrop",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "tap",
+   "key": "backdrop-button"
+  },
+  {
+   "t": 0.86,
+   "type": "mark",
+   "name": "framed"
+  },
+  {
+   "t": 0.98,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 1.18,
+   "type": "menu-pick",
+   "id": "square"
+  },
+  {
+   "t": 1.48,
+   "type": "mark",
+   "name": "format-square"
+  },
+  {
+   "t": 1.6,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 1.8,
+   "type": "menu-pick",
+   "id": "classic"
+  },
+  {
+   "t": 2.1,
+   "type": "mark",
+   "name": "format-classic"
+  },
+  {
+   "t": 2.22,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 2.42,
+   "type": "menu-pick",
+   "id": "photo"
+  },
+  {
+   "t": 2.72,
+   "type": "mark",
+   "name": "format-photo"
+  },
+  {
+   "t": 2.84,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 3.04,
+   "type": "menu-pick",
+   "id": "widescreen"
+  },
+  {
+   "t": 3.34,
+   "type": "mark",
+   "name": "format-widescreen"
+  },
+  {
+   "t": 3.46,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 3.66,
+   "type": "menu-pick",
+   "id": "portrait"
+  },
+  {
+   "t": 3.96,
+   "type": "mark",
+   "name": "format-portrait"
+  },
+  {
+   "t": 4.08,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 4.28,
+   "type": "menu-pick",
+   "id": "vertical"
+  },
+  {
+   "t": 4.58,
+   "type": "mark",
+   "name": "format-vertical"
+  },
+  {
+   "t": 4.7,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 4.9,
+   "type": "menu-pick",
+   "id": "youtube"
+  },
+  {
+   "t": 5.2,
+   "type": "mark",
+   "name": "format-youtube"
+  },
+  {
+   "t": 5.32,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 5.52,
+   "type": "menu-pick",
+   "id": "shorts"
+  },
+  {
+   "t": 5.82,
+   "type": "mark",
+   "name": "format-shorts"
+  },
+  {
+   "t": 5.94,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 6.14,
+   "type": "menu-pick",
+   "id": "pinterest"
+  },
+  {
+   "t": 6.44,
+   "type": "mark",
+   "name": "format-pinterest"
+  },
+  {
+   "t": 6.56,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 6.76,
+   "type": "menu-pick",
+   "id": "auto"
+  },
+  {
+   "t": 7.06,
+   "type": "mark",
+   "name": "format-auto"
+  },
+  {
+   "t": 7.21,
+   "type": "drag",
+   "key": "outside-padding-slider",
+   "dx": 58,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 7.51,
+   "type": "mark",
+   "name": "padded"
+  },
+  {
+   "t": 7.63,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 7.93,
+   "type": "mark",
+   "name": "padding-undone"
+  },
+  {
+   "t": 8.08,
+   "type": "drag",
+   "key": "outside-padding-slider",
+   "dx": 58,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 8.23,
+   "type": "drag",
+   "key": "inside-padding-slider",
+   "dx": -93,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 8.53,
+   "type": "mark",
+   "name": "inside"
+  },
+  {
+   "t": 8.68,
+   "type": "drag",
+   "key": "image-corners-slider",
+   "dx": 0,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 8.83,
+   "type": "drag",
+   "key": "shadow-slider",
+   "dx": -58,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 9.13,
+   "type": "mark",
+   "name": "styled"
+  },
+  {
+   "t": 9.25,
+   "type": "tap",
+   "key": "background-gradient"
+  },
+  {
+   "t": 9.55,
+   "type": "mark",
+   "name": "gradient"
+  },
+  {
+   "t": 9.67,
+   "type": "tap",
+   "key": "background-solid"
+  },
+  {
+   "t": 9.97,
+   "type": "mark",
+   "name": "solid"
+  },
+  {
+   "t": 10.09,
+   "type": "tap",
+   "key": "background-gradient"
+  },
+  {
+   "t": 10.21,
+   "type": "tap",
+   "key": "palette-ocean"
+  },
+  {
+   "t": 10.51,
+   "type": "mark",
+   "name": "ocean"
+  },
+  {
+   "t": 10.63,
+   "type": "tap",
+   "key": "backdrop-color-2"
+  },
+  {
+   "t": 10.93,
+   "type": "mark",
+   "name": "picker"
+  },
+  {
+   "t": 11.05,
+   "type": "tap",
+   "key": "hex-field"
+  },
+  {
+   "t": 11.17,
+   "type": "key",
+   "name": "a",
+   "cmd": true
+  },
+  {
+   "t": 11.37,
+   "type": "type",
+   "text": "#102030",
+   "every": 0.01
+  },
+  {
+   "t": 11.49,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 11.79,
+   "type": "mark",
+   "name": "hex"
+  },
+  {
+   "t": 11.91,
+   "type": "tap",
+   "key": "backdrop-color-1"
+  },
+  {
+   "t": 12.21,
+   "type": "tap",
+   "key": "pick-screen"
+  },
+  {
+   "t": 12.51,
+   "type": "mark",
+   "name": "pick:#405060"
+  },
+  {
+   "t": 12.81,
+   "type": "mark",
+   "name": "picked"
+  },
+  {
+   "t": 12.93,
+   "type": "tap",
+   "key": "backdrop-color-1"
+  },
+  {
+   "t": 13.05,
+   "type": "tap",
+   "key": "backdrop-enabled"
+  },
+  {
+   "t": 13.35,
+   "type": "mark",
+   "name": "off"
+  },
+  {
+   "t": 13.47,
+   "type": "tap",
+   "key": "backdrop-enabled"
+  },
+  {
+   "t": 13.77,
+   "type": "mark",
+   "name": "on"
+  },
+  {
+   "t": 13.89,
+   "type": "key",
+   "name": "c",
+   "cmd": true
+  },
+  {
+   "t": 14.29,
+   "type": "mark",
+   "name": "copied"
+  },
+  {
+   "t": 14.41,
+   "type": "tap",
+   "key": "backdrop-done"
+  },
+  {
+   "t": 14.71,
+   "type": "mark",
+   "name": "done"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "framed",
+   "state": {
+    "panel": "Backdrop",
+    "backdrop": {
+     "format": "auto",
+     "padding": 64,
+     "inner_radius": 18,
+     "shadow": 24,
+     "inside_padding": 0,
+     "motion": "still",
+     "gradient": false,
+     "preset": 0
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     277.0,
+     448.0,
+     328.0
+    ],
+    "image": [
+     320,
+     341,
+     320,
+     200
+    ]
+   },
+   "present": [
+    "backdrop-panel"
+   ],
+   "status_contains": "Backdrop added"
+  },
+  {
+   "at": "format-square",
+   "state": {
+    "backdrop": {
+     "format": "square"
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     217.0,
+     448.0,
+     448.0
+    ]
+   }
+  },
+  {
+   "at": "format-classic",
+   "state": {
+    "backdrop": {
+     "format": "classic"
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     273.0,
+     448.0,
+     336.0
+    ]
+   }
+  },
+  {
+   "at": "format-photo",
+   "state": {
+    "backdrop": {
+     "format": "photo"
+    }
+   },
+   "rect": {
+    "stage": [
+     234.0,
+     277.0,
+     492.0,
+     328.0
+    ]
+   }
+  },
+  {
+   "at": "format-widescreen",
+   "state": {
+    "backdrop": {
+     "format": "widescreen"
+    }
+   },
+   "rect": {
+    "stage": [
+     184.0,
+     274.5,
+     592.0,
+     333.0
+    ]
+   }
+  },
+  {
+   "at": "format-portrait",
+   "state": {
+    "backdrop": {
+     "format": "portrait"
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     161.0,
+     448.0,
+     560.0
+    ]
+   }
+  },
+  {
+   "at": "format-vertical",
+   "state": {
+    "backdrop": {
+     "format": "vertical"
+    }
+   },
+   "rect": {
+    "stage": [
+     278.625,
+     83.0,
+     402.75,
+     716.0
+    ]
+   }
+  },
+  {
+   "at": "format-youtube",
+   "state": {
+    "backdrop": {
+     "format": "youtube"
+    }
+   },
+   "rect": {
+    "stage": [
+     184.0,
+     274.5,
+     592.0,
+     333.0
+    ]
+   }
+  },
+  {
+   "at": "format-shorts",
+   "state": {
+    "backdrop": {
+     "format": "shorts"
+    }
+   },
+   "rect": {
+    "stage": [
+     278.625,
+     83.0,
+     402.75,
+     716.0
+    ]
+   }
+  },
+  {
+   "at": "format-pinterest",
+   "state": {
+    "backdrop": {
+     "format": "pinterest"
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     105.0,
+     448.0,
+     672.0
+    ]
+   }
+  },
+  {
+   "at": "format-auto",
+   "state": {
+    "backdrop": {
+     "format": "auto"
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     277.0,
+     448.0,
+     328.0
+    ]
+   }
+  },
+  {
+   "at": "padded",
+   "state": {
+    "backdrop": {
+     "padding": 150
+    }
+   },
+   "value": {
+    "outside-padding-slider": "150 px"
+   },
+   "rect": {
+    "stage": [
+     170.0,
+     191.0,
+     620.0,
+     500.0
+    ]
+   }
+  },
+  {
+   "at": "padding-undone",
+   "state": {
+    "backdrop": {
+     "padding": 64
+    }
+   }
+  },
+  {
+   "at": "inside",
+   "state": {
+    "backdrop": {
+     "inside_padding": 20
+    },
+    "preview": {
+     "size": [
+      360,
+      240
+     ]
+    }
+   },
+   "rect": {
+    "stage": [
+     150.0,
+     171.0,
+     660.0,
+     540.0
+    ]
+   }
+  },
+  {
+   "at": "styled",
+   "state": {
+    "backdrop": {
+     "inner_radius": 40,
+     "shadow": 15
+    }
+   }
+  },
+  {
+   "at": "gradient",
+   "state": {
+    "backdrop": {
+     "gradient": true,
+     "motion": "still"
+    }
+   },
+   "checked": [
+    "background-gradient"
+   ],
+   "unchecked": [
+    "background-solid"
+   ],
+   "present": [
+    "backdrop-color-1",
+    "backdrop-color-2"
+   ]
+  },
+  {
+   "at": "solid",
+   "state": {
+    "backdrop": {
+     "gradient": false
+    }
+   },
+   "absent": [
+    "backdrop-color-2"
+   ]
+  },
+  {
+   "at": "ocean",
+   "state": {
+    "backdrop": {
+     "preset": 1,
+     "colors": null
+    }
+   },
+   "checked": [
+    "palette-ocean"
+   ],
+   "value": {
+    "backdrop-color-1": "#63B9FF"
+   }
+  },
+  {
+   "at": "picker",
+   "present": [
+    "color-wheel",
+    "hex-field"
+   ],
+   "value": {
+    "backdrop-color-2": "#344AC7"
+   }
+  },
+  {
+   "at": "hex",
+   "state": {
+    "backdrop": {
+     "colors": [
+      [
+       99,
+       185,
+       255
+      ],
+      [
+       16,
+       32,
+       48
+      ]
+     ]
+    }
+   },
+   "value": {
+    "backdrop-color-2": "#102030"
+   }
+  },
+  {
+   "at": "picked",
+   "state": {
+    "backdrop": {
+     "colors": [
+      [
+       64,
+       80,
+       96
+      ],
+      [
+       16,
+       32,
+       48
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "at": "off",
+   "state": {
+    "backdrop": null
+   },
+   "absent": [
+    "stage"
+   ],
+   "unchecked": [
+    "backdrop-enabled"
+   ],
+   "rect": {
+    "image": [
+     320,
+     341,
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "on",
+   "state": {
+    "backdrop": {
+     "padding": 150,
+     "inside_padding": 20,
+     "colors": [
+      [
+       64,
+       80,
+       96
+      ],
+      [
+       16,
+       32,
+       48
+      ]
+     ],
+     "gradient": true
+    }
+   },
+   "checked": [
+    "backdrop-enabled"
+   ],
+   "present": [
+    "stage"
+   ]
+  },
+  {
+   "at": "copied",
+   "clipboard": {
+    "size": [
+     660,
+     540
+    ],
+    "pixels": [
+     [
+      0,
+      0,
+      [
+       64,
+       80,
+       96,
+       255
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "at": "done",
+   "state": {
+    "panel": "Tool"
+   },
+   "absent": [
+    "backdrop-panel"
+   ],
+   "present": [
+    "stage"
+   ]
+  }
+ ]
+}

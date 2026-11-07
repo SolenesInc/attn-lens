@@ -77,6 +77,7 @@ pub enum Action {
     },
     /// Opens the colour picker on one of the backdrop's colours.
     EditBackdropColor(usize),
+    PickBackdropScreenColor(usize),
     /// `remember: false` joins the last undo step, as a slider drag does after its first move.
     SetBackdropControl {
         control: Control,

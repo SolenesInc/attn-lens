@@ -1,0 +1,415 @@
+{
+ "row": "moving backdrops",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "tap",
+   "key": "backdrop-button"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "background-motion"
+  },
+  {
+   "t": 1.18,
+   "type": "mark",
+   "name": "flow"
+  },
+  {
+   "t": 1.3,
+   "type": "tap",
+   "key": "playback"
+  },
+  {
+   "t": 1.6,
+   "type": "mark",
+   "name": "paused"
+  },
+  {
+   "t": 1.72,
+   "type": "tap",
+   "key": "motion-nebula"
+  },
+  {
+   "t": 2.02,
+   "type": "mark",
+   "name": "effect-nebula"
+  },
+  {
+   "t": 2.14,
+   "type": "tap",
+   "key": "motion-aurora"
+  },
+  {
+   "t": 2.44,
+   "type": "mark",
+   "name": "effect-aurora"
+  },
+  {
+   "t": 2.56,
+   "type": "tap",
+   "key": "motion-contours"
+  },
+  {
+   "t": 2.86,
+   "type": "mark",
+   "name": "effect-contours"
+  },
+  {
+   "t": 2.98,
+   "type": "tap",
+   "key": "motion-painterly"
+  },
+  {
+   "t": 3.28,
+   "type": "mark",
+   "name": "effect-paint"
+  },
+  {
+   "t": 3.4,
+   "type": "tap",
+   "key": "motion-prism"
+  },
+  {
+   "t": 3.7,
+   "type": "mark",
+   "name": "effect-prism"
+  },
+  {
+   "t": 3.82,
+   "type": "tap",
+   "key": "motion-liquid"
+  },
+  {
+   "t": 4.12,
+   "type": "mark",
+   "name": "effect-liquid"
+  },
+  {
+   "t": 4.24,
+   "type": "tap",
+   "key": "motion-lava"
+  },
+  {
+   "t": 4.54,
+   "type": "mark",
+   "name": "effect-lava"
+  },
+  {
+   "t": 4.66,
+   "type": "tap",
+   "key": "motion-flow"
+  },
+  {
+   "t": 4.96,
+   "type": "mark",
+   "name": "effect-flow"
+  },
+  {
+   "t": 5.08,
+   "type": "tap",
+   "key": "randomize"
+  },
+  {
+   "t": 5.38,
+   "type": "mark",
+   "name": "randomized"
+  },
+  {
+   "t": 5.5,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 5.8,
+   "type": "mark",
+   "name": "randomize-undone"
+  },
+  {
+   "t": 5.95,
+   "type": "drag",
+   "key": "duration-slider",
+   "dx": 0,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 6.25,
+   "type": "mark",
+   "name": "duration"
+  },
+  {
+   "t": 6.37,
+   "type": "tap",
+   "key": "playback"
+  },
+  {
+   "t": 6.87,
+   "type": "mark",
+   "name": "playing"
+  },
+  {
+   "t": 6.99,
+   "type": "tap",
+   "key": "background-gradient"
+  },
+  {
+   "t": 7.29,
+   "type": "mark",
+   "name": "still"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "flow",
+   "state": {
+    "backdrop": {
+     "motion": "flow",
+     "gradient": true,
+     "preset": 0
+    },
+    "playback": {
+     "playing": true,
+     "position": {
+      "min": 0.2,
+      "max": 0.6
+     }
+    },
+    "stage": {
+     "shown": {
+      "min": 6,
+      "max": 18
+     }
+    }
+   },
+   "checked": [
+    "background-motion",
+    "motion-flow"
+   ],
+   "present": [
+    "randomize",
+    "duration-slider",
+    "stage"
+   ]
+  },
+  {
+   "at": "paused",
+   "state": {
+    "playback": {
+     "playing": false
+    }
+   },
+   "text": {}
+  },
+  {
+   "at": "effect-nebula",
+   "state": {
+    "backdrop": {
+     "motion": "nebula"
+    },
+    "playback": {
+     "playing": false
+    }
+   },
+   "checked": [
+    "motion-nebula"
+   ],
+   "present": [
+    "stage"
+   ]
+  },
+  {
+   "at": "effect-aurora",
+   "state": {
+    "backdrop": {
+     "motion": "aurora"
+    },
+    "playback": {
+     "playing": false
+    }
+   },
+   "checked": [
+    "motion-aurora"
+   ],
+   "present": [
+    "stage"
+   ]
+  },
+  {
+   "at": "effect-contours",
+   "state": {
+    "backdrop": {
+     "motion": "contours"
+    },
+    "playback": {
+     "playing": false
+    }
+   },
+   "checked": [
+    "motion-contours"
+   ],
+   "present": [
+    "stage"
+   ]
+  },
+  {
+   "at": "effect-paint",
+   "state": {
+    "backdrop": {
+     "motion": "paint"
+    },
+    "playback": {
+     "playing": false
+    }
+   },
+   "checked": [
+    "motion-painterly"
+   ],
+   "present": [
+    "stage"
+   ]
+  },
+  {
+   "at": "effect-prism",
+   "state": {
+    "backdrop": {
+     "motion": "prism"
+    },
+    "playback": {
+     "playing": false
+    }
+   },
+   "checked": [
+    "motion-prism"
+   ],
+   "present": [
+    "stage"
+   ]
+  },
+  {
+   "at": "effect-liquid",
+   "state": {
+    "backdrop": {
+     "motion": "liquid"
+    },
+    "playback": {
+     "playing": false
+    }
+   },
+   "checked": [
+    "motion-liquid"
+   ],
+   "present": [
+    "stage"
+   ]
+  },
+  {
+   "at": "effect-lava",
+   "state": {
+    "backdrop": {
+     "motion": "lava"
+    },
+    "playback": {
+     "playing": false
+    }
+   },
+   "checked": [
+    "motion-lava"
+   ],
+   "present": [
+    "stage"
+   ]
+  },
+  {
+   "at": "effect-flow",
+   "state": {
+    "backdrop": {
+     "motion": "flow"
+    },
+    "playback": {
+     "playing": false
+    }
+   },
+   "checked": [
+    "motion-flow"
+   ],
+   "present": [
+    "stage"
+   ]
+  },
+  {
+   "at": "randomized",
+   "state": {
+    "backdrop": {
+     "seed": {
+      "min": 1
+     }
+    }
+   }
+  },
+  {
+   "at": "randomize-undone",
+   "state": {
+    "backdrop": {
+     "seed": 0,
+     "motion": "flow"
+    }
+   }
+  },
+  {
+   "at": "duration",
+   "state": {
+    "backdrop": {
+     "seconds": 9
+    }
+   },
+   "value": {
+    "duration-slider": "9 s"
+   }
+  },
+  {
+   "at": "playing",
+   "state": {
+    "playback": {
+     "playing": true
+    }
+   }
+  },
+  {
+   "at": "still",
+   "state": {
+    "backdrop": {
+     "motion": "still",
+     "gradient": true
+    }
+   },
+   "absent": [
+    "randomize",
+    "duration-slider"
+   ]
+  }
+ ]
+}
