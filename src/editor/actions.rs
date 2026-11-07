@@ -1,5 +1,10 @@
 //! What the user can ask the editor to do, independent of buttons, keys and menus.
-use crate::{document::Tool, style::Style};
+use crate::{
+    animation::{AnimationControl, Entrance, Motion},
+    backdrop::{Control, Format},
+    document::Tool,
+    style::Style,
+};
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -49,7 +54,56 @@ pub enum Action {
     ApplyResize,
     Rotate,
     PickScreenColor,
+    /// Opens or closes the Backdrop panel. Opening it frames an unframed image.
+    ToggleBackdrop,
+    ToggleAnimationPanel,
+    /// Back to the active tool's options.
+    ClosePanel,
+    /// Turns framing off or on, keeping its settings.
+    ToggleBackdropEnabled,
+    SetBackdropFormat(Format),
+    /// Solid or gradient, without motion.
+    SetBackdropFill {
+        gradient: bool,
+    },
+    SelectMotion(Motion),
+    /// `None` picks a fresh variation.
+    RandomizeMotion(Option<u32>),
+    SetBackdropPreset(usize),
+    SetBackdropColor {
+        stop: usize,
+        rgb: [u8; 3],
+        remember: bool,
+    },
+    /// Opens the colour picker on one of the backdrop's colours.
+    EditBackdropColor(usize),
+    /// `remember: false` joins the last undo step, as a slider drag does after its first move.
+    SetBackdropControl {
+        control: Control,
+        value: u32,
+        remember: bool,
+    },
+    TogglePlayback,
+    ReplayAnimation,
+    /// Seconds into the clip.
+    SeekAnimation(f32),
+    SelectEntrance(Entrance),
+    /// Exit returns to the empty backdrop before repeating; otherwise the image holds.
+    SetAnimationExit(bool),
+    SetAnimationControl {
+        control: AnimationControl,
+        value: u32,
+        remember: bool,
+    },
+    Export(AnimationFormat),
+    CancelExport,
     Cancel,
     Help,
     Quit,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnimationFormat {
+    Gif,
+    Mp4,
 }

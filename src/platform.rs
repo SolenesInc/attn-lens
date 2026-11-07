@@ -18,23 +18,6 @@ pub fn load(path: &std::path::Path) -> Result<RgbaImage, String> {
         .map(|i| i.to_rgba8())
         .map_err(|e| e.to_string())
 }
-#[cfg(target_os = "macos")]
-fn dialog(script: &str) -> Result<Option<PathBuf>, String> {
-    let output = Command::new("/usr/bin/osascript")
-        .args(["-e", script])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        let error = String::from_utf8_lossy(&output.stderr);
-        return if error.contains("-128") {
-            Ok(None)
-        } else {
-            Err(error.trim().to_string())
-        };
-    }
-    let path = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
-    Ok(Some(PathBuf::from(path.trim_end())))
-}
 /// Writes a PNG through a scratch file beside the destination, so a failed write leaves
 /// any existing file as it was. A link is written through to its file, and an existing
 /// file keeps its permissions; a new one gets the umask's, like any other new file.
@@ -79,7 +62,16 @@ pub fn save_png(image: &RgbaImage, path: &std::path::Path) -> Result<(), String>
 }
 /// Where a Save dialog starts.
 pub fn pictures_folder() -> Option<PathBuf> {
-    let folder = PathBuf::from(std::env::var_os("HOME")?).join("Pictures");
+    home_folder("Pictures")
+}
+
+/// Where an MP4's Save dialog starts.
+pub fn movies_folder() -> Option<PathBuf> {
+    home_folder("Movies")
+}
+
+fn home_folder(name: &str) -> Option<PathBuf> {
+    let folder = PathBuf::from(std::env::var_os("HOME")?).join(name);
     folder.is_dir().then_some(folder)
 }
 #[cfg(target_os = "macos")]
@@ -114,39 +106,6 @@ pub fn clipboard_image() -> Result<RgbaImage, String> {
     .ok_or_else(|| "Invalid clipboard image.".into())
 }
 
-enum ExportFormat {
-    Gif,
-    Mp4,
-}
-
-#[cfg(target_os = "macos")]
-fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
-    let (prompt, name, extension, folder) = match format {
-        ExportFormat::Gif => (
-            "Export animated backdrop GIF",
-            "Animated Screenshot",
-            "gif",
-            "pictures",
-        ),
-        ExportFormat::Mp4 => (
-            "Export animated backdrop video",
-            "Animated Screenshot",
-            "mp4",
-            "movies",
-        ),
-    };
-    // Use local time and filename-safe separators, like macOS screenshots.
-    // All interpolated values are constants, never user-provided filenames.
-    let script = format!(
-        r#"set timestamp to do shell script "/bin/date '+%Y-%m-%d at %H.%M.%S'"
-set exportName to "{name} " & timestamp & ".{extension}"
-POSIX path of (choose file name with prompt "{prompt}" default name exportName default location (path to {folder} folder))"#
-    );
-    dialog(&script)?
-        .map(|path| checked_export_path(path, extension))
-        .transpose()
-}
-
 // Changing a save-dialog path can bypass its overwrite confirmation.
 // An explicitly chosen filename may be replaced; an appended extension must
 // never turn an unconfirmed choice into a replacement (including symlinks).
@@ -164,13 +123,6 @@ pub fn checked_export_path(mut path: PathBuf, extension: &str) -> Result<PathBuf
     Ok(path)
 }
 
-pub fn animation_destination(gif: bool) -> Result<Option<PathBuf>, String> {
-    export_destination(if gif {
-        ExportFormat::Gif
-    } else {
-        ExportFormat::Mp4
-    })
-}
 #[cfg(target_os = "macos")]
 const SYSTEM_ANNOTATION_FONT: &str = "Arial";
 #[cfg(target_os = "linux")]
@@ -242,10 +194,6 @@ pub fn shortcut_label(label: &str) -> String {
 mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::{clipboard_image, copy};
-#[cfg(target_os = "linux")]
-fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
-    linux::destination(format)
-}
 #[cfg(test)]
 mod tests {
     use super::checked_export_path;

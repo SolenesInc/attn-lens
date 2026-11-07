@@ -95,10 +95,51 @@ pub trait PlatformPort: Send + Sync {
     fn run(&self, job: Box<dyn FnOnce() + Send>) {
         std::thread::spawn(job);
     }
+    /// One long-lived thread that runs its jobs in order, for work that keeps GPU state
+    /// per thread, such as animation frames. The fake runs them inline.
+    fn lane(&self) -> Lane {
+        Lane::thread()
+    }
+    /// The helper that encodes MP4, which `scripts/bundle.sh` puts beside the app.
+    fn video_encoder(&self) -> Result<std::path::PathBuf, String> {
+        crate::video::encoder_path()
+    }
     /// Called from each window's `poll` with Rune's clock. A port whose events
     /// follow that clock returns when to call again.
     fn tick(&self, _now: f64) -> Option<Duration> {
         None
+    }
+}
+
+type Job = Box<dyn FnOnce() + Send>;
+
+/// Where [`PlatformPort::lane`] sends its jobs.
+pub struct Lane(Box<dyn Fn(Job) + Send + Sync>);
+
+impl Lane {
+    fn thread() -> Self {
+        let (send, jobs) = std::sync::mpsc::channel::<Job>();
+        std::thread::Builder::new()
+            .name("lane".into())
+            .spawn(move || {
+                for job in jobs {
+                    job();
+                }
+            })
+            .expect("start the lane thread");
+        // The thread ends when the last sender drops.
+        let send = std::sync::Mutex::new(send);
+        Self(Box::new(move |job| {
+            let _ = send.lock().unwrap().send(job);
+        }))
+    }
+
+    pub fn inline() -> Self {
+        Self(Box::new(|job| job()))
+    }
+
+    pub fn run(&self, job: Job) {
+        (self.0)(job)
     }
 }
 

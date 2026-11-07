@@ -156,6 +156,22 @@ impl Editor {
             .collect();
         let state = serde_json::json!({
             "marks": marks,
+            "backdrop": self.doc.as_ref().and_then(|d| d.backdrop),
+            "animation": self.doc.as_ref().map(|d| d.image_animation),
+            "panel": format!("{:?}", self.panel),
+            "playback": {
+                "position": self.playback.position,
+                "playing": self.playback.playing,
+                "preparing": self.preparing(),
+            },
+            "stage": {
+                "shown": self.stage.shown.map(|key| key.tick),
+                "size": self.stage.pixels.size(),
+            },
+            "export": self.export.as_ref().map(|e| serde_json::json!({
+                "format": e.format.label(),
+                "percent": e.percent,
+            })),
             "preview": {
                 "behind": self.revision - self.preview.shown,
                 "marks": self.preview.marks,
@@ -273,12 +289,33 @@ impl Editor {
             "Screenshot canvas, {width} by {height} pixels, {} annotations",
             doc.marks.len()
         ));
+        let entrance = matches!(self.scene(), Some(super::stage::Scene::Entrance { .. }));
+        if let (Some(rect), Some(shown)) = (self.stage_rect(), self.stage.shown) {
+            root = root.child(
+                el().key("stage")
+                    .label(format!("{:?} tick {}", shown.scene, shown.tick))
+                    .absolute(rect[0], rect[1])
+                    .w(rect[2])
+                    .h(rect[3])
+                    .pixels(&self.stage.pixels)
+                    .inert(),
+            );
+        }
+        if entrance {
+            return root.children(self.annotation_nodes(l));
+        }
         if self.preview.size.0 > 0 {
+            // The image as framed: edges extended by the inside padding, corners rounded.
+            let (inside, radius) = doc.backdrop.map_or((0., 0.), |b| {
+                (b.inside_padding as f32, b.inner_radius as f32)
+            });
+            let inset = inside * l.scale;
             root = root.child(
                 el().key("image")
-                    .absolute(l.x, l.y)
-                    .w(l.width * l.scale)
-                    .h(l.height * l.scale)
+                    .absolute(l.x - inset, l.y - inset)
+                    .w(l.width * l.scale + 2. * inset)
+                    .h(l.height * l.scale + 2. * inset)
+                    .radius(radius * l.scale)
                     .pixels(&self.preview.pixels)
                     .inert(),
             );

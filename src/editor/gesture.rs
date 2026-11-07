@@ -118,6 +118,16 @@ impl Editor {
 
     pub(crate) fn on_canvas_drag(&mut self, drag: &mut Drag, tx: &mut Tx) {
         let shift = tx.mods().shift;
+        // A press on the canvas leaves the Animation panel for editing; that press
+        // draws nothing.
+        if matches!(drag.phase, Phase::Down) && self.panel == super::Panel::Animation {
+            self.dispatch_ui(super::actions::Action::ClosePanel, tx);
+            drag.data = 1.;
+            return;
+        }
+        if drag.data == 1. {
+            return;
+        }
         match drag.phase {
             Phase::Down => self.begin(drag.x, drag.y, shift, tx),
             Phase::Move => self.motion(drag.x, drag.y, shift),

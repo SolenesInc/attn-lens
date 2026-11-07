@@ -1,7 +1,11 @@
 //! The window: toolbar over canvas and sidebar.
-use super::{CopyFeedback, Editor, actions::Action, icons};
+use super::{
+    CopyFeedback, Editor,
+    actions::{Action, AnimationFormat},
+    icons,
+};
 use crate::document::Tool;
-use rune::{Cursor, Cx, El, Icon, col, el, row, text, tok};
+use rune::{Cursor, Cx, El, Icon, PopupItem, PopupMenu, col, el, icon, row, text, tok};
 
 const TOOLS: [(Tool, &str, &Icon, &str); 11] = [
     (
@@ -86,6 +90,20 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
     tools = tools
         .child(el().w(1.).h(22.).fill(t.separator))
         .child(button(
+            "backdrop-button",
+            "Backdrop",
+            &icons::SQUARE,
+            s.panel == super::Panel::Backdrop,
+            Action::ToggleBackdrop,
+        ))
+        .child(button(
+            "animation-button",
+            "Animation",
+            &icons::PLAY,
+            s.panel == super::Panel::Animation,
+            Action::ToggleAnimationPanel,
+        ))
+        .child(button(
             "image-tools-button",
             "Image tools",
             &icons::MAXIMIZE,
@@ -141,6 +159,7 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
             false,
             Action::SaveImage,
         ))
+        .child(export_menu(s, cx))
         .child(button(
             "zoom-out",
             "Zoom out (⌘−)",
@@ -191,6 +210,94 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
         .child(actions)
 }
 
+/// Export PNG, MP4 or GIF, or cancel the export running.
+fn export_menu(s: &Editor, cx: &Cx<Editor>) -> El {
+    let t = tok::theme(cx.system_dark());
+    let exporting = s.export.is_some();
+    el().key("export")
+        .role("button")
+        .label("Export")
+        .help("Export PNG / MP4 / GIF • ⌘S saves PNG")
+        .size(32., 32.)
+        .radius(7.)
+        .center()
+        .cursor(Cursor::Pointer)
+        .hover(t.hover)
+        .press(t.press)
+        .on_press_tx(move |_: &mut Editor, tx| {
+            let menu = if exporting {
+                PopupMenu::new().item(PopupItem::new("cancel", "Cancel export"))
+            } else {
+                PopupMenu::new()
+                    .item(PopupItem::new("png", "Save PNG…"))
+                    .item(PopupItem::new("mp4", "Export MP4…"))
+                    .item(PopupItem::new("gif", "Export GIF…"))
+            };
+            tx.popup_menu(menu, "export", |s: &mut Editor, picked, tx| {
+                let action = match picked {
+                    Some("png") => Action::SaveImage,
+                    Some("mp4") => Action::Export(AnimationFormat::Mp4),
+                    Some("gif") => Action::Export(AnimationFormat::Gif),
+                    Some("cancel") => Action::CancelExport,
+                    _ => return,
+                };
+                s.dispatch_ui(action, tx);
+            });
+        })
+        .child(icon(&icons::VIDEO, 18.).color(t.text).inert())
+}
+
+/// The bar along the bottom while an animation exports.
+fn export_progress(s: &Editor, cx: &Cx<Editor>) -> Option<El> {
+    let export = s.export.as_ref()?;
+    let t = tok::theme(cx.system_dark());
+    let accent = super::live::rgba(super::live::ACCENT);
+    let track = 220.;
+    Some(
+        row()
+            .key("export-progress")
+            .role("progressbar")
+            .label(format!("Exporting {}", export.format.label()))
+            .range_value(export.percent as f64, 0., 100.)
+            .w_full()
+            .h(34.)
+            .px(12.)
+            .gap(10.)
+            .center_y()
+            .fill(t.card)
+            .child(
+                text(format!(
+                    "Exporting {}… {}%",
+                    export.format.label(),
+                    export.percent
+                ))
+                .key("export-percent")
+                .font(tok::type_::LABEL)
+                .color(t.text),
+            )
+            .child(
+                el().w(track)
+                    .h(4.)
+                    .radius(2.)
+                    .fill(t.control_track)
+                    .child(
+                        el().w(track * export.percent as f32 / 100.)
+                            .h(4.)
+                            .radius(2.)
+                            .fill(accent),
+                    )
+                    .inert(),
+            )
+            .child(super::panels::controls::button(
+                cx,
+                "export-cancel",
+                "Cancel export",
+                true,
+                |s: &mut Editor, tx| s.dispatch_ui(Action::CancelExport, tx),
+            )),
+    )
+}
+
 pub fn view(s: &Editor, cx: &mut Cx<Editor>) -> El {
     let t = tok::theme(cx.system_dark());
     let root = col()
@@ -218,7 +325,8 @@ pub fn view(s: &Editor, cx: &mut Cx<Editor>) -> El {
                 .min_h(0.)
                 .child(s.canvas_view(cx))
                 .child(s.sidebar(cx)),
-        );
+        )
+        .children(export_progress(s, cx));
     // Always there, so a message never moves the canvas under the pointer.
     root.child(
         row()

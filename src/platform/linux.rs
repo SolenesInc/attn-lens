@@ -10,52 +10,6 @@ pub fn permission() -> Result<(), String> {
     }
     Ok(())
 }
-fn dialog(args: &[&str]) -> Result<Option<PathBuf>, String> {
-    let output = Command::new("zenity")
-        .arg("--file-selection")
-        .args(args)
-        .output()
-        .map_err(|e| format!("Cannot open the file dialog: {e}. Install zenity."))?;
-    if output.status.code() == Some(1) {
-        return Ok(None);
-    }
-    if !output.status.success() {
-        return Err(format!(
-            "File dialog failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    let path = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
-    if path.trim_end().is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(PathBuf::from(path.trim_end())))
-}
-pub fn destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
-    let extension = match format {
-        ExportFormat::Gif => "gif",
-        ExportFormat::Mp4 => "mp4",
-    };
-    let stamp = Command::new("date")
-        .arg("+%Y-%m-%d at %H.%M.%S")
-        .output()
-        .map_err(|e| e.to_string())?;
-    let filename = format!(
-        "--filename=Screenshot {}.{extension}",
-        String::from_utf8_lossy(&stamp.stdout).trim()
-    );
-    let Some(path) = dialog(&[
-        "--save",
-        "--confirm-overwrite",
-        "--title=Export from Glance",
-        &filename,
-    ])?
-    else {
-        return Ok(None);
-    };
-    checked_export_path(path, extension).map(Some)
-}
-
 pub fn copy(image: RgbaImage) -> Result<(), String> {
     let mut bytes = std::io::Cursor::new(Vec::new());
     image

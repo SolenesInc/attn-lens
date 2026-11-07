@@ -110,6 +110,11 @@ impl Editor {
 pub(crate) fn render(document: &Document) -> Rendered {
     let marks = document.marks.len();
     let image = document.render(None);
+    // The canvas frames the image as exported: edges extended by the inside padding.
+    let image = match document.backdrop {
+        Some(b) if b.inside_padding > 0 => b.extend_edges(&image).into_owned(),
+        _ => image,
+    };
     let longest = image.width().max(image.height());
     let image = if longest > MAX_VIEW_SIDE {
         let fit = |side: u32| (side as u64 * MAX_VIEW_SIDE as u64 / longest as u64).max(1) as u32;

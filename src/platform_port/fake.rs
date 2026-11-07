@@ -14,6 +14,7 @@
 //!
 //! When `ATTN_LENS_FAKE_CLIPBOARD` names a folder, what the app copies lands in
 //! it as `image.png` and `text.txt`, so a test can read what a user would paste.
+//! `ATTN_LENS_FAKE_VIDEO_ENCODER` names a stand-in for the MP4 helper.
 use super::{Chord, FAKE_TICK, KeyEvent, PlatformPort, Sink, Voice, Watch, WatchEvent};
 use crate::lens::session::{Area, HostTime, Segment};
 use image::{Rgba, RgbaImage};
@@ -231,6 +232,16 @@ impl PlatformPort for FakePort {
     }
     fn exposes_state(&self) -> bool {
         true
+    }
+    fn lane(&self) -> super::Lane {
+        super::Lane::inline()
+    }
+    /// `ATTN_LENS_FAKE_VIDEO_ENCODER` names a stand-in for the helper.
+    fn video_encoder(&self) -> Result<std::path::PathBuf, String> {
+        match std::env::var_os("ATTN_LENS_FAKE_VIDEO_ENCODER") {
+            Some(path) => Ok(path.into()),
+            None => crate::video::encoder_path(),
+        }
     }
     fn pick_color(&self, sink: PickSink) {
         self.script.lock().unwrap().pick = Some(sink);

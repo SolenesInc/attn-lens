@@ -1,6 +1,8 @@
 //! The single entry point for editor actions. Triggers only construct data.
 use super::{CopyFeedback, Editor, Message, NumberDraft, Operation, Panel, actions::Action};
 use crate::{
+    animation::{AnimationControl, Motion},
+    backdrop::{Backdrop, PRESETS},
     document::{Document, Tool, actions::DocumentAction, actions::Selection},
     style::Style,
 };
@@ -17,6 +19,7 @@ impl Editor {
         if let Err(error) = self.dispatch(action, tx) {
             self.status = error;
         }
+        self.request_frame();
     }
 
     pub(crate) fn dispatch(&mut self, action: Action, tx: &mut Tx) -> Result<(), String> {
@@ -43,9 +46,12 @@ impl Editor {
                 | Action::SetResizeScale(_)
                 | Action::ToggleSmartResize
         );
+        let needs_image =
+            needs_image && !matches!(action, Action::ClosePanel | Action::CancelExport);
         if needs_image && self.doc.is_none() {
             return Err("Open an image first.".into());
         }
+        self.check_against_document(&action)?;
         let harmless_while_busy = matches!(
             action,
             Action::Quit
@@ -56,6 +62,11 @@ impl Editor {
                 | Action::Zoom(_)
                 | Action::ZoomAt { .. }
                 | Action::PanBy(_)
+                | Action::CancelExport
+                | Action::TogglePlayback
+                | Action::ReplayAnimation
+                | Action::SeekAnimation(_)
+                | Action::ClosePanel
         );
         if self.is_busy() && !harmless_while_busy {
             return Err("Editor is busy. Wait for the current operation to finish.".into());
@@ -114,9 +125,10 @@ impl Editor {
                 let id = self.start(Operation::Copy);
                 self.status = "Copying…".into();
                 let document = self.doc().render_snapshot();
+                let phase = self.export_phase();
                 let (mailbox, port) = (self.mailbox.clone(), self.port.clone());
                 self.port.run(Box::new(move || {
-                    let result = port.copy_image(document.export());
+                    let result = port.copy_image(document.export_at(phase));
                     mailbox.post(Message::Copied { id, result });
                 }));
             }
@@ -263,12 +275,211 @@ impl Editor {
                 self.commit_text(tx);
                 self.panel = match self.panel {
                     Panel::Image => Panel::Tool,
-                    Panel::Tool => Panel::Image,
+                    _ => Panel::Image,
                 };
                 self.picker.open = false;
             }
+            Action::ToggleBackdrop => {
+                self.commit_text(tx);
+                self.cancel_gesture();
+                self.picker.open = false;
+                if self.panel == Panel::Backdrop {
+                    self.panel = Panel::Tool;
+                    return Ok(());
+                }
+                self.panel = Panel::Backdrop;
+                if self.doc().backdrop.is_none() {
+                    self.backdrop_style(true, |_| {}, tx);
+                    self.status = "Backdrop added • style it in the panel • ⌘Z to undo".into();
+                }
+            }
+            Action::ToggleAnimationPanel => {
+                self.commit_text(tx);
+                self.cancel_gesture();
+                self.picker.open = false;
+                if self.panel == Panel::Animation {
+                    self.panel = Panel::Tool;
+                } else {
+                    self.panel = Panel::Animation;
+                    self.set_selection(vec![]);
+                    self.replay();
+                }
+            }
+            Action::ClosePanel => {
+                self.commit_text(tx);
+                self.picker.open = false;
+                self.panel = Panel::Tool;
+            }
+            Action::ToggleBackdropEnabled => {
+                self.commit_text(tx);
+                self.cancel_gesture();
+                let current = self.doc().backdrop;
+                let backdrop = match current {
+                    Some(_) => None,
+                    None => {
+                        let mut b = self.backdrop_off.unwrap_or_default();
+                        if self.doc().image_animation.enabled() {
+                            b.seconds = self.doc().animation_seconds();
+                        }
+                        Some(b)
+                    }
+                };
+                self.edit(
+                    DocumentAction::SetBackdrop {
+                        backdrop,
+                        remember: true,
+                    },
+                    tx,
+                );
+                if current.is_some() {
+                    self.backdrop_off = current;
+                }
+            }
+            Action::SetBackdropFormat(format) => {
+                self.backdrop_style(true, |b| b.format = format, tx)
+            }
+            Action::SetBackdropFill { gradient } => self.backdrop_style(
+                true,
+                |b| {
+                    b.gradient = gradient;
+                    b.motion = Motion::Still;
+                },
+                tx,
+            ),
+            Action::SelectMotion(motion) => self.backdrop_style(
+                true,
+                |b| {
+                    if b.motion != motion
+                        && b.colors.is_none()
+                        && let Some(preset) = motion.suggested_preset()
+                    {
+                        b.preset = preset;
+                    }
+                    b.motion = motion;
+                    b.gradient = true;
+                },
+                tx,
+            ),
+            Action::RandomizeMotion(seed) => self.backdrop_style(
+                true,
+                |b| {
+                    b.seed = seed.unwrap_or_else(|| {
+                        // RandomState is seeded randomly; hashing the old seed gives a new one.
+                        let random = std::collections::hash_map::RandomState::new();
+                        (1u64..)
+                            .map(|salt| {
+                                std::hash::BuildHasher::hash_one(&random, (b.seed, salt)) as u32
+                            })
+                            .find(|candidate| *candidate != 0 && *candidate != b.seed)
+                            .expect("a fresh seed")
+                    });
+                },
+                tx,
+            ),
+            Action::SetBackdropPreset(preset) => self.backdrop_style(
+                true,
+                |b| {
+                    b.preset = preset;
+                    b.colors = None;
+                },
+                tx,
+            ),
+            Action::SetBackdropColor {
+                stop,
+                rgb,
+                remember,
+            } => {
+                self.backdrop_style(remember, |b| b.set_color(stop, rgb), tx);
+                if !self.picker.continuing {
+                    self.picker.sync(rgb);
+                }
+            }
+            Action::EditBackdropColor(stop) => {
+                let same = self.picker.open && self.picker.stop == Some(stop);
+                self.picker.open = !same;
+                self.picker.stop = Some(stop);
+                let hex = self.current_backdrop().colors()[stop];
+                self.picker
+                    .sync([(hex >> 16) as u8, (hex >> 8) as u8, hex as u8]);
+            }
+            Action::SetBackdropControl {
+                control,
+                value,
+                remember,
+            } => self.backdrop_style(remember, |b| control.set(b, value), tx),
+            Action::TogglePlayback => self.toggle_playback(),
+            Action::ReplayAnimation => self.replay(),
+            Action::SeekAnimation(seconds) => {
+                self.playback.position = seconds;
+                self.playback.playing = false;
+            }
+            Action::SelectEntrance(effect) => {
+                self.commit_text(tx);
+                self.cancel_gesture();
+                let mut animation = self.doc().image_animation;
+                if !animation.enabled() {
+                    animation.seconds = self.doc().animation_seconds();
+                }
+                animation.effect = effect;
+                self.edit(
+                    DocumentAction::SetImageAnimation {
+                        animation,
+                        remember: true,
+                    },
+                    tx,
+                );
+                self.panel = Panel::Animation;
+                self.picker.open = false;
+                self.set_selection(vec![]);
+                self.replay();
+            }
+            Action::SetAnimationExit(exit) => {
+                let animation = crate::animation::ImageAnimation {
+                    exit,
+                    ..self.doc().image_animation
+                };
+                self.edit(
+                    DocumentAction::SetImageAnimation {
+                        animation,
+                        remember: true,
+                    },
+                    tx,
+                );
+                self.replay();
+            }
+            Action::SetAnimationControl {
+                control: AnimationControl::Time,
+                value,
+                ..
+            } => {
+                self.playback.position = value as f32 / 1000.;
+                self.playback.playing = false;
+            }
+            Action::SetAnimationControl {
+                control,
+                value,
+                remember,
+            } => {
+                let mut animation = self.doc().image_animation;
+                control.set(&mut animation, value);
+                self.edit(
+                    DocumentAction::SetImageAnimation {
+                        animation,
+                        remember,
+                    },
+                    tx,
+                );
+                self.replay();
+            }
+            Action::Export(format) => self.export_animation(format, tx),
+            Action::CancelExport => {
+                if !self.cancel_export() {
+                    return Err("No export is running".into());
+                }
+            }
             Action::ToggleColorPicker => {
-                self.picker.open = !self.picker.open;
+                self.picker.open = !(self.picker.open && self.picker.stop.is_none());
+                self.picker.stop = None;
                 let color = self.tool_settings().color;
                 self.picker.sync([color[0], color[1], color[2]]);
             }
@@ -295,7 +506,8 @@ impl Editor {
                 }));
             }
             Action::Cancel => {
-                if self.text.take().is_some() {
+                if self.cancel_export() {
+                } else if self.text.take().is_some() {
                     self.status = "Text canceled".into();
                 } else if self.picker.open {
                     self.picker.open = false;
@@ -326,6 +538,67 @@ impl Editor {
         Ok(())
     }
 
+    /// What only the open document can rule out.
+    fn check_against_document(&self, action: &Action) -> Result<(), String> {
+        let Some(doc) = &self.doc else {
+            return Ok(());
+        };
+        match action {
+            Action::RandomizeMotion(_) if self.current_backdrop().motion == Motion::Still => {
+                Err("Choose a backdrop motion before randomizing it.".into())
+            }
+            Action::SeekAnimation(seconds) => {
+                let clip = doc.animation_seconds() as f32;
+                if seconds.is_finite() && (0. ..=clip).contains(seconds) {
+                    Ok(())
+                } else {
+                    Err(format!("Preview time must be 0..{clip} s, got {seconds}"))
+                }
+            }
+            Action::SetAnimationControl { control, value, .. } => {
+                let (min, max, _) = control.range(doc.image_animation);
+                if (min..=max).contains(value) {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "{} must be {min}..{max}, got {value}",
+                        control.label()
+                    ))
+                }
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// The backdrop the panel shows: the document's, or the one turned off.
+    pub(crate) fn current_backdrop(&self) -> Backdrop {
+        self.doc
+            .as_ref()
+            .and_then(|doc| doc.backdrop)
+            .or(self.backdrop_off)
+            .unwrap_or_default()
+    }
+
+    /// Changes the backdrop, turning it on if it was off.
+    fn backdrop_style(&mut self, remember: bool, change: impl FnOnce(&mut Backdrop), tx: &mut Tx) {
+        if remember {
+            self.commit_text(tx);
+            self.cancel_gesture();
+        }
+        let mut b = self.current_backdrop();
+        if self.doc().image_animation.enabled() {
+            b.seconds = self.doc().animation_seconds();
+        }
+        change(&mut b);
+        self.edit(
+            DocumentAction::SetBackdrop {
+                backdrop: Some(b),
+                remember,
+            },
+            tx,
+        );
+    }
+
     fn prepare_option_edit(&mut self, tx: &mut Tx) {
         self.commit_text(tx);
         self.cancel_gesture();
@@ -348,7 +621,7 @@ impl Editor {
         }
     }
 
-    fn start(&mut self, operation: Operation) -> u64 {
+    pub(crate) fn start(&mut self, operation: Operation) -> u64 {
         self.next_operation += 1;
         self.operation = Some((self.next_operation, operation));
         self.next_operation
@@ -365,9 +638,11 @@ impl Editor {
         let id = self.start(Operation::Save);
         self.status = "Saving…".into();
         let document = self.doc().render_snapshot();
+        let phase = self.export_phase();
         let mailbox = self.mailbox.clone();
         self.port.run(Box::new(move || {
-            let result = crate::platform::save_png(&document.export(), &path).map(|()| path);
+            let result =
+                crate::platform::save_png(&document.export_at(phase), &path).map(|()| path);
             mailbox.post(Message::Saved { id, result });
         }));
     }
@@ -564,12 +839,17 @@ impl Editor {
     /// Takes in what a worker finished.
     pub(crate) fn receive(&mut self, message: Message, tx: &mut Tx) {
         let id = match &message {
-            Message::Preview(_) | Message::LensSource { .. } | Message::LensTile { .. } => None,
+            Message::Preview(_)
+            | Message::Frame(_)
+            | Message::ExportProgress { .. }
+            | Message::LensSource { .. }
+            | Message::LensTile { .. } => None,
             Message::Replaced { id, .. }
             | Message::Saved { id, .. }
             | Message::Copied { id, .. }
             | Message::Recognized { id, .. }
-            | Message::ColorSampled { id, .. } => Some(*id),
+            | Message::ColorSampled { id, .. }
+            | Message::Exported { id, .. } => Some(*id),
         };
         let operation = self.operation.map(|(_, operation)| operation);
         if let Some(id) = id {
@@ -581,6 +861,9 @@ impl Editor {
         }
         match message {
             Message::Preview(rendered) => self.receive_preview(rendered),
+            Message::Frame(frame) => self.receive_frame(*frame),
+            Message::ExportProgress { id, percent } => self.receive_progress(id, percent),
+            Message::Exported { result, .. } => self.receive_export(result),
             Message::LensSource { request, image } => {
                 if request == self.lens_request {
                     self.live_source = Some(image);
@@ -632,7 +915,8 @@ impl Editor {
             }
             Message::ColorSampled { color, .. } => match color {
                 Ok(Some(rgb)) => {
-                    self.dispatch_ui(Action::SetRgb(rgb), tx);
+                    let action = self.picked(rgb, true);
+                    self.dispatch_ui(action, tx);
                 }
                 Ok(None) => {}
                 Err(error) => self.status = error,
@@ -678,12 +962,29 @@ fn validate(action: &Action) -> Result<(), String> {
         {
             Err("Zoom factor must be positive and finite".into())
         }
+        Action::SetBackdropPreset(preset) if *preset >= PRESETS.len() => Err(format!(
+            "Backdrop palette must be 0..{}, got {preset}",
+            PRESETS.len() - 1
+        )),
+        Action::SetBackdropColor { stop, .. } | Action::EditBackdropColor(stop) if *stop > 1 => {
+            Err("Backdrop color stop must be 0 or 1".into())
+        }
+        Action::SetBackdropControl { control, value, .. }
+            if !(control.min()..=control.max()).contains(value) =>
+        {
+            Err(format!(
+                "{} must be {}..{}, got {value}",
+                control.label(),
+                control.min(),
+                control.max()
+            ))
+        }
         _ => Ok(()),
     }
 }
 
 /// Local time with filename-safe separators, like macOS screenshots.
-fn timestamp() -> String {
+pub(crate) fn timestamp() -> String {
     std::process::Command::new("date")
         .arg("+%Y-%m-%d at %H.%M.%S")
         .output()

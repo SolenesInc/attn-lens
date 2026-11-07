@@ -1,5 +1,7 @@
 //! The right sidebar: the selected mark's options, otherwise the active tool's, or
 //! the image tools.
+mod animation;
+mod backdrop;
 pub(crate) mod controls;
 mod image;
 mod tools;
@@ -73,6 +75,8 @@ impl Editor {
                     .child(match self.panel {
                         Panel::Tool => self.tool_controls(cx),
                         Panel::Image => self.image_controls(cx),
+                        Panel::Backdrop => self.backdrop_controls(cx),
+                        Panel::Animation => self.animation_controls(cx),
                     }),
             )
     }
