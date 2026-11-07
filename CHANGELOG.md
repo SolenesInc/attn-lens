@@ -11,6 +11,9 @@ Notable user-visible changes are recorded here.
   inline text with input methods, native menus and accessibility. Images past 8192
   pixels view downscaled and still save at full size. Pan with Space-drag or the
   middle button; right-drag no longer pans.
+- The editor's Backdrop and Animation panels are back on Rune: formats, padding,
+  corners, shadow, solid, gradient and moving backgrounds, entrance effects with
+  Hold or Exit, playback, and GIF and MP4 export with progress and Cancel.
 - **Attn Lens**: ⌘⌥2 freezes the display under the pointer and opens an ink
   layer with a Send bar. Drag for arrows, ⇧drag for boxes, ⌥T for labels, type a
   message and press ↩ to send to an attn session, local or on an outpost. Tab
