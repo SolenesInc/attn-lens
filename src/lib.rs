@@ -5,6 +5,7 @@ pub mod app;
 pub mod arrow;
 pub mod backdrop;
 pub mod document;
+pub mod editor;
 pub mod effects;
 pub mod enhance;
 pub mod gif_export;

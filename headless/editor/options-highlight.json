@@ -1,0 +1,173 @@
+{
+ "row": "Highlight",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "h"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "color-amber"
+  },
+  {
+   "t": 0.88,
+   "type": "tap",
+   "key": "intensity-dec"
+  },
+  {
+   "t": 1.08,
+   "type": "drag",
+   "dx": 100,
+   "dy": 60,
+   "dur": 0.05,
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 1.38,
+   "type": "mark",
+   "name": "drawn"
+  },
+  {
+   "t": 1.5,
+   "type": "key",
+   "name": "F20",
+   "code": "f20",
+   "shift": true
+  },
+  {
+   "t": 1.62,
+   "type": "drag",
+   "dx": 50,
+   "dy": 20,
+   "dur": 0.05,
+   "x": 470,
+   "y": 361
+  },
+  {
+   "t": 1.82,
+   "type": "key",
+   "name": "F20",
+   "code": "f20"
+  },
+  {
+   "t": 2.04,
+   "type": "mark",
+   "name": "square"
+  },
+  {
+   "t": 2.16,
+   "type": "key",
+   "name": "s",
+   "cmd": true
+  },
+  {
+   "t": 2.28,
+   "type": "file-dialog",
+   "path": "$OUT/high.png"
+  },
+  {
+   "t": 2.68,
+   "type": "mark",
+   "name": "saved"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "drawn",
+   "marks": [
+    {
+     "tool": "Highlight",
+     "color": [
+      255,
+      184,
+      46,
+      230
+     ],
+     "points": [
+      [
+       20,
+       20
+      ],
+      [
+       120,
+       80
+      ]
+     ]
+    }
+   ],
+   "value": {
+    "intensity-field": "90"
+   },
+   "absent": [
+    "thickness-field"
+   ]
+  },
+  {
+   "at": "square",
+   "marks": [
+    {
+     "tool": "Highlight"
+    },
+    {
+     "tool": "Highlight",
+     "points": [
+      [
+       150,
+       20
+      ],
+      [
+       200,
+       70
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "at": "saved",
+   "png": {
+    "path": "$OUT/high.png",
+    "size": [
+     320,
+     200
+    ],
+    "changed": [
+     [
+      60,
+      50
+     ]
+    ],
+    "unchanged": [
+     [
+      300,
+      190
+     ]
+    ]
+   }
+  }
+ ]
+}

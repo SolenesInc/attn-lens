@@ -1,0 +1,59 @@
+{
+ "row": "Pen",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "p"
+  },
+  {
+   "t": 0.68,
+   "type": "drag",
+   "dx": 100,
+   "dy": 50,
+   "dur": 0.05,
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 0.98,
+   "type": "mark",
+   "name": "drawn"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "drawn",
+   "marks": [
+    {
+     "tool": "Pen",
+     "selected": true
+    }
+   ],
+   "checked": [
+    "tool-pen"
+   ]
+  }
+ ]
+}

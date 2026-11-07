@@ -77,6 +77,16 @@ pub trait PlatformPort: Send + Sync {
     fn voice(&self, sink: Sink<Segment>) -> Result<Voice, String>;
     /// The token from pairing with attn.
     fn token(&self) -> Option<String>;
+    /// Puts an image on the system clipboard.
+    fn copy_image(&self, image: RgbaImage) -> Result<(), String>;
+    /// The image on the system clipboard.
+    fn clipboard_image(&self) -> Result<RgbaImage, String>;
+    /// Puts text on the system clipboard.
+    fn copy_text(&self, text: &str) -> Result<(), String>;
+    /// Reads text from `image`, optionally within [x, y, width, height]. Slow: call it from [`Self::run`].
+    fn ocr(&self, image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String>;
+    /// Lets the user pick a color anywhere on screen. `None` means they cancelled.
+    fn pick_color(&self, sink: Sink<Result<Option<[u8; 3]>, String>>);
     /// Runs slow work off the UI thread.
     fn run(&self, job: Box<dyn FnOnce() + Send>) {
         std::thread::spawn(job);

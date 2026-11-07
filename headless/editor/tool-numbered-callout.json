@@ -1,0 +1,83 @@
+{
+ "row": "Numbered callout",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "n"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "x": 360,
+   "y": 381
+  },
+  {
+   "t": 0.88,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 1.0,
+   "type": "tap",
+   "x": 400,
+   "y": 381
+  },
+  {
+   "t": 1.2,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 1.32,
+   "type": "tap",
+   "x": 440,
+   "y": 381
+  },
+  {
+   "t": 1.62,
+   "type": "mark",
+   "name": "placed"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "placed",
+   "marks": [
+    {
+     "tool": "Step",
+     "text": "1"
+    },
+    {
+     "tool": "Step",
+     "text": "2"
+    },
+    {
+     "tool": "Step",
+     "text": "3"
+    }
+   ]
+  }
+ ]
+}

@@ -255,4 +255,38 @@ impl PlatformPort for MacPort {
     fn token(&self) -> Option<String> {
         attn::token()
     }
+
+    fn copy_image(&self, image: RgbaImage) -> Result<(), String> {
+        crate::platform::copy(image)
+    }
+
+    fn clipboard_image(&self) -> Result<RgbaImage, String> {
+        crate::platform::clipboard_image()
+    }
+
+    fn copy_text(&self, text: &str) -> Result<(), String> {
+        arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.set_text(text))
+            .map_err(|e| e.to_string())
+    }
+
+    fn ocr(&self, image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String> {
+        crate::ocr::extract(image, rectangle)
+    }
+
+    fn pick_color(&self, sink: Sink<Result<Option<[u8; 3]>, String>>) {
+        // AppKit shows the sampler on the main thread; this thread waits for its answer.
+        on_main(move || match crate::platform::sample_screen_color() {
+            Ok(answer) => {
+                std::thread::spawn(move || {
+                    sink(
+                        answer
+                            .recv_blocking()
+                            .unwrap_or_else(|_| Err("Screen sampler closed".into())),
+                    );
+                });
+            }
+            Err(error) => sink(Err(error)),
+        });
+    }
 }

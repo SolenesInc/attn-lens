@@ -35,23 +35,31 @@ fn dialog(script: &str) -> Result<Option<PathBuf>, String> {
     let path = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
     Ok(Some(PathBuf::from(path.trim_end())))
 }
-#[cfg(target_os = "macos")]
-pub fn open() -> Result<Option<RgbaImage>, String> {
-    match dialog(
-        "POSIX path of (choose file with prompt \"Open an image in Glance\" of type {\"public.png\", \"public.jpeg\"})",
-    )? {
-        Some(path) => load(&path).map(Some),
-        None => Ok(None),
-    }
-}
-pub fn save(image: RgbaImage) -> Result<Option<PathBuf>, String> {
-    let Some(path) = export_destination(ExportFormat::Png)? else {
-        return Ok(None);
-    };
-    image
-        .save_with_format(&path, image::ImageFormat::Png)
+/// Writes a PNG through a scratch file beside the destination, so a failed write leaves
+/// any existing file as it was.
+pub fn save_png(image: &RgbaImage, path: &std::path::Path) -> Result<(), String> {
+    let folder = path
+        .parent()
+        .filter(|folder| !folder.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    let scratch = tempfile::Builder::new()
+        .prefix(".attn-lens-")
+        .suffix(".png")
+        .tempfile_in(folder)
         .map_err(|e| e.to_string())?;
-    Ok(Some(path))
+    image
+        .write_to(
+            &mut std::io::BufWriter::new(scratch.as_file()),
+            image::ImageFormat::Png,
+        )
+        .map_err(|e| e.to_string())?;
+    scratch.persist(path).map_err(|e| e.error.to_string())?;
+    Ok(())
+}
+/// Where a Save dialog starts.
+pub fn pictures_folder() -> Option<PathBuf> {
+    let folder = PathBuf::from(std::env::var_os("HOME")?).join("Pictures");
+    folder.is_dir().then_some(folder)
 }
 #[cfg(target_os = "macos")]
 pub fn copy(image: RgbaImage) -> Result<(), String> {
@@ -86,7 +94,6 @@ pub fn clipboard_image() -> Result<RgbaImage, String> {
 }
 
 enum ExportFormat {
-    Png,
     Gif,
     Mp4,
 }
@@ -94,7 +101,6 @@ enum ExportFormat {
 #[cfg(target_os = "macos")]
 fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
     let (prompt, name, extension, folder) = match format {
-        ExportFormat::Png => ("Save annotated screenshot", "Screenshot", "png", "pictures"),
         ExportFormat::Gif => (
             "Export animated backdrop GIF",
             "Animated Screenshot",
@@ -123,7 +129,7 @@ POSIX path of (choose file name with prompt "{prompt}" default name exportName d
 // Changing a save-dialog path can bypass its overwrite confirmation.
 // An explicitly chosen filename may be replaced; an appended extension must
 // never turn an unconfirmed choice into a replacement (including symlinks).
-fn checked_export_path(mut path: PathBuf, extension: &str) -> Result<PathBuf, String> {
+pub fn checked_export_path(mut path: PathBuf, extension: &str) -> Result<PathBuf, String> {
     if path.extension().is_none() {
         path.set_extension(extension);
         match std::fs::symlink_metadata(&path) {
@@ -214,7 +220,7 @@ pub fn shortcut_label(label: &str) -> String {
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::{clipboard_image, copy, open};
+pub use linux::{clipboard_image, copy};
 #[cfg(target_os = "linux")]
 fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
     linux::destination(format)
