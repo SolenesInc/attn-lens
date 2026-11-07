@@ -149,8 +149,7 @@ pub(crate) fn number(
     let shown = super::shown_number(value);
     let editing = s.number.as_ref().is_some_and(|d| d.label == label);
     let center: El = if editing {
-        let invalid = s.number.as_ref().is_some_and(|d| d.invalid);
-        let mut input = text_input(&s.number_edit, tok::type_::LABEL)
+        text_input(&s.number_edit, tok::type_::LABEL)
             .key(format!("{key}-input"))
             .label(label)
             .single_line()
@@ -168,11 +167,7 @@ pub(crate) fn number(
                     return true;
                 }
                 false
-            });
-        if invalid {
-            input = input.border(1., rgba([0xe5, 0x48, 0x4d, 255]));
-        }
-        input
+            })
     } else {
         row()
             .key(format!("{key}-value"))

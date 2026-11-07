@@ -253,7 +253,7 @@ impl Editor {
             }
             _ => {
                 if self.tool == Tool::Magnifier {
-                    self.live_source = Some(std::sync::Arc::new(self.doc().plain(None)));
+                    self.flatten_for_lens();
                 }
                 self.gesture = Gesture::Drawing(mark);
                 self.refresh_lens();
@@ -375,7 +375,6 @@ impl Editor {
     }
 
     fn finish_drawing(&mut self, mut mark: Mark, x: f32, y: f32, shift: bool, tx: &mut Tx) {
-        self.live_source = None;
         if let Some(p) = self.coordinate(x, y, true) {
             let end = constrained(&mark, p, shift, self.layout(), self.crop_ratio);
             mark.points.push(end);
@@ -415,7 +414,7 @@ impl Editor {
             Gesture::Moving { drag, handle }
         };
         if self.doc().marks[index].tool == Tool::Magnifier {
-            self.live_source = Some(std::sync::Arc::new(self.doc().plain(None)));
+            self.flatten_for_lens();
         }
         // The raster stops below the moving marks, so they can be drawn live.
         self.changed();
@@ -424,7 +423,6 @@ impl Editor {
 
     pub(crate) fn cancel_gesture(&mut self) {
         let gesture = std::mem::take(&mut self.gesture);
-        self.live_source = None;
         if let Gesture::Selecting { previous, .. } = &gesture {
             self.set_selection(previous.clone());
         }
@@ -450,6 +448,10 @@ impl Editor {
         indices.sort_unstable();
         indices.dedup();
         self.selected = indices;
+        if self.picker.open {
+            let [r, g, b, _] = self.tool_settings().color;
+            self.picker.sync([r, g, b]);
+        }
     }
 
     /// Selects marks whose bounds intersect the rectangle, in image pixels.

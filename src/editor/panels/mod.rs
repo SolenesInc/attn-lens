@@ -45,10 +45,7 @@ impl Editor {
     pub(crate) fn begin_number(&mut self, label: &'static str, value: f32, tx: &mut Tx) {
         self.commit_text(tx);
         self.commit_number(tx);
-        self.number = Some(NumberDraft {
-            label,
-            invalid: false,
-        });
+        self.number = Some(NumberDraft { label });
         let shown = shown_number(value);
         let end = shown.len();
         self.number_edit = rune::TextEdit::new(shown);

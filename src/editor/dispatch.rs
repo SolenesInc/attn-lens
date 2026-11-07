@@ -206,6 +206,9 @@ impl Editor {
                 self.defaults[self.options_tool().index()].color = color;
                 let remember = !self.picker.continuing;
                 self.update_selected(remember, |mark| mark.color = color, tx);
+                if !self.picker.continuing {
+                    self.picker.sync([color[0], color[1], color[2]]);
+                }
             }
             Action::SetRgb([r, g, b]) => {
                 let alpha = self.tool_settings().color[3];
@@ -502,7 +505,7 @@ impl Editor {
 
     /// Applies the number being typed, if it parses within limits.
     pub(crate) fn commit_number(&mut self, tx: &mut Tx) {
-        let Some(NumberDraft { label, .. }) = self.number.take() else {
+        let Some(NumberDraft { label }) = self.number.take() else {
             return;
         };
         let limits = super::panels::number_limits(label);
@@ -549,7 +552,7 @@ impl Editor {
     /// Takes in what a worker finished.
     pub(crate) fn receive(&mut self, message: Message, tx: &mut Tx) {
         let id = match &message {
-            Message::Preview(_) => None,
+            Message::Preview(_) | Message::LensSource(_) => None,
             Message::Image { id, .. }
             | Message::Transformed { id, .. }
             | Message::Saved { id, .. }
@@ -566,6 +569,12 @@ impl Editor {
         }
         match message {
             Message::Preview(rendered) => self.receive_preview(rendered),
+            Message::LensSource(image) => {
+                if self.gesture.is_active() {
+                    self.live_source = Some(image);
+                    self.refresh_lens();
+                }
+            }
             Message::Image { image, .. } => match image {
                 Ok(image) => self.load(Document::new(image)),
                 Err(error) => self.status = error,
@@ -614,7 +623,6 @@ impl Editor {
             }
             Message::ColorSampled { color, .. } => match color {
                 Ok(Some(rgb)) => {
-                    self.picker.sync(rgb);
                     self.dispatch_ui(Action::SetRgb(rgb), tx);
                 }
                 Ok(None) => {}

@@ -138,8 +138,6 @@ impl Editor {
     fn apply_hex(&mut self, tx: &mut Tx) {
         match parse_hex(&self.picker.hex.text) {
             Some(rgb) => {
-                self.picker.hex_invalid = false;
-                self.picker.sync(rgb);
                 self.dispatch_ui(Action::SetRgb(rgb), tx);
             }
             None => self.picker.hex_invalid = true,

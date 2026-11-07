@@ -69,6 +69,10 @@ impl Editor {
             self.schedule_preview();
             return;
         }
+        // The lens only shows while a magnifier is live, and now the raster has it.
+        if !self.gesture.is_active() {
+            self.live_source = None;
+        }
         self.preview.marks = rendered.marks;
         self.preview.size = (rendered.width, rendered.height);
         self.preview

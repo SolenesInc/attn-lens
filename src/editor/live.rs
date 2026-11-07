@@ -277,6 +277,16 @@ impl Editor {
         )
     }
 
+    /// Flattens the image off the UI thread for the lens to sample.
+    pub(crate) fn flatten_for_lens(&mut self) {
+        let document = self.doc().render_snapshot();
+        let mailbox = self.mailbox.clone();
+        self.port.run(Box::new(move || {
+            let image = std::sync::Arc::new(document.plain(None));
+            mailbox.post(super::Message::LensSource(image));
+        }));
+    }
+
     /// Re-samples the live lens after the magnifier moved.
     pub(crate) fn refresh_lens(&mut self) {
         let Some(source) = &self.live_source else {

@@ -60,7 +60,6 @@ pub(crate) struct TextDraft {
 /// on leaving.
 pub(crate) struct NumberDraft {
     pub label: &'static str,
-    pub invalid: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,6 +118,8 @@ pub(crate) enum Message {
         id: u64,
         color: Result<Option<[u8; 3]>, String>,
     },
+    /// The flattened image a magnifier being dragged enlarges.
+    LensSource(Arc<RgbaImage>),
 }
 
 /// Handed to workers: they post a message and wake the window.
