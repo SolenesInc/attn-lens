@@ -20,7 +20,9 @@ const LATER: [&str; 4] = [
 ];
 
 /// Scripts for behaviour the docs describe in prose, not in a table.
-const PROSE: [&str; 12] = [
+const PROSE: [&str; 14] = [
+    "lens-follows-drag",
+    "lens-tile-held",
     "raster-follows",
     "transform-together",
     "color-drag-undo",

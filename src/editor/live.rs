@@ -7,6 +7,7 @@ use crate::{
     navigation::Layout,
     style::{self, Dash, Fill},
 };
+use image::RgbaImage;
 use rune::{Color, El, Shape, TextStyle, canvas, el, text};
 
 /// An sRGB byte colour as Rune's linear one.
@@ -257,13 +258,26 @@ impl Editor {
         (shape, labels)
     }
 
+    /// The magnifier the gesture is drawing or dragging, as it stands now.
+    fn lens_mark(&self) -> Option<&Mark> {
+        use super::gesture::Gesture;
+        let mark = match &self.gesture {
+            Gesture::Drawing(mark) => Some(mark),
+            Gesture::Moving { drag, .. } => Some(&drag.moved),
+            Gesture::MovingSelection(drags) => drags
+                .iter()
+                .map(|drag| &drag.moved)
+                .find(|mark| mark.tool == Tool::Magnifier),
+            _ => None,
+        }?;
+        (mark.tool == Tool::Magnifier && mark.points.len() >= 2).then_some(mark)
+    }
+
     /// The lens of a magnifier being drawn or dragged: its pixels and where it sits.
     pub(crate) fn lens(&self, l: Layout) -> Option<El> {
-        let mark = self
-            .live_marks()
-            .into_iter()
-            .rfind(|m| m.tool == Tool::Magnifier && m.points.len() >= 2)?;
+        let mark = self.lens_mark()?;
         self.live_source.as_ref()?;
+        self.lens.shown?;
         let center = map(l, *mark.points.last()?);
         let radius = effects::radius(mark) * l.scale;
         Some(
@@ -278,10 +292,16 @@ impl Editor {
         )
     }
 
-    /// Flattens the image off the UI thread for the lens to sample.
-    pub(crate) fn flatten_for_lens(&mut self) {
+    /// Forgets the lens and any work for it still out on the worker.
+    pub(crate) fn reset_lens(&mut self) {
         self.lens_request += 1;
         self.live_source = None;
+        self.lens = LensState::default();
+    }
+
+    /// Flattens the image off the UI thread for the lens to sample.
+    pub(crate) fn flatten_for_lens(&mut self) {
+        self.reset_lens();
         let request = self.lens_request;
         let document = self.doc().render_snapshot();
         let mailbox = self.mailbox.clone();
@@ -291,20 +311,71 @@ impl Editor {
         }));
     }
 
-    /// Re-samples the live lens after the magnifier moved.
+    /// Resamples the lens on the worker when what it enlarges changed. One tile is out
+    /// at a time; when it lands, this runs again for wherever the magnifier is by then.
     pub(crate) fn refresh_lens(&mut self) {
         let Some(source) = &self.live_source else {
             return;
         };
-        let moved = match &self.gesture {
-            super::gesture::Gesture::Moving { drag, .. } => Some(&drag.moved),
-            super::gesture::Gesture::Drawing(mark) => Some(mark),
-            _ => None,
+        let Some(mark) = self.lens_mark() else {
+            return;
         };
-        if let Some(mark) = moved.filter(|m| m.tool == Tool::Magnifier) {
-            let tile = effects::tile(source, mark);
-            let (width, height) = tile.dimensions();
-            self.live_lens.set(width, height, tile.into_raw());
+        let key = LensKey::of(mark);
+        if self.lens.pending.is_some() || self.lens.shown == Some(key) {
+            return;
+        }
+        let (source, mark, request) = (source.clone(), mark.clone(), self.lens_request);
+        let mailbox = self.mailbox.clone();
+        self.lens.pending = Some(key);
+        self.port.run(Box::new(move || {
+            let tile = effects::tile(&source, &mark);
+            mailbox.post(super::Message::LensTile { request, key, tile });
+        }));
+    }
+
+    /// Shows a tile the worker sampled, unless the gesture it was for has ended.
+    pub(crate) fn receive_lens_tile(&mut self, request: u64, key: LensKey, tile: RgbaImage) {
+        if request != self.lens_request {
+            return;
+        }
+        let (width, height) = tile.dimensions();
+        self.live_lens.set(width, height, tile.into_raw());
+        self.lens = LensState {
+            shown: Some(key),
+            pending: None,
+        };
+        self.refresh_lens();
+    }
+
+    /// Whether the lens shows an older sampling than the magnifier now asks for.
+    pub(crate) fn lens_behind(&self) -> bool {
+        self.lens_mark()
+            .is_some_and(|mark| self.lens.shown != Some(LensKey::of(mark)))
+    }
+}
+
+/// What a lens tile depends on: the spot it enlarges, its radius and its zoom. Moving
+/// only the lens itself leaves the tile as it is.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) struct LensKey {
+    source: (f32, f32),
+    radius: f32,
+    zoom: f32,
+}
+
+impl LensKey {
+    fn of(mark: &Mark) -> Self {
+        Self {
+            source: mark.points.first().copied().unwrap_or_default(),
+            radius: effects::radius(mark),
+            zoom: effects::zoom(mark),
         }
     }
+}
+
+/// The tile in `live_lens` and the one being sampled.
+#[derive(Default)]
+pub(crate) struct LensState {
+    pub shown: Option<LensKey>,
+    pub pending: Option<LensKey>,
 }

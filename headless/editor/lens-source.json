@@ -83,12 +83,17 @@
    "name": "jobs:next"
   },
   {
-   "t": 2.08,
+   "t": 1.98,
+   "type": "mark",
+   "name": "jobs:next"
+  },
+  {
+   "t": 2.2,
    "type": "mark",
    "name": "current-accepted"
   },
   {
-   "t": 2.2,
+   "t": 2.32,
    "type": "up",
    "x": 470,
    "y": 461

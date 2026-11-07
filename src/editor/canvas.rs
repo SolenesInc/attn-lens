@@ -161,6 +161,11 @@ impl Editor {
                 "marks": self.preview.marks,
                 "size": self.preview.size,
             },
+            "lens": {
+                "shown": self.lens.shown.is_some(),
+                "sampling": self.lens.pending.is_some(),
+                "behind": self.lens_behind(),
+            },
         });
         Some(el().key("editor-state").label(state.to_string()).inert())
     }

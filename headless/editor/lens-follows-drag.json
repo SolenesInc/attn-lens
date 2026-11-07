@@ -1,0 +1,106 @@
+{
+ "row": "the live lens on the magnifier being dragged",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "m"
+  },
+  {
+   "t": 0.68,
+   "type": "drag",
+   "dx": 60,
+   "dy": 40,
+   "dur": 0.05,
+   "x": 360,
+   "y": 381
+  },
+  {
+   "t": 0.88,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 1.0,
+   "type": "drag",
+   "dx": 60,
+   "dy": 60,
+   "dur": 0.05,
+   "x": 520,
+   "y": 381
+  },
+  {
+   "t": 1.2,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 1.32,
+   "type": "key",
+   "name": "v"
+  },
+  {
+   "t": 1.44,
+   "type": "down",
+   "x": 420,
+   "y": 421
+  },
+  {
+   "t": 1.56,
+   "type": "move",
+   "x": 430,
+   "y": 431
+  },
+  {
+   "t": 1.68,
+   "type": "move",
+   "x": 440,
+   "y": 441
+  },
+  {
+   "t": 1.9,
+   "type": "mark",
+   "name": "dragging-first"
+  },
+  {
+   "t": 2.02,
+   "type": "up",
+   "x": 440,
+   "y": 441
+  }
+ ],
+ "asserts": [
+  {
+   "at": "dragging-first",
+   "rect": {
+    "lens": [
+     380,
+     381,
+     120,
+     120
+    ]
+   }
+  }
+ ]
+}

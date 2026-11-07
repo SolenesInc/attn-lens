@@ -121,6 +121,12 @@ pub(crate) enum Message {
         request: u64,
         image: Arc<RgbaImage>,
     },
+    /// The lens a magnifier shows, sampled from that image.
+    LensTile {
+        request: u64,
+        key: live::LensKey,
+        tile: RgbaImage,
+    },
 }
 
 /// Handed to workers: they post a message and wake the window.
@@ -179,6 +185,7 @@ pub struct Editor {
     live_lens: rune::Pixels,
     /// The flatten the current drag asked for; any other result is from an abandoned one.
     lens_request: u64,
+    lens: live::LensState,
     /// How many points the stroke being drawn may have, set when it starts.
     stroke_room: usize,
 }
@@ -224,6 +231,7 @@ impl Editor {
             live_source: None,
             live_lens: rune::Pixels::new(),
             lens_request: 0,
+            lens: live::LensState::default(),
             stroke_room: 0,
         }
     }

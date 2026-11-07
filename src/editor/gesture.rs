@@ -446,8 +446,7 @@ impl Editor {
 
     pub(crate) fn cancel_gesture(&mut self) {
         let gesture = std::mem::take(&mut self.gesture);
-        self.lens_request += 1;
-        self.live_source = None;
+        self.reset_lens();
         if let Gesture::Selecting { previous, .. } = &gesture {
             self.set_selection(previous.clone());
         }

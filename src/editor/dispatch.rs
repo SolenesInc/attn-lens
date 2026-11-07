@@ -561,7 +561,7 @@ impl Editor {
     /// Takes in what a worker finished.
     pub(crate) fn receive(&mut self, message: Message, tx: &mut Tx) {
         let id = match &message {
-            Message::Preview(_) | Message::LensSource { .. } => None,
+            Message::Preview(_) | Message::LensSource { .. } | Message::LensTile { .. } => None,
             Message::Replaced { id, .. }
             | Message::Saved { id, .. }
             | Message::Copied { id, .. }
@@ -584,6 +584,7 @@ impl Editor {
                     self.refresh_lens();
                 }
             }
+            Message::LensTile { request, key, tile } => self.receive_lens_tile(request, key, tile),
             Message::Replaced { result, .. } => match result {
                 Ok((document, rendered)) => {
                     if operation == Some(Operation::Load) || operation == Some(Operation::Paste) {
