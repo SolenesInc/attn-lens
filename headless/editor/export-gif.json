@@ -1,0 +1,335 @@
+{
+ "row": "GIF",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 0.76,
+   "type": "menu-pick",
+   "id": "gif"
+  },
+  {
+   "t": 0.91,
+   "type": "mark",
+   "name": "nothing-moves"
+  },
+  {
+   "t": 1.06,
+   "type": "drag",
+   "key": "duration-slider",
+   "dx": -116,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 1.36,
+   "type": "mark",
+   "name": "jobs:hold"
+  },
+  {
+   "t": 1.48,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 1.68,
+   "type": "menu-pick",
+   "id": "gif"
+  },
+  {
+   "t": 1.88,
+   "type": "file-dialog",
+   "path": "$OUT/button.gif"
+  },
+  {
+   "t": 2.03,
+   "type": "mark",
+   "name": "exporting-button"
+  },
+  {
+   "t": 2.15,
+   "type": "tap",
+   "key": "export-cancel"
+  },
+  {
+   "t": 2.3,
+   "type": "mark",
+   "name": "canceling-button"
+  },
+  {
+   "t": 2.5,
+   "type": "mark",
+   "name": "jobs:drain"
+  },
+  {
+   "t": 2.65,
+   "type": "mark",
+   "name": "canceled-button"
+  },
+  {
+   "t": 2.85,
+   "type": "mark",
+   "name": "jobs:hold"
+  },
+  {
+   "t": 2.97,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 3.17,
+   "type": "menu-pick",
+   "id": "gif"
+  },
+  {
+   "t": 3.37,
+   "type": "file-dialog",
+   "path": "$OUT/escape.gif"
+  },
+  {
+   "t": 3.52,
+   "type": "mark",
+   "name": "exporting-escape"
+  },
+  {
+   "t": 3.64,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 3.79,
+   "type": "mark",
+   "name": "canceling-escape"
+  },
+  {
+   "t": 3.99,
+   "type": "mark",
+   "name": "jobs:drain"
+  },
+  {
+   "t": 4.14,
+   "type": "mark",
+   "name": "canceled-escape"
+  },
+  {
+   "t": 4.34,
+   "type": "mark",
+   "name": "jobs:hold"
+  },
+  {
+   "t": 4.46,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 4.66,
+   "type": "menu-pick",
+   "id": "gif"
+  },
+  {
+   "t": 4.86,
+   "type": "file-dialog",
+   "path": "$OUT/menu.gif"
+  },
+  {
+   "t": 5.01,
+   "type": "mark",
+   "name": "exporting-menu"
+  },
+  {
+   "t": 5.13,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 5.33,
+   "type": "menu-pick",
+   "id": "cancel"
+  },
+  {
+   "t": 5.48,
+   "type": "mark",
+   "name": "canceling-menu"
+  },
+  {
+   "t": 5.68,
+   "type": "mark",
+   "name": "jobs:drain"
+  },
+  {
+   "t": 5.83,
+   "type": "mark",
+   "name": "canceled-menu"
+  },
+  {
+   "t": 5.95,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 6.15,
+   "type": "menu-pick",
+   "id": "gif"
+  },
+  {
+   "t": 6.35,
+   "type": "file-dialog",
+   "path": "$OUT/out.gif"
+  },
+  {
+   "t": 6.55,
+   "type": "mark",
+   "name": "jobs:drain"
+  },
+  {
+   "t": 7.15,
+   "type": "mark",
+   "name": "exported"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "nothing-moves",
+   "state": {
+    "backdrop": {
+     "motion": "flow"
+    },
+    "panel": "Backdrop",
+    "export": null
+   },
+   "status_contains": "export GIF again"
+  },
+  {
+   "at": "exporting-button",
+   "state": {
+    "export": {
+     "format": "GIF",
+     "percent": 0
+    }
+   },
+   "present": [
+    "export-progress",
+    "export-cancel"
+   ],
+   "text": {
+    "export-percent": "Exporting GIF\u2026 0%",
+    "status": "Exporting GIF\u2026"
+   }
+  },
+  {
+   "at": "canceling-button",
+   "text": {
+    "status": "Canceling export\u2026"
+   },
+   "present": [
+    "export-progress"
+   ]
+  },
+  {
+   "at": "canceled-button",
+   "text": {
+    "status": "Export canceled"
+   },
+   "absent": [
+    "export-progress"
+   ],
+   "state": {
+    "export": null
+   },
+   "no_file": [
+    "$OUT/button.gif"
+   ]
+  },
+  {
+   "at": "canceling-escape",
+   "text": {
+    "status": "Canceling export\u2026"
+   },
+   "present": [
+    "export-progress"
+   ]
+  },
+  {
+   "at": "canceled-escape",
+   "text": {
+    "status": "Export canceled"
+   },
+   "absent": [
+    "export-progress"
+   ],
+   "state": {
+    "export": null
+   },
+   "no_file": [
+    "$OUT/escape.gif"
+   ]
+  },
+  {
+   "at": "canceling-menu",
+   "text": {
+    "status": "Canceling export\u2026"
+   },
+   "present": [
+    "export-progress"
+   ]
+  },
+  {
+   "at": "canceled-menu",
+   "text": {
+    "status": "Export canceled"
+   },
+   "absent": [
+    "export-progress"
+   ],
+   "state": {
+    "export": null
+   },
+   "no_file": [
+    "$OUT/menu.gif"
+   ]
+  },
+  {
+   "at": "exported",
+   "status_contains": "Exported GIF ",
+   "absent": [
+    "export-progress"
+   ],
+   "state": {
+    "export": null
+   },
+   "gif": {
+    "path": "$OUT/out.gif",
+    "size": [
+     448,
+     328
+    ],
+    "frames": 40,
+    "delay": 5
+   }
+  }
+ ]
+}

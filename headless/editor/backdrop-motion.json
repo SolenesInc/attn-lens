@@ -43,113 +43,113 @@
    "key": "playback"
   },
   {
-   "t": 1.6,
+   "t": 1.45,
    "type": "mark",
    "name": "paused"
   },
   {
-   "t": 1.72,
+   "t": 1.57,
    "type": "tap",
    "key": "motion-nebula"
   },
   {
-   "t": 2.02,
+   "t": 1.72,
    "type": "mark",
    "name": "effect-nebula"
   },
   {
-   "t": 2.14,
+   "t": 1.84,
    "type": "tap",
    "key": "motion-aurora"
   },
   {
-   "t": 2.44,
+   "t": 1.99,
    "type": "mark",
    "name": "effect-aurora"
   },
   {
-   "t": 2.56,
+   "t": 2.11,
    "type": "tap",
    "key": "motion-contours"
   },
   {
-   "t": 2.86,
+   "t": 2.26,
    "type": "mark",
    "name": "effect-contours"
   },
   {
-   "t": 2.98,
+   "t": 2.38,
    "type": "tap",
    "key": "motion-painterly"
   },
   {
-   "t": 3.28,
+   "t": 2.53,
    "type": "mark",
    "name": "effect-paint"
   },
   {
-   "t": 3.4,
+   "t": 2.65,
    "type": "tap",
    "key": "motion-prism"
   },
   {
-   "t": 3.7,
+   "t": 2.8,
    "type": "mark",
    "name": "effect-prism"
   },
   {
-   "t": 3.82,
+   "t": 2.92,
    "type": "tap",
    "key": "motion-liquid"
   },
   {
-   "t": 4.12,
+   "t": 3.07,
    "type": "mark",
    "name": "effect-liquid"
   },
   {
-   "t": 4.24,
+   "t": 3.19,
    "type": "tap",
    "key": "motion-lava"
   },
   {
-   "t": 4.54,
+   "t": 3.34,
    "type": "mark",
    "name": "effect-lava"
   },
   {
-   "t": 4.66,
+   "t": 3.46,
    "type": "tap",
    "key": "motion-flow"
   },
   {
-   "t": 4.96,
+   "t": 3.61,
    "type": "mark",
    "name": "effect-flow"
   },
   {
-   "t": 5.08,
+   "t": 3.73,
    "type": "tap",
    "key": "randomize"
   },
   {
-   "t": 5.38,
+   "t": 3.88,
    "type": "mark",
    "name": "randomized"
   },
   {
-   "t": 5.5,
+   "t": 4.0,
    "type": "key",
    "name": "z",
    "cmd": true
   },
   {
-   "t": 5.8,
+   "t": 4.15,
    "type": "mark",
    "name": "randomize-undone"
   },
   {
-   "t": 5.95,
+   "t": 4.3,
    "type": "drag",
    "key": "duration-slider",
    "dx": 0,
@@ -157,27 +157,27 @@
    "dur": 0.1
   },
   {
-   "t": 6.25,
+   "t": 4.55,
    "type": "mark",
    "name": "duration"
   },
   {
-   "t": 6.37,
+   "t": 4.67,
    "type": "tap",
    "key": "playback"
   },
   {
-   "t": 6.87,
+   "t": 5.17,
    "type": "mark",
    "name": "playing"
   },
   {
-   "t": 6.99,
+   "t": 5.29,
    "type": "tap",
    "key": "background-gradient"
   },
   {
-   "t": 7.29,
+   "t": 5.44,
    "type": "mark",
    "name": "still"
   }

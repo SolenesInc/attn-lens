@@ -1,0 +1,487 @@
+{
+ "row": "Animation",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "tap",
+   "key": "animation-button"
+  },
+  {
+   "t": 0.71,
+   "type": "mark",
+   "name": "panel"
+  },
+  {
+   "t": 0.83,
+   "type": "tap",
+   "key": "entrance-diagonal-reveal"
+  },
+  {
+   "t": 1.33,
+   "type": "mark",
+   "name": "diagonal"
+  },
+  {
+   "t": 1.45,
+   "type": "tap",
+   "key": "entrance-spring-pop"
+  },
+  {
+   "t": 1.95,
+   "type": "mark",
+   "name": "pop"
+  },
+  {
+   "t": 2.07,
+   "type": "tap",
+   "key": "entrance-3d-settle"
+  },
+  {
+   "t": 2.57,
+   "type": "mark",
+   "name": "tilt"
+  },
+  {
+   "t": 2.69,
+   "type": "tap",
+   "key": "playback"
+  },
+  {
+   "t": 2.84,
+   "type": "drag",
+   "key": "preview-time-slider",
+   "dx": 58,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 3.09,
+   "type": "mark",
+   "name": "seek"
+  },
+  {
+   "t": 3.21,
+   "type": "key",
+   "name": "c",
+   "cmd": true
+  },
+  {
+   "t": 3.61,
+   "type": "mark",
+   "name": "copied-frame"
+  },
+  {
+   "t": 3.73,
+   "type": "tap",
+   "key": "after-exit"
+  },
+  {
+   "t": 3.88,
+   "type": "mark",
+   "name": "exit"
+  },
+  {
+   "t": 4.0,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 4.15,
+   "type": "mark",
+   "name": "exit-undone"
+  },
+  {
+   "t": 4.3,
+   "type": "drag",
+   "key": "entrance-duration-slider",
+   "dx": 0,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 4.55,
+   "type": "mark",
+   "name": "duration"
+  },
+  {
+   "t": 4.67,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 4.82,
+   "type": "mark",
+   "name": "duration-undone"
+  },
+  {
+   "t": 4.97,
+   "type": "drag",
+   "key": "delay-slider",
+   "dx": -58,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 5.22,
+   "type": "drag",
+   "key": "clip-length-slider",
+   "dx": -58,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 5.47,
+   "type": "mark",
+   "name": "timing"
+  },
+  {
+   "t": 5.59,
+   "type": "tap",
+   "key": "replay"
+  },
+  {
+   "t": 5.79,
+   "type": "mark",
+   "name": "replayed"
+  },
+  {
+   "t": 5.91,
+   "type": "tap",
+   "key": "animation-done"
+  },
+  {
+   "t": 6.06,
+   "type": "mark",
+   "name": "done"
+  },
+  {
+   "t": 6.18,
+   "type": "key",
+   "name": "c",
+   "cmd": true
+  },
+  {
+   "t": 6.58,
+   "type": "mark",
+   "name": "copied"
+  },
+  {
+   "t": 6.7,
+   "type": "tap",
+   "key": "animation-button"
+  },
+  {
+   "t": 7.0,
+   "type": "tap",
+   "x": 480,
+   "y": 440
+  },
+  {
+   "t": 7.15,
+   "type": "mark",
+   "name": "canvas-press"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "panel",
+   "state": {
+    "panel": "Animation",
+    "animation": {
+     "effect": "none"
+    }
+   },
+   "absent": [
+    "stage"
+   ],
+   "present": [
+    "animation-panel"
+   ],
+   "checked": [
+    "entrance-none",
+    "animation-button"
+   ]
+  },
+  {
+   "at": "diagonal",
+   "state": {
+    "animation": {
+     "effect": "diagonal"
+    },
+    "playback": {
+     "playing": true,
+     "position": {
+      "min": 0.2,
+      "max": 0.6
+     }
+    },
+    "stage": {
+     "shown": {
+      "min": 6,
+      "max": 18
+     },
+     "size": [
+      320,
+      200
+     ]
+    }
+   },
+   "checked": [
+    "entrance-diagonal-reveal"
+   ],
+   "present": [
+    "stage"
+   ],
+   "absent": [
+    "image"
+   ],
+   "rect": {
+    "stage": [
+     320,
+     341,
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "pop",
+   "state": {
+    "animation": {
+     "effect": "pop"
+    },
+    "playback": {
+     "playing": true,
+     "position": {
+      "min": 0.2,
+      "max": 0.6
+     }
+    },
+    "stage": {
+     "shown": {
+      "min": 6,
+      "max": 18
+     },
+     "size": [
+      320,
+      200
+     ]
+    }
+   },
+   "checked": [
+    "entrance-spring-pop"
+   ],
+   "present": [
+    "stage"
+   ],
+   "absent": [
+    "image"
+   ],
+   "rect": {
+    "stage": [
+     320,
+     341,
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "tilt",
+   "state": {
+    "animation": {
+     "effect": "tilt"
+    },
+    "playback": {
+     "playing": true,
+     "position": {
+      "min": 0.2,
+      "max": 0.6
+     }
+    },
+    "stage": {
+     "shown": {
+      "min": 6,
+      "max": 18
+     },
+     "size": [
+      320,
+      200
+     ]
+    }
+   },
+   "checked": [
+    "entrance-3d-settle"
+   ],
+   "present": [
+    "stage"
+   ],
+   "absent": [
+    "image"
+   ],
+   "rect": {
+    "stage": [
+     320,
+     341,
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "seek",
+   "state": {
+    "playback": {
+     "playing": false,
+     "position": 3.75
+    },
+    "stage": {
+     "shown": 112
+    }
+   },
+   "text": {
+    "clip-time": "3.8 / 5 s"
+   }
+  },
+  {
+   "at": "copied-frame",
+   "clipboard": {
+    "size": [
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "exit",
+   "state": {
+    "animation": {
+     "exit": true
+    }
+   },
+   "checked": [
+    "after-exit"
+   ]
+  },
+  {
+   "at": "exit-undone",
+   "state": {
+    "animation": {
+     "exit": false
+    }
+   },
+   "checked": [
+    "after-hold"
+   ]
+  },
+  {
+   "at": "duration",
+   "state": {
+    "animation": {
+     "duration_ms": 1100
+    }
+   },
+   "value": {
+    "entrance-duration-slider": "1.1 s"
+   }
+  },
+  {
+   "at": "duration-undone",
+   "state": {
+    "animation": {
+     "duration_ms": 1000
+    }
+   }
+  },
+  {
+   "at": "timing",
+   "state": {
+    "animation": {
+     "delay_ms": 300,
+     "seconds": 5
+    }
+   }
+  },
+  {
+   "at": "replayed",
+   "state": {
+    "playback": {
+     "playing": true,
+     "position": {
+      "min": 0.05,
+      "max": 0.3
+     }
+    }
+   }
+  },
+  {
+   "at": "done",
+   "state": {
+    "panel": "Tool"
+   },
+   "absent": [
+    "stage",
+    "animation-panel"
+   ],
+   "present": [
+    "image"
+   ]
+  },
+  {
+   "at": "copied",
+   "clipboard": {
+    "size": [
+     320,
+     200
+    ],
+    "unchanged": [
+     [
+      10,
+      10
+     ],
+     [
+      160,
+      100
+     ],
+     [
+      310,
+      190
+     ]
+    ]
+   }
+  },
+  {
+   "at": "canvas-press",
+   "state": {
+    "panel": "Tool",
+    "marks": []
+   },
+   "absent": [
+    "animation-panel"
+   ]
+  }
+ ]
+}

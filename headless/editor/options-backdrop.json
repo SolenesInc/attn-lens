@@ -28,162 +28,162 @@
    "key": "backdrop-button"
   },
   {
-   "t": 0.86,
+   "t": 0.71,
    "type": "mark",
    "name": "framed"
   },
   {
-   "t": 0.98,
+   "t": 0.83,
    "type": "tap",
    "key": "backdrop-format"
   },
   {
-   "t": 1.18,
+   "t": 1.03,
    "type": "menu-pick",
    "id": "square"
   },
   {
-   "t": 1.48,
+   "t": 1.18,
    "type": "mark",
    "name": "format-square"
   },
   {
-   "t": 1.6,
+   "t": 1.3,
    "type": "tap",
    "key": "backdrop-format"
   },
   {
-   "t": 1.8,
+   "t": 1.5,
    "type": "menu-pick",
    "id": "classic"
   },
   {
-   "t": 2.1,
+   "t": 1.65,
    "type": "mark",
    "name": "format-classic"
   },
   {
-   "t": 2.22,
+   "t": 1.77,
    "type": "tap",
    "key": "backdrop-format"
   },
   {
-   "t": 2.42,
+   "t": 1.97,
    "type": "menu-pick",
    "id": "photo"
   },
   {
-   "t": 2.72,
+   "t": 2.12,
    "type": "mark",
    "name": "format-photo"
   },
   {
-   "t": 2.84,
+   "t": 2.24,
    "type": "tap",
    "key": "backdrop-format"
   },
   {
-   "t": 3.04,
+   "t": 2.44,
    "type": "menu-pick",
    "id": "widescreen"
   },
   {
-   "t": 3.34,
+   "t": 2.59,
    "type": "mark",
    "name": "format-widescreen"
   },
   {
-   "t": 3.46,
+   "t": 2.71,
    "type": "tap",
    "key": "backdrop-format"
   },
   {
-   "t": 3.66,
+   "t": 2.91,
    "type": "menu-pick",
    "id": "portrait"
   },
   {
-   "t": 3.96,
+   "t": 3.06,
    "type": "mark",
    "name": "format-portrait"
   },
   {
-   "t": 4.08,
+   "t": 3.18,
    "type": "tap",
    "key": "backdrop-format"
   },
   {
-   "t": 4.28,
+   "t": 3.38,
    "type": "menu-pick",
    "id": "vertical"
   },
   {
-   "t": 4.58,
+   "t": 3.53,
    "type": "mark",
    "name": "format-vertical"
   },
   {
-   "t": 4.7,
+   "t": 3.65,
    "type": "tap",
    "key": "backdrop-format"
   },
   {
-   "t": 4.9,
+   "t": 3.85,
    "type": "menu-pick",
    "id": "youtube"
   },
   {
-   "t": 5.2,
+   "t": 4.0,
    "type": "mark",
    "name": "format-youtube"
   },
   {
-   "t": 5.32,
+   "t": 4.12,
    "type": "tap",
    "key": "backdrop-format"
   },
   {
-   "t": 5.52,
+   "t": 4.32,
    "type": "menu-pick",
    "id": "shorts"
   },
   {
-   "t": 5.82,
+   "t": 4.47,
    "type": "mark",
    "name": "format-shorts"
   },
   {
-   "t": 5.94,
+   "t": 4.59,
    "type": "tap",
    "key": "backdrop-format"
   },
   {
-   "t": 6.14,
+   "t": 4.79,
    "type": "menu-pick",
    "id": "pinterest"
   },
   {
-   "t": 6.44,
+   "t": 4.94,
    "type": "mark",
    "name": "format-pinterest"
   },
   {
-   "t": 6.56,
+   "t": 5.06,
    "type": "tap",
    "key": "backdrop-format"
   },
   {
-   "t": 6.76,
+   "t": 5.26,
    "type": "menu-pick",
    "id": "auto"
   },
   {
-   "t": 7.06,
+   "t": 5.41,
    "type": "mark",
    "name": "format-auto"
   },
   {
-   "t": 7.21,
+   "t": 5.56,
    "type": "drag",
    "key": "outside-padding-slider",
    "dx": 58,
@@ -191,23 +191,23 @@
    "dur": 0.1
   },
   {
-   "t": 7.51,
+   "t": 5.81,
    "type": "mark",
    "name": "padded"
   },
   {
-   "t": 7.63,
+   "t": 5.93,
    "type": "key",
    "name": "z",
    "cmd": true
   },
   {
-   "t": 7.93,
+   "t": 6.08,
    "type": "mark",
    "name": "padding-undone"
   },
   {
-   "t": 8.08,
+   "t": 6.23,
    "type": "drag",
    "key": "outside-padding-slider",
    "dx": 58,
@@ -215,7 +215,7 @@
    "dur": 0.1
   },
   {
-   "t": 8.23,
+   "t": 6.48,
    "type": "drag",
    "key": "inside-padding-slider",
    "dx": -93,
@@ -223,12 +223,12 @@
    "dur": 0.1
   },
   {
-   "t": 8.53,
+   "t": 6.73,
    "type": "mark",
    "name": "inside"
   },
   {
-   "t": 8.68,
+   "t": 6.88,
    "type": "drag",
    "key": "image-corners-slider",
    "dx": 0,
@@ -236,7 +236,7 @@
    "dur": 0.1
   },
   {
-   "t": 8.83,
+   "t": 7.13,
    "type": "drag",
    "key": "shadow-slider",
    "dx": -58,
@@ -244,145 +244,145 @@
    "dur": 0.1
   },
   {
-   "t": 9.13,
+   "t": 7.38,
    "type": "mark",
    "name": "styled"
   },
   {
-   "t": 9.25,
+   "t": 7.5,
    "type": "tap",
    "key": "background-gradient"
   },
   {
-   "t": 9.55,
+   "t": 7.65,
    "type": "mark",
    "name": "gradient"
   },
   {
-   "t": 9.67,
+   "t": 7.77,
    "type": "tap",
    "key": "background-solid"
   },
   {
-   "t": 9.97,
+   "t": 7.92,
    "type": "mark",
    "name": "solid"
   },
   {
-   "t": 10.09,
+   "t": 8.04,
    "type": "tap",
    "key": "background-gradient"
   },
   {
-   "t": 10.21,
+   "t": 8.16,
    "type": "tap",
    "key": "palette-ocean"
   },
   {
-   "t": 10.51,
+   "t": 8.31,
    "type": "mark",
    "name": "ocean"
   },
   {
-   "t": 10.63,
+   "t": 8.43,
    "type": "tap",
    "key": "backdrop-color-2"
   },
   {
-   "t": 10.93,
+   "t": 8.58,
    "type": "mark",
    "name": "picker"
   },
   {
-   "t": 11.05,
+   "t": 8.7,
    "type": "tap",
    "key": "hex-field"
   },
   {
-   "t": 11.17,
+   "t": 8.82,
    "type": "key",
    "name": "a",
    "cmd": true
   },
   {
-   "t": 11.37,
+   "t": 9.02,
    "type": "type",
    "text": "#102030",
    "every": 0.01
   },
   {
-   "t": 11.49,
+   "t": 9.14,
    "type": "key",
    "name": "Enter"
   },
   {
-   "t": 11.79,
+   "t": 9.29,
    "type": "mark",
    "name": "hex"
   },
   {
-   "t": 11.91,
+   "t": 9.41,
    "type": "tap",
    "key": "backdrop-color-1"
   },
   {
-   "t": 12.21,
+   "t": 9.71,
    "type": "tap",
    "key": "pick-screen"
   },
   {
-   "t": 12.51,
+   "t": 10.01,
    "type": "mark",
    "name": "pick:#405060"
   },
   {
-   "t": 12.81,
+   "t": 10.16,
    "type": "mark",
    "name": "picked"
   },
   {
-   "t": 12.93,
+   "t": 10.28,
    "type": "tap",
    "key": "backdrop-color-1"
   },
   {
-   "t": 13.05,
+   "t": 10.4,
    "type": "tap",
    "key": "backdrop-enabled"
   },
   {
-   "t": 13.35,
+   "t": 10.55,
    "type": "mark",
    "name": "off"
   },
   {
-   "t": 13.47,
+   "t": 10.67,
    "type": "tap",
    "key": "backdrop-enabled"
   },
   {
-   "t": 13.77,
+   "t": 10.82,
    "type": "mark",
    "name": "on"
   },
   {
-   "t": 13.89,
+   "t": 10.94,
    "type": "key",
    "name": "c",
    "cmd": true
   },
   {
-   "t": 14.29,
+   "t": 11.34,
    "type": "mark",
    "name": "copied"
   },
   {
-   "t": 14.41,
+   "t": 11.46,
    "type": "tap",
    "key": "backdrop-done"
   },
   {
-   "t": 14.71,
+   "t": 11.61,
    "type": "mark",
    "name": "done"
   }
