@@ -45,6 +45,13 @@ pub fn socket_path() -> Result<PathBuf, String> {
 
 /// Serves `path` on background threads until the process exits.
 pub fn listen(lens: Arc<Lens>, path: &Path) -> Result<(), String> {
+    if UnixStream::connect(path).is_ok() {
+        return Err(format!(
+            "Another Attn Lens is already serving {}.",
+            path.display()
+        ));
+    }
+    // Nothing answers, so any file here is left from a process that has gone.
     match std::fs::remove_file(path) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}

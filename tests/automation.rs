@@ -56,7 +56,7 @@ echo '{{"id":"cap"}}'
 fn a_capture_is_started_read_and_sent_through_the_socket() {
     let dir = tempfile::tempdir().unwrap();
     let dir = dir.path();
-    // The only test in this binary, and no thread has started yet.
+    // The only test in this binary that reads the variable.
     unsafe { std::env::set_var("ATTN_BIN", stand_in(dir)) };
     let lens = Harness::new(dir, Some("tok"));
 
@@ -163,4 +163,20 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
         unpaired.state()["send"]["error"],
         "Attn Lens is not paired with attn."
     );
+}
+
+#[test]
+fn a_live_socket_is_kept_and_a_stale_one_is_replaced() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("lens.sock");
+    let lens = || Lens::new(Arc::new(FakePort::new(vec![], None)));
+
+    // A socket whose process is gone: bound, then its listener dropped.
+    drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
+    automation::listen(lens(), &path).unwrap();
+
+    let refused = automation::listen(lens(), &path).unwrap_err();
+    assert!(refused.contains("already"), "{refused}");
+    let reply = automation::request(&path, r#"{"cmd":"state"}"#).unwrap();
+    assert!(reply.contains(r#""ok":true"#), "{reply}");
 }
