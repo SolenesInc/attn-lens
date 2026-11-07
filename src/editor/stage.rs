@@ -62,14 +62,15 @@ impl Stage {
     }
 }
 
-/// Preview time. It advances only while playing and while the frame it asks for is
-/// shown, so playback waits for a slow frame instead of skipping past it.
+/// Preview time. It advances only while the window is on screen, playing, and showing
+/// the frame it asks for, so playback waits for a slow frame instead of skipping past it.
 pub(crate) struct Playback {
     /// Seconds into the cycle or the clip.
     pub position: f32,
     pub playing: bool,
-    /// The clock at the last poll.
-    last: f64,
+    /// The clock at the last poll while visible; None after the window hid, so time
+    /// spent hidden does not count.
+    last: Option<f64>,
 }
 
 /// A moving backdrop plays from the start.
@@ -78,7 +79,7 @@ impl Default for Playback {
         Self {
             position: 0.,
             playing: true,
-            last: 0.,
+            last: None,
         }
     }
 }
@@ -173,10 +174,19 @@ impl Editor {
     }
 
     /// Advances preview time from the clock, then asks for the frame it now needs.
-    /// Returns how long until the next frame is due.
+    /// Returns how long until the next frame is due. A closed editor is only hidden and
+    /// Rune still polls it, so while closed it neither advances, renders nor asks to be
+    /// woken.
     pub(crate) fn advance(&mut self, now: f64) -> Option<std::time::Duration> {
-        let elapsed = (now - self.playback.last).max(0.) as f32;
-        self.playback.last = now;
+        if !self.open {
+            self.playback.last = None;
+            return None;
+        }
+        let elapsed = self
+            .playback
+            .last
+            .map_or(0., |last| (now - last).max(0.) as f32);
+        self.playback.last = Some(now);
         let mut next = None;
         if self.playback.playing && self.animates() {
             if !self.preparing() {
@@ -203,7 +213,7 @@ impl Editor {
     pub(crate) fn replay(&mut self) {
         self.playback.position = 0.;
         self.playback.playing = true;
-        self.playback.last = self.now;
+        self.playback.last = Some(self.now);
     }
 
     pub(crate) fn toggle_playback(&mut self) {
@@ -213,7 +223,7 @@ impl Editor {
             self.replay();
         } else {
             self.playback.playing = !self.playback.playing;
-            self.playback.last = self.now;
+            self.playback.last = Some(self.now);
         }
     }
 

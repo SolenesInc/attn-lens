@@ -85,11 +85,11 @@ pub trait PlatformPort: Send + Sync {
     fn copy_text(&self, text: &str) -> Result<(), String>;
     /// Reads text from `image`, optionally within [x, y, width, height]. Slow: call it from [`Self::run`].
     fn ocr(&self, image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String>;
-    /// Lets the user pick a color anywhere on screen. `None` means they cancelled.
     /// True on the fake port: the editor then exposes its state for scripts to assert on.
     fn exposes_state(&self) -> bool {
         false
     }
+    /// Lets the user pick a color anywhere on screen. `None` means they cancelled.
     fn pick_color(&self, sink: Sink<Result<Option<[u8; 3]>, String>>);
     /// Runs slow work off the UI thread.
     fn run(&self, job: Box<dyn FnOnce() + Send>) {
@@ -109,6 +109,9 @@ pub trait PlatformPort: Send + Sync {
     fn tick(&self, _now: f64) -> Option<Duration> {
         None
     }
+    /// What pressing `window`'s close button does. On the Mac the window has a real
+    /// one, so this does nothing; the fake presses it on a `close:WINDOW` mark.
+    fn close_button(&self, _window: &'static str, _press: Sink<()>) {}
 }
 
 type Job = Box<dyn FnOnce() + Send>;

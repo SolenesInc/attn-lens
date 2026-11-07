@@ -159,6 +159,7 @@ impl Editor {
             "backdrop": self.doc.as_ref().and_then(|d| d.backdrop),
             "animation": self.doc.as_ref().map(|d| d.image_animation),
             "panel": format!("{:?}", self.panel),
+            "open": self.open,
             "playback": {
                 "position": self.playback.position,
                 "playing": self.playback.playing,

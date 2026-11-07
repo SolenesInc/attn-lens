@@ -211,6 +211,8 @@ pub struct Editor {
     stage: stage::Stage,
     playback: stage::Playback,
     export: Option<export::Export>,
+    /// Between a Dock click opening the window and its close button.
+    open: bool,
 }
 
 impl Editor {
@@ -262,12 +264,20 @@ impl Editor {
             stage,
             playback: stage::Playback::default(),
             export: None,
+            open: false,
         }
     }
 
     /// Opens the window; a Dock click lands here.
-    pub fn open_window(&self) {
+    pub fn open_window(&mut self) {
+        self.open = true;
         self.me.open();
+    }
+
+    /// The window closed; Lens keeps running, so the editor only hides. Preview
+    /// playback stops until it opens again.
+    pub fn on_window_close(&mut self) {
+        self.open = false;
     }
 
     pub(crate) fn doc(&self) -> &Document {

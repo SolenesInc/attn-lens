@@ -104,9 +104,15 @@ pub fn run() -> Result<(), String> {
         let visible = me.clone();
         lens.report_window("editor", move || visible.is_visible());
         let port = lens.port().clone();
+        let closing = me.clone();
+        port.close_button(
+            "editor",
+            Arc::new(move |()| closing.update(|s: &mut Editor, _| s.on_window_close())),
+        );
         let editor = editor::menus::install(editor)
             .init(move || Editor::new(me, port))
             .on_focus(|s, focused, _| s.on_window_focus(focused))
+            .on_close(|s, _| s.on_window_close())
             .on_reopen(|s, _, _| {
                 s.open_window();
                 true

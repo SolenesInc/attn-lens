@@ -7,6 +7,7 @@
 //! clipboard:PATH             the system clipboard now holds the image at PATH
 //! ocr:the words              text recognition finds these words from now on
 //! pick:#RRGGBB  pick:cancel  answers a Pick from screen that is waiting
+//! close:editor               presses the window's close button
 //! ```
 //!
 //! Any other mark is left to the script. Work runs inline, so a tree read at a
@@ -45,6 +46,7 @@ struct Script {
     /// After a `jobs:hold` mark, jobs wait here until a `jobs:next` mark runs the oldest
     /// or a `jobs:drain` mark runs every one waiting.
     held: Option<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
+    close_buttons: Vec<(&'static str, Sink<()>)>,
 }
 
 pub struct FakePort {
@@ -117,6 +119,16 @@ impl FakePort {
             for job in jobs {
                 job();
             }
+        } else if let Some(window) = mark.strip_prefix("close:") {
+            let press = self
+                .script
+                .lock()
+                .unwrap()
+                .close_buttons
+                .iter()
+                .find(|(w, _)| *w == window)
+                .map(|(_, press)| press.clone());
+            press.expect("close: names a window with a close button")(());
         } else if let Some(answer) = mark.strip_prefix("pick:") {
             let sink = self.script.lock().unwrap().pick.take();
             if let Some(sink) = sink {
@@ -242,6 +254,13 @@ impl PlatformPort for FakePort {
             Some(path) => Ok(path.into()),
             None => crate::video::encoder_path(),
         }
+    }
+    fn close_button(&self, window: &'static str, press: Sink<()>) {
+        self.script
+            .lock()
+            .unwrap()
+            .close_buttons
+            .push((window, press));
     }
     fn pick_color(&self, sink: PickSink) {
         self.script.lock().unwrap().pick = Some(sink);
