@@ -2,6 +2,7 @@
 //!
 //! ```text
 //! key:draw-down  key:draw-up  key:capture  key:voice  key:keyboard  key:send
+//! key:shift-down  key:shift-up
 //! watch:click  watch:scroll  watch:switch  watch:change:0.7
 //! say:0.5:1.2:the words      a segment from 0.5 s to 1.2 s, while voice runs
 //! ```
@@ -9,10 +10,13 @@
 //! Any other mark is left to the script. Work runs inline, so a tree read at a
 //! mark sees every still and send that mark caused.
 use super::{Chord, FAKE_TICK, KeyEvent, PlatformPort, Sink, Voice, Watch, WatchEvent};
-use crate::lens::session::{Area, HostTime, Segment};
+use crate::lens::session::{Area, DisplayFrame, HostTime, Segment};
 use image::{Rgba, RgbaImage};
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -35,7 +39,9 @@ struct Script {
 pub struct FakePort {
     script: Mutex<Script>,
     sinks: Sinks,
-    token: Option<String>,
+    token: Mutex<Option<String>>,
+    displays: Mutex<Vec<DisplayFrame>>,
+    shift: AtomicBool,
 }
 
 impl FakePort {
@@ -46,7 +52,12 @@ impl FakePort {
                 ..Default::default()
             }),
             sinks: Default::default(),
-            token: token.map(str::to_string),
+            token: Mutex::new(token.map(str::to_string)),
+            displays: Mutex::new(vec![DisplayFrame {
+                id: DISPLAY.display,
+                frame: DISPLAY.rect,
+            }]),
+            shift: AtomicBool::new(false),
         }
     }
 
@@ -57,7 +68,9 @@ impl FakePort {
     }
 
     fn fire(&self, mark: &str) {
-        if let Some(event) = key_event(mark) {
+        if mark == "key:shift-down" || mark == "key:shift-up" {
+            self.shift.store(mark == "key:shift-down", Ordering::SeqCst);
+        } else if let Some(event) = key_event(mark) {
             let sink = self.script.lock().unwrap().keys.clone();
             if let Some(sink) = sink {
                 sink(event);
@@ -120,6 +133,15 @@ impl PlatformPort for FakePort {
     fn pointer_display(&self) -> Result<Area, String> {
         Ok(DISPLAY)
     }
+    fn displays(&self) -> Vec<DisplayFrame> {
+        self.displays.lock().unwrap().clone()
+    }
+    fn launch_displays(&self, displays: Vec<DisplayFrame>) {
+        *self.displays.lock().unwrap() = displays;
+    }
+    fn shift_held(&self) -> bool {
+        self.shift.load(Ordering::SeqCst)
+    }
     fn screen_recording(&self) -> bool {
         true
     }
@@ -144,7 +166,14 @@ impl PlatformPort for FakePort {
         })))
     }
     fn token(&self) -> Option<String> {
-        self.token.clone()
+        self.token.lock().unwrap().clone()
+    }
+    fn store_token(&self, token: &str) -> Result<(), String> {
+        *self.token.lock().unwrap() = Some(token.to_string());
+        Ok(())
+    }
+    fn forget_token(&self) {
+        *self.token.lock().unwrap() = None;
     }
     fn run(&self, job: Box<dyn FnOnce() + Send>) {
         job();

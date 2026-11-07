@@ -63,7 +63,12 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
     assert_eq!(lens.state()["capture"], Value::Null);
     assert_eq!(lens.state()["input"], "None");
 
+    // ⌘⌥X opens the picker; a pick opens the capture.
     assert_eq!(lens.ask(r#"{"cmd":"key","key":"capture"}"#)["ok"], true);
+    assert_eq!(lens.state()["picking"][0]["id"], 1);
+    assert_eq!(lens.state()["capture"], Value::Null);
+    assert_eq!(lens.ask(r#"{"cmd":"pick"}"#)["ok"], true);
+    assert_eq!(lens.state()["picking"], Value::Null);
     assert_eq!(lens.state()["capture"]["area"]["rect"][2], 640.);
     assert_eq!(lens.ask(r#"{"cmd":"key","key":"draw-down"}"#)["ok"], true);
     assert_eq!(lens.state()["input"], "All");
@@ -112,7 +117,7 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
             .unwrap();
         assert!(made.success());
     }
-    lens.ask(r#"{"cmd":"key","key":"capture"}"#);
+    lens.ask(r#"{"cmd":"pick"}"#);
     let first = lens.state()["capture"]["id"].clone();
     let socket = lens.socket.clone();
     let send = std::thread::spawn(move || {
@@ -128,7 +133,7 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
         "Attn Lens is sending this capture, so no still was taken."
     );
     lens.ask(r#"{"cmd":"end"}"#);
-    lens.ask(r#"{"cmd":"key","key":"capture"}"#);
+    lens.ask(r#"{"cmd":"pick"}"#);
     let second = lens.state()["capture"]["id"].clone();
     assert_ne!(first, second);
     std::fs::write(dir.join("gate"), b"go").unwrap();
@@ -146,7 +151,7 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
         lens.ask(r#"{"cmd":"nope"}"#)["error"]
             .as_str()
             .unwrap()
-            .contains("state, key, still")
+            .contains("state, key, pick")
     );
     assert!(
         lens.ask(r#"{"cmd":"key","key":"nope"}"#)["error"]
@@ -157,7 +162,7 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
 
     // Without a pairing, a send fails and says so.
     let unpaired = Harness::new(dir, None);
-    unpaired.ask(r#"{"cmd":"key","key":"capture"}"#);
+    unpaired.ask(r#"{"cmd":"pick"}"#);
     unpaired.ask(r#"{"cmd":"send","target":"s1"}"#);
     assert_eq!(
         unpaired.state()["send"]["error"],

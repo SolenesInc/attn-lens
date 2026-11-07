@@ -1,7 +1,7 @@
 //! Stills through ScreenCaptureKit in-process (Hex's capture-core). Glance's
 //! `screencapture` subprocess adds macOS 26's private-window-picker consent on
 //! top of Screen Recording; this path does not.
-use super::session::Area;
+use super::session::{Area, DisplayFrame};
 use image::RgbaImage;
 
 /// The display the pointer is on, as a `CGDirectDisplayID`.
@@ -44,21 +44,54 @@ pub fn display_under_pointer() -> u32 {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Rect {
+    origin: [f64; 2],
+    size: [f64; 2],
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGDisplayBounds(display: u32) -> Rect;
+    fn CGGetActiveDisplayList(max: u32, displays: *mut u32, count: *mut u32) -> i32;
+}
+
 /// The size of `display`, in points.
 pub fn display_size(display: u32) -> (f64, f64) {
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    struct Rect {
-        origin: [f64; 2],
-        size: [f64; 2],
-    }
-    #[link(name = "CoreGraphics", kind = "framework")]
-    unsafe extern "C" {
-        fn CGDisplayBounds(display: u32) -> Rect;
-    }
     // SAFETY: CoreGraphics returns an empty rect for an unknown display.
     let bounds = unsafe { CGDisplayBounds(display) };
     (bounds.size[0], bounds.size[1])
+}
+
+/// The displays connected now. CoreGraphics reports how many there are first.
+pub fn displays() -> Vec<DisplayFrame> {
+    let mut count = 0u32;
+    // SAFETY: a null list asks only for the count.
+    if unsafe { CGGetActiveDisplayList(0, std::ptr::null_mut(), &mut count) } != 0 {
+        return vec![];
+    }
+    let mut ids = vec![0u32; count as usize];
+    // SAFETY: `ids` holds `count` entries.
+    if unsafe { CGGetActiveDisplayList(count, ids.as_mut_ptr(), &mut count) } != 0 {
+        return vec![];
+    }
+    ids.truncate(count as usize);
+    ids.into_iter()
+        .map(|id| {
+            // SAFETY: as in `display_size`.
+            let bounds = unsafe { CGDisplayBounds(id) };
+            DisplayFrame {
+                id,
+                frame: [
+                    bounds.origin[0],
+                    bounds.origin[1],
+                    bounds.size[0],
+                    bounds.size[1],
+                ],
+            }
+        })
+        .collect()
 }
 
 /// One still of `area` at its native pixels, leaving out Lens's own windows.
