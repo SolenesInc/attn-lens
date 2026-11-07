@@ -41,6 +41,8 @@ struct Script {
     clipboard: Option<RgbaImage>,
     ocr: String,
     pick: Option<PickSink>,
+    /// After a `jobs:hold` mark, jobs wait here until a `jobs:next` mark runs the oldest.
+    held: Option<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
 }
 
 pub struct FakePort {
@@ -88,6 +90,19 @@ impl FakePort {
             self.script.lock().unwrap().clipboard = Some(image.to_rgba8());
         } else if let Some(text) = mark.strip_prefix("ocr:") {
             self.script.lock().unwrap().ocr = text.to_string();
+        } else if mark == "jobs:hold" {
+            self.script.lock().unwrap().held = Some(Default::default());
+        } else if mark == "jobs:next" {
+            let job = self
+                .script
+                .lock()
+                .unwrap()
+                .held
+                .as_mut()
+                .and_then(|held| held.pop_front());
+            if let Some(job) = job {
+                job();
+            }
         } else if let Some(answer) = mark.strip_prefix("pick:") {
             let sink = self.script.lock().unwrap().pick.take();
             if let Some(sink) = sink {
@@ -205,7 +220,14 @@ impl PlatformPort for FakePort {
         self.script.lock().unwrap().pick = Some(sink);
     }
     fn run(&self, job: Box<dyn FnOnce() + Send>) {
-        job();
+        let mut script = self.script.lock().unwrap();
+        match &mut script.held {
+            Some(held) => held.push_back(job),
+            None => {
+                drop(script);
+                job();
+            }
+        }
     }
     fn tick(&self, now: f64) -> Option<Duration> {
         let run = rune::tooling::headless_run();

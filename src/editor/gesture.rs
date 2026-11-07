@@ -2,7 +2,10 @@
 use super::{Editor, TextDraft, actions::Action};
 use crate::{
     arrow,
-    document::{Mark, Tool, actions::DocumentAction},
+    document::{
+        Mark, Tool,
+        actions::{DocumentAction, MAX_MARK_POINTS},
+    },
     navigation,
 };
 use rune::{Drag, Phase, TextEdit, Tx};
@@ -282,6 +285,7 @@ impl Editor {
         }
         let layout = self.layout();
         let crop_ratio = self.crop_ratio;
+        let mut stroke_full = false;
         match &mut self.gesture {
             Gesture::Moving { drag, handle } => drag.update(p, shift, *handle),
             Gesture::MovingSelection(drags) => {
@@ -296,7 +300,10 @@ impl Editor {
                 {
                     return;
                 }
-                mark.points.push(p);
+                stroke_full = mark.points.len() >= MAX_MARK_POINTS;
+                if !stroke_full {
+                    mark.points.push(p);
+                }
             }
             Gesture::Drawing(mark) => {
                 mark.points.truncate(1);
@@ -304,6 +311,11 @@ impl Editor {
                     .push(constrained(mark, p, shift, layout, crop_ratio));
             }
             _ => return,
+        }
+        if stroke_full {
+            self.status = format!(
+                "This stroke reached the limit of {MAX_MARK_POINTS} points. Release to keep it."
+            );
         }
         self.refresh_lens();
     }
@@ -377,7 +389,9 @@ impl Editor {
     fn finish_drawing(&mut self, mut mark: Mark, x: f32, y: f32, shift: bool, tx: &mut Tx) {
         if let Some(p) = self.coordinate(x, y, true) {
             let end = constrained(&mark, p, shift, self.layout(), self.crop_ratio);
-            mark.points.push(end);
+            if mark.points.len() < MAX_MARK_POINTS {
+                mark.points.push(end);
+            }
         }
         let first = mark.points[0];
         let last = *mark.points.last().unwrap();
@@ -423,6 +437,8 @@ impl Editor {
 
     pub(crate) fn cancel_gesture(&mut self) {
         let gesture = std::mem::take(&mut self.gesture);
+        self.lens_request += 1;
+        self.live_source = None;
         if let Gesture::Selecting { previous, .. } = &gesture {
             self.set_selection(previous.clone());
         }

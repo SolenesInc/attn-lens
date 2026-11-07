@@ -268,6 +268,7 @@ impl Editor {
         let radius = effects::radius(mark) * l.scale;
         Some(
             canvas(Shape::new())
+                .key("lens")
                 .absolute(center[0] - radius, center[1] - radius)
                 .size(radius * 2., radius * 2.)
                 .radius(radius)
@@ -279,11 +280,14 @@ impl Editor {
 
     /// Flattens the image off the UI thread for the lens to sample.
     pub(crate) fn flatten_for_lens(&mut self) {
+        self.lens_request += 1;
+        self.live_source = None;
+        let request = self.lens_request;
         let document = self.doc().render_snapshot();
         let mailbox = self.mailbox.clone();
         self.port.run(Box::new(move || {
             let image = std::sync::Arc::new(document.plain(None));
-            mailbox.post(super::Message::LensSource(image));
+            mailbox.post(super::Message::LensSource { request, image });
         }));
     }
 

@@ -20,7 +20,10 @@ const LATER: [&str; 4] = [
 ];
 
 /// Scripts for behaviour the docs describe in prose, not in a table.
-const PROSE: [&str; 7] = [
+const PROSE: [&str; 10] = [
+    "color-drag-undo",
+    "lens-source",
+    "long-stroke",
     "nav-zoom",
     "color-picker",
     "clipboard",
@@ -97,9 +100,16 @@ fn fixture(dir: &Path) -> Vec<(&'static str, String)> {
             .save(&small)
             .unwrap();
     }
+    let large = dir.join("large-input.png");
+    if !large.exists() {
+        image::RgbaImage::from_pixel(1000, 700, image::Rgba([70, 90, 110, 255]))
+            .save(&large)
+            .unwrap();
+    }
     std::fs::write(dir.join("not-an-image.txt"), "text").unwrap();
     vec![
         ("$FIXTURE", format!("{SCRIPTS}/fixture.png")),
+        ("$LARGE", large.display().to_string()),
         ("$WIDE_SMALL", small.display().to_string()),
         ("$WIDE", wide.display().to_string()),
         ("$OUT", dir.display().to_string()),
@@ -284,6 +294,18 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
             if !subset(want, found) {
                 fail.push(format!("mark {index} is {found}, expected {want}"));
             }
+        }
+    }
+    if let Some(want) = expected["points_over"].as_array() {
+        let index = want[0].as_u64().unwrap();
+        let least = want[1].as_u64().unwrap() as usize;
+        let found = node(&format!("mark-{index}"))
+            .and_then(|n| serde_json::from_str::<Value>(n["value"].as_str()?).ok())
+            .map_or(0, |mark| mark["points"].as_array().map_or(0, Vec::len));
+        if found <= least {
+            fail.push(format!(
+                "mark {index} has {found} points, expected over {least}"
+            ));
         }
     }
     let source = image::open(format!("{SCRIPTS}/fixture.png")).unwrap();

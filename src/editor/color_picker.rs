@@ -117,8 +117,12 @@ impl Editor {
         if matches!(drag.phase, Phase::Down) {
             self.picker.continuing = false;
         }
+        let revision = self.revision;
         self.dispatch_ui(Action::SetRgb(rgb), tx);
-        self.picker.continuing = !matches!(drag.phase, Phase::Up);
+        // The undo step starts with the first move that changes something: a press at the
+        // current colour saves nothing, so later moves have to.
+        let started = self.picker.continuing || self.revision != revision;
+        self.picker.continuing = started && !matches!(drag.phase, Phase::Up);
         self.picker.hex = TextEdit::new(hex(rgb));
     }
 

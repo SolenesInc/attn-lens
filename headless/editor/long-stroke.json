@@ -1,0 +1,60 @@
+{
+ "row": "a pen stroke of more than 2000 samples",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$LARGE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "p"
+  },
+  {
+   "t": 0.68,
+   "type": "drag",
+   "x": 45,
+   "y": 140,
+   "dx": 860,
+   "dy": 600,
+   "dur": 24.0
+  },
+  {
+   "t": 24.98,
+   "type": "mark",
+   "name": "kept"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "kept",
+   "marks": [
+    {
+     "tool": "Pen"
+    }
+   ],
+   "points_over": [
+    0,
+    2000
+   ],
+   "status_contains": ""
+  }
+ ]
+}

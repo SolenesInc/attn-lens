@@ -119,7 +119,10 @@ pub(crate) enum Message {
         color: Result<Option<[u8; 3]>, String>,
     },
     /// The flattened image a magnifier being dragged enlarges.
-    LensSource(Arc<RgbaImage>),
+    LensSource {
+        request: u64,
+        image: Arc<RgbaImage>,
+    },
 }
 
 /// Handed to workers: they post a message and wake the window.
@@ -176,6 +179,8 @@ pub struct Editor {
     /// What a magnifier being dragged enlarges: the marks flattened when the drag began.
     live_source: Option<Arc<RgbaImage>>,
     live_lens: rune::Pixels,
+    /// The flatten the current drag asked for; any other result is from an abandoned one.
+    lens_request: u64,
 }
 
 impl Editor {
@@ -218,6 +223,7 @@ impl Editor {
             next_operation: 0,
             live_source: None,
             live_lens: rune::Pixels::new(),
+            lens_request: 0,
         }
     }
 

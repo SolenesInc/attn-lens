@@ -552,7 +552,7 @@ impl Editor {
     /// Takes in what a worker finished.
     pub(crate) fn receive(&mut self, message: Message, tx: &mut Tx) {
         let id = match &message {
-            Message::Preview(_) | Message::LensSource(_) => None,
+            Message::Preview(_) | Message::LensSource { .. } => None,
             Message::Image { id, .. }
             | Message::Transformed { id, .. }
             | Message::Saved { id, .. }
@@ -569,8 +569,8 @@ impl Editor {
         }
         match message {
             Message::Preview(rendered) => self.receive_preview(rendered),
-            Message::LensSource(image) => {
-                if self.gesture.is_active() {
+            Message::LensSource { request, image } => {
+                if request == self.lens_request {
                     self.live_source = Some(image);
                     self.refresh_lens();
                 }

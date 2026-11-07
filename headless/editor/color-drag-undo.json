@@ -1,0 +1,121 @@
+{
+ "row": "a color drag starting at the current value",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "p"
+  },
+  {
+   "t": 0.68,
+   "type": "drag",
+   "dx": 100,
+   "dy": 50,
+   "dur": 0.05,
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 0.88,
+   "type": "tap",
+   "key": "custom-color"
+  },
+  {
+   "t": 1.08,
+   "type": "tap",
+   "key": "hex-field"
+  },
+  {
+   "t": 1.28,
+   "type": "key",
+   "name": "a",
+   "cmd": true
+  },
+  {
+   "t": 1.4,
+   "type": "type",
+   "text": "#800000",
+   "every": 0.01
+  },
+  {
+   "t": 1.52,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.74,
+   "type": "mark",
+   "name": "baseline"
+  },
+  {
+   "t": 1.86,
+   "type": "drag",
+   "key": "color-value",
+   "dx": -30,
+   "dy": 0,
+   "dur": 0.05
+  },
+  {
+   "t": 2.06,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 2.28,
+   "type": "mark",
+   "name": "one-undo"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "baseline",
+   "marks": [
+    {
+     "tool": "Pen",
+     "color": [
+      128,
+      0,
+      0,
+      255
+     ]
+    }
+   ]
+  },
+  {
+   "at": "one-undo",
+   "marks": [
+    {
+     "tool": "Pen",
+     "color": [
+      128,
+      0,
+      0,
+      255
+     ]
+    }
+   ]
+  }
+ ]
+}
