@@ -21,8 +21,9 @@
 //   dock NAME              presses the app's Dock icon through Accessibility
 //   lens JSON              sends a request to Lens's automation socket, prints the reply
 //   expect TEXT            polls {"cmd":"state"} until the reply contains TEXT
-//   time-window OWNER      after the last chord's key went down, reports how long until
-//                          OWNER had a new window on screen
+//   watch-window OWNER     before a chord: logs how long after its key went down OWNER
+//                          first shows a window it was not showing
+//   await-window           waits for that log line
 //   mark NAME              logs a named time
 // Every command logs its time in nanoseconds on the host clock Lens uses.
 import AppKit
@@ -156,6 +157,12 @@ func windows(owner: String? = nil) -> [[String: Any]] {
         as? [[String: Any]] ?? []
     guard let owner else { return list }
     return list.filter { $0[kCGWindowOwnerName as String] as? String == owner }
+}
+let windowWatch = DispatchSemaphore(value: 0)
+func visibleWindows(_ owner: String) -> Set<Int> {
+    Set(
+        windows(owner: owner).filter { ($0[kCGWindowAlpha as String] as? Double ?? 0) > 0 }
+            .compactMap { $0[kCGWindowNumber as String] as? Int })
 }
 func requireFront() {
     let front = windows().first { ($0[kCGWindowLayer as String] as? Int) == 0 }
@@ -302,20 +309,27 @@ func run(_ line: String) {
             pause(25)
         }
         fail("expected \(text) in \(ask("{\"cmd\":\"state\"}"))", 4)
-    case "time-window":
+    case "watch-window":
         let owner = rest(1)
-        let before = Set(windows(owner: owner).compactMap { $0[kCGWindowNumber as String] as? Int })
-        // Polling every 2 ms, as the spike's baselines did. 5 s is far past its 841 ms worst case.
-        let deadline = now() + 5_000_000_000
-        while now() < deadline {
-            let current = windows(owner: owner).compactMap { $0[kCGWindowNumber as String] as? Int }
-            if current.contains(where: { !before.contains($0) }) {
-                log("time-window \(owner) \(Double(now() - lastChordKeyDown) / 1e6) ms after key down")
-                return
+        let thread = Thread {
+            var seen = visibleWindows(owner)
+            // 5 s is far past the 841 ms worst case the spike measured.
+            while lastChordKeyDown == 0 || now() < lastChordKeyDown + 5_000_000_000 {
+                let current = visibleWindows(owner)
+                if lastChordKeyDown != 0, !current.isSubset(of: seen) {
+                    let ms = Double(now() - lastChordKeyDown) / 1e6
+                    log("window-visible \(owner) \(ms) ms after key down")
+                    windowWatch.signal()
+                    return
+                }
+                seen = current
+                usleep(2000)  // As the spike's baselines polled.
             }
-            usleep(2000)
+            log("window-visible \(owner) never")
+            windowWatch.signal()
         }
-        fail("no new window for \(owner)", 4)
+        thread.start()
+    case "await-window": windowWatch.wait()
     case "mark": log("mark \(rest(1))")
     default: fail("unknown command: \(line)", 2)
     }

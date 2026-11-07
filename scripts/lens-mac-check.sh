@@ -34,8 +34,10 @@ expect "editor":false
 dock Attn Lens
 expect "editor":true
 mark dock-opened-editor
+wait 500
+watch-window Attn Lens
 chord cmd+opt x
-time-window Attn Lens
+await-window
 expect "capture":{
 expect "bar":true
 down fn
@@ -50,5 +52,5 @@ expect "state":"sent"
 lens {"cmd":"state"}
 SCRIPT
 LENS_DRIVER_WINDOW=agreed "$OUT/driver" --front "Attn Lens" "$OUT/script.txt" | tee "$OUT/driver.log"
-grep 'time-window' "$OUT/driver.log" >>"$OUT/receipts.txt"
+grep 'window-visible' "$OUT/driver.log" >>"$OUT/receipts.txt"
 cat "$OUT/receipts.txt"
