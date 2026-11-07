@@ -1,12 +1,12 @@
 # Runs inside the VM. The image has SIP off, so permissions go straight into TCC's
-# database, with no prompt and nobody clicking in the VM.
+# database, with no prompt and nobody clicking in the VM. The driver needs no row: it
+# runs under `tart exec`, so it holds the image's grants for the guest agent.
 db="/Library/Application Support/com.apple.TCC/TCC.db"
-grant() { # service client client_type
-    sudo sqlite3 "$db" "INSERT OR REPLACE INTO access (service,client,client_type,auth_value,auth_reason,auth_version,flags) VALUES ('$1','$2',$3,2,4,1,0);"
+grant() { # service bundle_id
+    sudo sqlite3 "$db" "INSERT OR REPLACE INTO access (service,client,client_type,auth_value,auth_reason,auth_version,flags) VALUES ('$1','$2',0,2,4,1,0);"
 }
 for service in kTCCServiceScreenCapture kTCCServiceAccessibility kTCCServicePostEvent; do
-    grant "$service" dev.attn.lens 0
-    grant "$service" "$HOME/lens-check/driver" 1
+    grant "$service" dev.attn.lens
 done
 # macOS 26 also asks before a stream "bypasses the window picker". An entry here with a
 # far hint date stops that dialog, which would otherwise cover the app under test.

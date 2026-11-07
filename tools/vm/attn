@@ -22,7 +22,9 @@ pair)
     dir="$(mktemp -d "$sent/XXXXXX")"
     printf '%s\n' "$*" >"$dir/args"
     while [ $# -gt 0 ]; do
-        [ "$1" = --file ] && cp "$2" "$dir/"
+        if [ "$1" = --file ]; then
+            cp "$2" "$dir/" || exit 1
+        fi
         shift
     done
     echo '{"id":"cap","attachments":[]}'

@@ -93,7 +93,7 @@ driver)
     shift 2
     start
     guest_script="$GUEST_ROOT/$(basename "$script")"
-    in_vm_stdin /bin/sh -c "cat > '$guest_script'" <"$script"
+    in_vm_stdin /bin/sh -c 'cat > "$1"' sh "$guest_script" <"$script"
     if [ $# -eq 0 ]; then set -- --front "Attn Lens"; fi
     in_vm /usr/bin/env LENS_DRIVER_WINDOW=vm "$GUEST_ROOT/driver" "$@" "$guest_script"
     ;;
