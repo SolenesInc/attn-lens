@@ -46,6 +46,9 @@ struct State {
     capture: Option<Capture>,
     input: Input,
     send: SendStatus,
+    /// The capture a running send is delivering. It takes no more stills: the
+    /// send has its copies and closes the capture when it succeeds.
+    sending: Option<u64>,
     /// A failure with no capture to hold it, such as a refused still.
     error: Option<String>,
     next_capture: u64,
@@ -234,6 +237,9 @@ impl Lens {
         else {
             return;
         };
+        if cause != Cause::Send && self.state.lock().unwrap().sending == Some(id) {
+            return self.fail("Attn Lens is sending this capture, so no still was taken.".into());
+        }
         *self.pending_stills.0.lock().unwrap() += 1;
         let lens = self.clone();
         self.port.run(Box::new(move || {
@@ -315,6 +321,7 @@ impl Lens {
             }
             let (id, needs_still) = (capture.id, capture.stills.is_empty());
             state.send = SendStatus::Sending;
+            state.sending = Some(id);
             (id, needs_still, state.voice.take())
         };
         self.changed();
@@ -338,6 +345,7 @@ impl Lens {
         let delivered = voice.and_then(|()| self.deliver(id));
         {
             let mut state = self.state.lock().unwrap();
+            state.sending = None;
             state.send = match delivered {
                 Ok(target) => {
                     if state.capture.as_ref().is_some_and(|c| c.id == id) {

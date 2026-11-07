@@ -119,6 +119,14 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
         automation::request(&socket, r#"{"cmd":"send","target":"gated"}"#).unwrap()
     });
     std::fs::read(dir.join("entered")).unwrap();
+    // A still asked for during the send would be lost with the capture, so it is refused aloud.
+    lens.ask(r#"{"cmd":"key","key":"capture"}"#);
+    let sending = lens.state();
+    assert_eq!(sending["capture"]["stills"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        sending["error"],
+        "Attn Lens is sending this capture, so no still was taken."
+    );
     lens.ask(r#"{"cmd":"end"}"#);
     lens.ask(r#"{"cmd":"key","key":"capture"}"#);
     let second = lens.state()["capture"]["id"].clone();
