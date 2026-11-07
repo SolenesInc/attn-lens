@@ -171,8 +171,7 @@ func requireFront() {
 }
 
 func socketPath() -> String {
-    ProcessInfo.processInfo.environment["ATTN_LENS_SOCKET"]
-        ?? NSHomeDirectory() + "/Library/Caches/dev.attn.lens/automation/lens.sock"
+    NSHomeDirectory() + "/Library/Caches/dev.attn.lens/automation/lens.sock"
 }
 func ask(_ line: String) -> String {
     let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)

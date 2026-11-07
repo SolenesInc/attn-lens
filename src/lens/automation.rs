@@ -28,9 +28,6 @@ use std::{
 
 /// The socket lives in a directory only this user can enter.
 pub fn socket_path() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("ATTN_LENS_SOCKET") {
-        return Ok(path.into());
-    }
     let home = std::env::var_os("HOME").ok_or("HOME is unavailable")?;
     let dir = if cfg!(target_os = "macos") {
         PathBuf::from(home).join("Library/Caches/dev.attn.lens/automation")
