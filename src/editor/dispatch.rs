@@ -635,7 +635,7 @@ impl Editor {
     pub(crate) fn load(&mut self, document: Document) {
         self.doc = Some(document);
         self.set_selection(vec![]);
-        self.gesture = Default::default();
+        self.cancel_gesture();
         self.text = None;
         self.next_counter = None;
         self.zoom = None;
