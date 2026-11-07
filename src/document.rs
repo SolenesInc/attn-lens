@@ -2,7 +2,7 @@ use ab_glyph::Font;
 use image::{Rgba, RgbaImage};
 use imageproc::drawing::{draw_filled_circle_mut, draw_text_mut};
 use std::sync::Arc;
-pub(crate) mod actions;
+pub mod actions;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -89,13 +89,6 @@ impl Document {
         }
     }
     /// Commit a completed private agent draft as one undoable change.
-    pub(crate) fn apply_agent_draft(&mut self, draft: Self) {
-        self.remember();
-        self.base = draft.base;
-        self.marks = draft.marks;
-        self.backdrop = draft.backdrop;
-        self.image_animation = draft.image_animation;
-    }
     fn snapshot(&self) -> Snapshot {
         Snapshot {
             base: self.base.clone(),

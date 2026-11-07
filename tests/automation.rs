@@ -1,0 +1,182 @@
+//! The automation socket, with the fake port behind it and a stand-in `attn`.
+use attn_lens::{
+    lens::{Lens, automation},
+    platform_port::fake::FakePort,
+};
+use serde_json::Value;
+use std::{
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+struct Harness {
+    socket: PathBuf,
+}
+
+impl Harness {
+    fn new(dir: &Path, token: Option<&str>) -> Self {
+        let lens = Lens::new(Arc::new(FakePort::new(vec![], token)));
+        let socket = dir.join(format!("lens-{}.sock", token.unwrap_or("unpaired")));
+        automation::listen(lens, &socket).unwrap();
+        Self { socket }
+    }
+    fn ask(&self, request: &str) -> Value {
+        serde_json::from_str(&automation::request(&self.socket, request).unwrap()).unwrap()
+    }
+    fn state(&self) -> Value {
+        self.ask(r#"{"cmd":"state"}"#)["state"].clone()
+    }
+}
+
+/// A stand-in that records its arguments and the PNGs as they were when sent.
+fn stand_in(dir: &Path) -> PathBuf {
+    let bin = dir.join("attn");
+    std::fs::write(
+        &bin,
+        format!(
+            r#"#!/bin/sh
+cat > /dev/null
+if [ "$2" = "sessions" ]; then echo '[{{"id":"s1","label":"one","agent":"claude","state":"idle"}}]'; exit 0; fi
+if [ "$2" = "closed" ]; then echo 'send: session closed is closed' >&2; exit 1; fi
+if [ "$2" = "gated" ]; then echo entered > "{dir}/entered"; cat "{dir}/gate" > /dev/null; echo '{{"id":"cap"}}'; exit 0; fi
+echo "$@" > "{dir}/args"
+for arg in "$@"; do case "$arg" in *.png) cp "$arg" "{dir}/";; esac; done
+echo '{{"id":"cap"}}'
+"#,
+            dir = dir.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    bin
+}
+
+#[test]
+fn a_capture_is_started_read_and_sent_through_the_socket() {
+    let dir = tempfile::tempdir().unwrap();
+    let dir = dir.path();
+    // The only test in this binary that reads the variable.
+    unsafe { std::env::set_var("ATTN_BIN", stand_in(dir)) };
+    let lens = Harness::new(dir, Some("tok"));
+
+    assert_eq!(lens.state()["capture"], Value::Null);
+    assert_eq!(lens.state()["input"], "None");
+
+    assert_eq!(lens.ask(r#"{"cmd":"key","key":"capture"}"#)["ok"], true);
+    assert_eq!(lens.state()["capture"]["area"]["rect"][2], 640.);
+    assert_eq!(lens.ask(r#"{"cmd":"key","key":"draw-down"}"#)["ok"], true);
+    assert_eq!(lens.state()["input"], "All");
+    lens.ask(r#"{"cmd":"key","key":"draw-up"}"#);
+    assert_eq!(lens.state()["input"], "None");
+
+    assert_eq!(lens.ask(r#"{"cmd":"sessions"}"#)["sessions"][0]["id"], "s1");
+
+    // A refused send keeps the capture and attn's words.
+    assert_eq!(
+        lens.ask(r#"{"cmd":"send","target":"closed","message":"hi"}"#)["ok"],
+        true
+    );
+    let failed = lens.state();
+    assert_eq!(failed["send"]["state"], "failed");
+    assert_eq!(failed["send"]["error"], "send: session closed is closed");
+    assert_eq!(failed["capture"]["stills"][0]["cause"], "send");
+
+    // Sending again uses the stills it has, then closes the capture.
+    lens.ask(r#"{"cmd":"key","key":"capture"}"#);
+    assert_eq!(lens.state()["capture"]["stills"][1]["cause"], "hotkey");
+    assert_eq!(
+        lens.ask(r#"{"cmd":"send","target":"s1","message":"look here"}"#)["ok"],
+        true
+    );
+    let sent = lens.state();
+    assert_eq!(sent["send"]["state"], "sent");
+    assert_eq!(sent["send"]["target"], "s1");
+    assert_eq!(sent["capture"], Value::Null);
+    let args = std::fs::read_to_string(dir.join("args")).unwrap();
+    assert!(
+        args.starts_with("send s1 --token-stdin --json --file "),
+        "{args}"
+    );
+    assert!(args.ends_with("-m look here\n"), "{args}");
+    for frame in ["frame-01.png", "frame-02.png"] {
+        let image = image::open(dir.join(frame)).unwrap();
+        assert_eq!((image.width(), image.height()), (1280, 800));
+    }
+
+    // A send that finishes after its capture was replaced leaves the new capture open.
+    for fifo in ["entered", "gate"] {
+        let made = std::process::Command::new("mkfifo")
+            .arg(dir.join(fifo))
+            .status()
+            .unwrap();
+        assert!(made.success());
+    }
+    lens.ask(r#"{"cmd":"key","key":"capture"}"#);
+    let first = lens.state()["capture"]["id"].clone();
+    let socket = lens.socket.clone();
+    let send = std::thread::spawn(move || {
+        automation::request(&socket, r#"{"cmd":"send","target":"gated"}"#).unwrap()
+    });
+    std::fs::read(dir.join("entered")).unwrap();
+    // A still asked for during the send would be lost with the capture, so it is refused aloud.
+    lens.ask(r#"{"cmd":"key","key":"capture"}"#);
+    let sending = lens.state();
+    assert_eq!(sending["capture"]["stills"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        sending["error"],
+        "Attn Lens is sending this capture, so no still was taken."
+    );
+    lens.ask(r#"{"cmd":"end"}"#);
+    lens.ask(r#"{"cmd":"key","key":"capture"}"#);
+    let second = lens.state()["capture"]["id"].clone();
+    assert_ne!(first, second);
+    std::fs::write(dir.join("gate"), b"go").unwrap();
+    send.join().unwrap();
+    let after = lens.state();
+    assert_eq!(after["send"]["state"], "sent");
+    assert_eq!(after["capture"]["id"], second);
+    lens.ask(r#"{"cmd":"end"}"#);
+
+    // Requests that cannot work say what is missing.
+    let no_capture = lens.ask(r#"{"cmd":"send","target":"s1"}"#);
+    assert_eq!(no_capture["ok"], false);
+    assert!(no_capture["error"].as_str().unwrap().contains("⌘⌥X"));
+    assert!(
+        lens.ask(r#"{"cmd":"nope"}"#)["error"]
+            .as_str()
+            .unwrap()
+            .contains("state, key, still")
+    );
+    assert!(
+        lens.ask(r#"{"cmd":"key","key":"nope"}"#)["error"]
+            .as_str()
+            .unwrap()
+            .contains("draw-down")
+    );
+
+    // Without a pairing, a send fails and says so.
+    let unpaired = Harness::new(dir, None);
+    unpaired.ask(r#"{"cmd":"key","key":"capture"}"#);
+    unpaired.ask(r#"{"cmd":"send","target":"s1"}"#);
+    assert_eq!(
+        unpaired.state()["send"]["error"],
+        "Attn Lens is not paired with attn."
+    );
+}
+
+#[test]
+fn a_live_socket_is_kept_and_a_stale_one_is_replaced() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("lens.sock");
+    let lens = || Lens::new(Arc::new(FakePort::new(vec![], None)));
+
+    // A socket whose process is gone: bound, then its listener dropped.
+    drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
+    automation::listen(lens(), &path).unwrap();
+
+    let refused = automation::listen(lens(), &path).unwrap_err();
+    assert!(refused.contains("already"), "{refused}");
+    let reply = automation::request(&path, r#"{"cmd":"state"}"#).unwrap();
+    assert!(reply.contains(r#""ok":true"#), "{reply}");
+}

@@ -19,37 +19,6 @@ pub fn load(path: &std::path::Path) -> Result<RgbaImage, String> {
         .map_err(|e| e.to_string())
 }
 #[cfg(target_os = "macos")]
-#[link(name = "CoreGraphics", kind = "framework")]
-unsafe extern "C" {
-    fn CGPreflightScreenCaptureAccess() -> bool;
-    fn CGRequestScreenCaptureAccess() -> bool;
-}
-/// Called only when the user requests capture, before hiding the editor.
-#[cfg(target_os = "macos")]
-pub fn screen_capture_permission() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    unsafe {
-        if CGPreflightScreenCaptureAccess() {
-            return Ok(());
-        }
-        // Let macOS present its normal permission request for a first-time grant.
-        let _ = CGRequestScreenCaptureAccess();
-        if CGPreflightScreenCaptureAccess() {
-            return Ok(());
-        }
-    }
-    Err("macOS is not authorizing this Attn Lens build to record the screen. Open System Settings → Privacy & Security → Screen & System Audio Recording. If Attn Lens is already enabled, quit it, remove its entry with −, add Attn Lens.app with +, enable it, then reopen. Rebuilding an ad-hoc signed app can invalidate an older permission.".into())
-}
-/// Captures the display under the pointer in-process through ScreenCaptureKit.
-/// `area` no longer opens an interactive selection: crop in the editor instead.
-/// `screencapture -i` added macOS 26's private-window-picker consent.
-#[cfg(target_os = "macos")]
-pub fn capture(_area: bool) -> Result<Option<RgbaImage>, String> {
-    // Let the hidden editor leave the screen first.
-    std::thread::sleep(std::time::Duration::from_millis(250));
-    crate::lens::capture::screenshot(crate::lens::capture::display_under_pointer()).map(Some)
-}
-#[cfg(target_os = "macos")]
 fn dialog(script: &str) -> Result<Option<PathBuf>, String> {
     let output = Command::new("/usr/bin/osascript")
         .args(["-e", script])
@@ -231,16 +200,6 @@ pub fn annotation_font_family() -> &'static str {
     annotation_font_data().family
 }
 
-pub fn key_binding(key: &str) -> String {
-    if cfg!(target_os = "linux") {
-        key.replace("cmd-", "ctrl-")
-    } else {
-        key.into()
-    }
-}
-pub fn command_pressed(modifiers: gpui::Modifiers) -> bool {
-    modifiers.platform || (cfg!(target_os = "linux") && modifiers.control)
-}
 pub fn shortcut_label(label: &str) -> String {
     if cfg!(target_os = "linux") {
         label
@@ -251,78 +210,11 @@ pub fn shortcut_label(label: &str) -> String {
         label.into()
     }
 }
-pub fn show_editor(cx: &mut gpui::App) {
-    #[cfg(target_os = "macos")]
-    cx.activate(true);
-    #[cfg(target_os = "linux")]
-    for handle in cx.windows() {
-        let _ = handle.update(cx, |_, window, _| window.activate_window());
-    }
-}
-pub fn hide_editor(cx: &mut gpui::App) {
-    #[cfg(target_os = "macos")]
-    cx.hide();
-    #[cfg(target_os = "linux")]
-    // A toolbar listener already holds the current window. Defer so the
-    // window is available again before issuing the compositor request.
-    cx.defer(|cx| {
-        for handle in cx.windows() {
-            let _ = handle.update(cx, |_, window, _| window.minimize_window());
-        }
-    });
-}
-
-pub enum Startup {
-    Demo,
-    Image(RgbaImage),
-    Exit,
-}
-pub fn startup_image(args: impl Iterator<Item = String>) -> Result<Startup, String> {
-    let mut args = args;
-    let mut request = None;
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--automation" => {}
-            "--help" | "-h" => {
-                println!(
-                    "Glance {}\nUsage: glance [desktop] [--open PATH | --capture-area | --capture-screen] [--automation]\n       glance COMMAND [--flag VALUE]\n       glance --mcp\nRun glance --help for terminal commands.",
-                    env!("CARGO_PKG_VERSION")
-                );
-                return Ok(Startup::Exit);
-            }
-            "--open" | "--capture-area" | "--capture-screen" => {
-                if request.is_some() {
-                    return Err("Choose only one startup image or capture action".into());
-                }
-                request = Some((
-                    arg.clone(),
-                    if arg == "--open" {
-                        Some(args.next().ok_or("--open requires a path")?)
-                    } else {
-                        None
-                    },
-                ));
-            }
-            _ if arg.starts_with("-psn_") => {} // Older Finder launch argument.
-            _ => return Err(format!("Unknown argument: {arg}. Use --help.")),
-        }
-    }
-    match request {
-        None => Ok(Startup::Demo),
-        Some((action, Some(path))) if action == "--open" => {
-            load(std::path::Path::new(&path)).map(Startup::Image)
-        }
-        Some((action, _)) => {
-            screen_capture_permission()?;
-            Ok(capture(action == "--capture-area")?.map_or(Startup::Exit, Startup::Image))
-        }
-    }
-}
 
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::{capture, clipboard_image, copy, open, permission as screen_capture_permission};
+pub use linux::{clipboard_image, copy, open};
 #[cfg(target_os = "linux")]
 fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
     linux::destination(format)
@@ -330,20 +222,6 @@ fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
 #[cfg(test)]
 mod tests {
     use super::checked_export_path;
-    #[test]
-    fn startup_rejects_missing_or_conflicting_image_arguments() {
-        for args in [
-            vec!["--open"],
-            vec!["--capture-area", "--capture-screen"],
-            vec!["--unknown"],
-        ] {
-            assert!(super::startup_image(args.into_iter().map(str::to_string)).is_err());
-        }
-        assert!(matches!(
-            super::startup_image(vec!["--automation".to_string()].into_iter()).unwrap(),
-            super::Startup::Demo
-        ));
-    }
     #[test]
     fn missing_or_invalid_system_fonts_render_with_the_embedded_fallback() {
         use ab_glyph::Font;

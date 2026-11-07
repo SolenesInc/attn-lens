@@ -6,53 +6,9 @@ use std::{
 };
 pub fn permission() -> Result<(), String> {
     if std::env::var_os("WAYLAND_DISPLAY").is_none() {
-        return Err(
-            "Screen capture requires a Wayland session (Omarchy/Hyprland) and grim/slurp.".into(),
-        );
+        return Err("Picking a screen color requires a Wayland session.".into());
     }
     Ok(())
-}
-pub fn capture(area: bool) -> Result<Option<RgbaImage>, String> {
-    let geometry = if area {
-        let selection = Command::new("slurp")
-            .output()
-            .map_err(|e| format!("Cannot run slurp: {e}. Install grim and slurp."))?;
-        if !selection.status.success() {
-            return match capture_failure(true, &selection.stderr, selection.status.code()) {
-                Some(e) => Err(e),
-                None => Ok(None),
-            };
-        }
-        let geometry = String::from_utf8(selection.stdout).map_err(|e| e.to_string())?;
-        if geometry.trim().is_empty() {
-            return Ok(None);
-        }
-        Some(geometry)
-    } else {
-        None
-    };
-    let capture_dir = tempfile::Builder::new()
-        .prefix("glance-capture-")
-        .tempdir()
-        .map_err(|e| e.to_string())?;
-    let path = capture_dir.path().join("capture.png");
-    // Allow the compositor to process the editor's minimize request.
-    std::thread::sleep(std::time::Duration::from_millis(250));
-    let mut command = Command::new("grim");
-    if let Some(geometry) = geometry {
-        command.args(["-g", geometry.trim()]);
-    }
-    let output = command
-        .arg(&path)
-        .output()
-        .map_err(|e| format!("Cannot run grim: {e}. Install grim and slurp."));
-    let result = match output {
-        Ok(output) if output.status.success() && path.exists() => load(&path).map(Some),
-        Ok(output) => Err(capture_failure(false, &output.stderr, output.status.code()).unwrap()),
-        Err(error) => Err(error),
-    };
-    let _ = std::fs::remove_file(path);
-    result
 }
 fn dialog(args: &[&str]) -> Result<Option<PathBuf>, String> {
     let output = Command::new("zenity")
@@ -169,40 +125,4 @@ pub fn clipboard_image() -> Result<RgbaImage, String> {
         .decode()
         .map(|i| i.to_rgba8())
         .map_err(|e| e.to_string())
-}
-fn capture_failure(area: bool, stderr: &[u8], code: Option<i32>) -> Option<String> {
-    let detail = String::from_utf8_lossy(stderr);
-    let detail = detail.trim();
-    if area && detail.is_empty() && matches!(code, Some(0 | 1)) {
-        return None;
-    }
-    Some(if detail.is_empty() {
-        format!(
-            "Screen capture produced no image (exit {}). Try again with the screen unlocked.",
-            code.map_or("unknown".into(), |c| c.to_string())
-        )
-    } else {
-        format!("Screen capture failed: {detail}")
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::capture_failure;
-    #[test]
-    fn capture_errors_preserve_real_cause_and_cancellation_is_quiet() {
-        assert!(capture_failure(true, b"", Some(1)).is_none());
-        assert!(capture_failure(true, b" \n", Some(0)).is_none());
-        assert!(
-            capture_failure(false, b"", Some(1))
-                .unwrap()
-                .contains("produced no image")
-        );
-        assert!(
-            capture_failure(true, b"could not create image from display", Some(1))
-                .unwrap()
-                .contains("could not create image from display")
-        );
-        assert!(capture_failure(true, b"", None).is_some());
-    }
 }

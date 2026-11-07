@@ -1,5 +1,15 @@
 //! View transforms and constrained geometry. These operations never touch image pixels.
-use crate::{Layout, document::Tool};
+use crate::document::Tool;
+
+/// Where the image sits in the canvas, in points.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Layout {
+    pub x: f32,
+    pub y: f32,
+    pub scale: f32,
+    pub width: f32,
+    pub height: f32,
+}
 
 pub fn anchored_zoom(
     scale: f32,

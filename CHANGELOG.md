@@ -15,15 +15,15 @@ Notable user-visible changes are recorded here.
   tile you can reopen.
 - Missing Screen Recording access opens System Settings with a tile of the app
   to drag into the list (from Hex, MIT).
-- Terminal commands for the running, opt-in editor: inspect, import, crop,
-  resize, annotate, change settings and export using shared UI/MCP validation.
-  Commands return JSON, expose help and schemas, and preserve native undo,
-  revision checks and safe exports. Plain `glance` still opens the editor.
 - The editor interface follows the system’s light or dark appearance, including
   changes while Glance is running. Image content and exported media keep their colors.
 
 ### Changed
 
+- Attn Lens now runs on Rune instead of GPUI. ⌘⌥X replaces ⌘⌥2 and starts a capture
+  of the display under the pointer; a Dock click opens the editor. The in-place
+  overlay and the full editor return in later changes.
+- Removed Ask Glance, glance.sh share links, the MCP server and the terminal commands.
 - Stills are taken in-process through ScreenCaptureKit instead of the
   `screencapture` tool, which avoids macOS 26's private window picker consent.
   The area selector is gone; crop in the editor. Requires macOS 15.

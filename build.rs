@@ -1,7 +1,7 @@
-// capture-core links Swift's runtime through
-// screencapturekit, and a dependency's rpath link args do not reach this binary.
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        // capture-core links Swift's runtime through screencapturekit, and a
+        // dependency's rpath link args do not reach this binary.
         println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
         compile_permission_guide();
     }

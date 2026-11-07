@@ -1,4 +1,4 @@
-//! Offline source-image OCR. Called only by editor workers.
+//! Offline source-image OCR. Runs on a worker, off the UI thread.
 use image::RgbaImage;
 use std::{
     io::{Read, Seek},
@@ -6,11 +6,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub(crate) const MAX_TEXT_BYTES: usize = 65_536;
-#[cfg(test)]
-pub(crate) type Recognizer = fn(&RgbaImage, Option<[u32; 4]>) -> Result<String, String>;
+pub const MAX_TEXT_BYTES: usize = 65_536;
 
-pub(crate) fn validate_rectangle(
+pub fn validate_rectangle(
     (width, height): (u32, u32),
     rectangle: Option<[u32; 4]>,
 ) -> Result<[u32; 4], String> {
@@ -25,7 +23,7 @@ pub(crate) fn validate_rectangle(
     Ok([x, y, w, h])
 }
 
-pub(crate) fn extract(image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String> {
+pub fn extract(image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String> {
     let [x, y, w, h] = validate_rectangle(image.dimensions(), rectangle)?;
     let scratch = tempfile::Builder::new()
         .prefix("glance-ocr-")

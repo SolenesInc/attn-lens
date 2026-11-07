@@ -10,6 +10,7 @@ use std::{
 
 /// The name the user sees when Lens asks to pair, and in attn's Settings → Paired senders.
 pub const SENDER_NAME: &str = "Attn Lens";
+#[cfg(target_os = "macos")]
 const KEYCHAIN_SERVICE: &str = "dev.attn.lens.sender";
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -84,6 +85,7 @@ pub fn locate() -> Result<PathBuf, Failure> {
         })
 }
 
+#[cfg(target_os = "macos")]
 pub fn token() -> Option<String> {
     let bytes =
         security_framework::passwords::get_generic_password(KEYCHAIN_SERVICE, account()).ok()?;
@@ -92,6 +94,7 @@ pub fn token() -> Option<String> {
         .filter(|t| !t.trim().is_empty())
 }
 
+#[cfg(target_os = "macos")]
 pub fn store_token(token: &str) -> Result<(), Failure> {
     security_framework::passwords::set_generic_password(
         KEYCHAIN_SERVICE,
@@ -101,10 +104,12 @@ pub fn store_token(token: &str) -> Result<(), Failure> {
     .map_err(|e| Failure::Error(format!("Paired, but the Keychain refused the token: {e}")))
 }
 
+#[cfg(target_os = "macos")]
 pub fn forget_token() {
     let _ = security_framework::passwords::delete_generic_password(KEYCHAIN_SERVICE, account());
 }
 
+#[cfg(target_os = "macos")]
 /// One token per attn instance, so a test instance never overwrites the real pairing.
 fn account() -> &'static str {
     static ACCOUNT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
@@ -126,16 +131,19 @@ pub fn sessions(bin: &Path, token: &str) -> Result<Vec<Session>, Failure> {
     })
 }
 
-/// Sends `file` and `message` to `session`.
+/// Sends `files` and `message` to `session`.
 pub fn send(
     bin: &Path,
     token: &str,
     session: &str,
-    file: &Path,
+    files: &[PathBuf],
     message: &str,
 ) -> Result<Sent, Failure> {
-    let file = file.to_string_lossy();
-    let mut args = vec!["send", session, "--token-stdin", "--file", &file, "--json"];
+    let files: Vec<_> = files.iter().map(|f| f.to_string_lossy()).collect();
+    let mut args = vec!["send", session, "--token-stdin", "--json"];
+    for file in &files {
+        args.extend(["--file", file]);
+    }
     if !message.trim().is_empty() {
         args.extend(["-m", message]);
     }
@@ -281,26 +289,36 @@ echo '[{"agent":"claude","id":"s1","label":"local","last_focused_at":"2026-11-02
     }
 
     #[test]
-    fn send_passes_the_file_and_message_and_keeps_a_refusal_verbatim() {
+    fn send_passes_every_file_and_the_message_and_keeps_a_refusal_verbatim() {
         let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("screenshot.png");
+        let file = dir.path().join("frame-01.png");
+        let sheet = dir.path().join("sheet.png");
         std::fs::write(&file, b"png").unwrap();
+        std::fs::write(&sheet, b"png").unwrap();
         let ok = fake(
             dir.path(),
-            r#"echo '{"id":"cap","attachments":[{"id":"a","name":"screenshot.png","media_type":"image/png","bytes":3}]}'"#,
+            r#"echo '{"id":"cap","attachments":[{"id":"a","name":"frame-01.png","media_type":"image/png","bytes":3}]}'"#,
         );
-        send(&ok, "tok", "s1", &file, "look here").unwrap();
+        send(
+            &ok,
+            "tok",
+            "s1",
+            &[sheet.clone(), file.clone()],
+            "look here",
+        )
+        .unwrap();
         assert_eq!(
             std::fs::read_to_string(dir.path().join("args"))
                 .unwrap()
                 .trim(),
             format!(
-                "send s1 --token-stdin --file {} --json -m look here",
+                "send s1 --token-stdin --json --file {} --file {} -m look here",
+                sheet.display(),
                 file.display()
             )
         );
         let closed = fake(dir.path(), "echo 'send: session s1 is closed' >&2; exit 1");
-        match send(&closed, "tok", "s1", &file, "") {
+        match send(&closed, "tok", "s1", &[file], "") {
             Err(Failure::Error(text)) => assert_eq!(text, "send: session s1 is closed"),
             other => panic!("expected the CLI's error verbatim, got {other:?}"),
         }
