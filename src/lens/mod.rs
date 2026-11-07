@@ -53,6 +53,8 @@ struct State {
     watch: Option<Watch>,
 }
 
+type WindowVisible = Box<dyn Fn() -> bool + Send>;
+
 pub struct Lens {
     port: Arc<dyn PlatformPort>,
     state: Mutex<State>,
@@ -61,7 +63,7 @@ pub struct Lens {
     generation: AtomicU64,
     wakers: Mutex<Vec<Box<dyn Fn() + Send>>>,
     /// Each window's name and how to ask whether it shows, for automation.
-    windows: Mutex<Vec<(&'static str, Box<dyn Fn() -> bool + Send>)>>,
+    windows: Mutex<Vec<(&'static str, WindowVisible)>>,
 }
 
 impl Lens {
