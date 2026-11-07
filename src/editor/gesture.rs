@@ -4,7 +4,7 @@ use crate::{
     arrow,
     document::{
         Mark, Tool,
-        actions::{DocumentAction, MAX_MARK_POINTS},
+        actions::{DocumentAction, MAX_DOCUMENT_POINTS, MAX_MARK_POINTS},
     },
     navigation,
 };
@@ -258,6 +258,7 @@ impl Editor {
                 if self.tool == Tool::Magnifier {
                     self.flatten_for_lens();
                 }
+                self.stroke_room = self.room_for_stroke();
                 self.gesture = Gesture::Drawing(mark);
                 self.refresh_lens();
             }
@@ -286,6 +287,7 @@ impl Editor {
         let layout = self.layout();
         let crop_ratio = self.crop_ratio;
         let mut stroke_full = false;
+        let room = self.stroke_room;
         match &mut self.gesture {
             Gesture::Moving { drag, handle } => drag.update(p, shift, *handle),
             Gesture::MovingSelection(drags) => {
@@ -300,7 +302,7 @@ impl Editor {
                 {
                     return;
                 }
-                stroke_full = mark.points.len() >= MAX_MARK_POINTS;
+                stroke_full = mark.points.len() >= room;
                 if !stroke_full {
                     mark.points.push(p);
                 }
@@ -314,7 +316,8 @@ impl Editor {
         }
         if stroke_full {
             self.status = format!(
-                "This stroke reached the limit of {MAX_MARK_POINTS} points. Release to keep it."
+                "This stroke reached its limit of {room} points ({MAX_MARK_POINTS} a stroke, \
+                 {MAX_DOCUMENT_POINTS} an image). Release to keep it."
             );
         }
         self.refresh_lens();
@@ -389,7 +392,7 @@ impl Editor {
     fn finish_drawing(&mut self, mut mark: Mark, x: f32, y: f32, shift: bool, tx: &mut Tx) {
         if let Some(p) = self.coordinate(x, y, true) {
             let end = constrained(&mark, p, shift, self.layout(), self.crop_ratio);
-            if mark.points.len() < MAX_MARK_POINTS {
+            if mark.points.len() < self.stroke_room {
                 mark.points.push(end);
             }
         }
@@ -411,6 +414,12 @@ impl Editor {
             return;
         }
         self.edit(DocumentAction::AddAnnotation { mark }, tx);
+    }
+
+    /// How many points a new stroke may have.
+    fn room_for_stroke(&self) -> usize {
+        let used: usize = self.doc().marks.iter().map(|m| m.points.len()).sum();
+        MAX_MARK_POINTS.min(MAX_DOCUMENT_POINTS.saturating_sub(used))
     }
 
     fn start_annotation_drag(&mut self, index: usize, origin: (f32, f32), handle: Option<usize>) {

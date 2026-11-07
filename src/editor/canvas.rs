@@ -102,7 +102,47 @@ impl Editor {
                 let (left, top, right, bottom) = mark.bounds();
                 let a = at(l, left, top);
                 let b = at(l, right, bottom);
-                let state = serde_json::json!({
+                el().key(format!("mark-{index}"))
+                    .absolute(a[0], a[1])
+                    .w((b[0] - a[0]).max(1.))
+                    .h((b[1] - a[1]).max(1.))
+                    .role("image")
+                    .label(format!("{} annotation", mark.tool.label()))
+                    .a11y_value(self.describe(index, mark))
+            })
+            .collect()
+    }
+
+    /// What a screen reader says about a mark besides its kind.
+    fn describe(&self, index: usize, mark: &Mark) -> String {
+        let (left, top, right, bottom) = mark.bounds();
+        let mut value = format!(
+            "{} by {} pixels at {}, {}",
+            (right - left).round(),
+            (bottom - top).round(),
+            left.round(),
+            top.round()
+        );
+        if matches!(mark.tool, Tool::Text | Tool::Counter) {
+            value = format!("{}, {value}", mark.text);
+        }
+        if self.selected.contains(&index) {
+            value.push_str(", selected");
+        }
+        value
+    }
+
+    /// The document as JSON for scripts, on the fake port only.
+    pub(crate) fn state_probe(&self) -> Option<El> {
+        if !self.port.exposes_state() {
+            return None;
+        }
+        let marks: Vec<_> = self
+            .doc
+            .iter()
+            .flat_map(|doc| doc.marks.iter().enumerate())
+            .map(|(index, mark)| {
+                serde_json::json!({
                     "tool": mark.tool.label(),
                     "points": mark.points,
                     "curve": mark.curve,
@@ -111,16 +151,18 @@ impl Editor {
                     "text": mark.text,
                     "style": mark.style,
                     "selected": self.selected.contains(&index),
-                });
-                el().key(format!("mark-{index}"))
-                    .absolute(a[0], a[1])
-                    .w((b[0] - a[0]).max(1.))
-                    .h((b[1] - a[1]).max(1.))
-                    .role("image")
-                    .label(format!("{} annotation", mark.tool.label()))
-                    .a11y_value(state.to_string())
+                })
             })
-            .collect()
+            .collect();
+        let state = serde_json::json!({
+            "marks": marks,
+            "preview": {
+                "behind": self.revision - self.preview.shown,
+                "marks": self.preview.marks,
+                "size": self.preview.size,
+            },
+        });
+        Some(el().key("editor-state").label(state.to_string()).inert())
     }
 
     fn text_field(&self, l: Layout, cx: &Cx<Editor>) -> Option<El> {
@@ -267,23 +309,18 @@ impl Editor {
         root = root.children(self.lens(l));
         root = root.children(self.annotation_nodes(l));
         root = root.children(self.text_field(l, cx));
-        // How the raster relates to the image, for anyone who cannot see it.
-        let downscaled = self.preview.size.0.max(self.preview.size.1) >= MAX_VIEW_SIDE
-            && width.max(height) > MAX_VIEW_SIDE;
-        root.child(
+        let downscaled = width.max(height) > MAX_VIEW_SIDE;
+        root.children(downscaled.then(|| {
             text(format!(
-                "View {}×{}, image {width}×{height}{}",
-                self.preview.size.0,
-                self.preview.size.1,
-                if downscaled { ", downscaled" } else { "" }
+                "View {}×{}, image {width}×{height}, downscaled",
+                self.preview.size.0, self.preview.size.1,
             ))
             .key("view-size")
             .font(tok::type_::LABEL)
             .color(t.text_secondary)
             .absolute(10., 8.)
-            .opacity(if downscaled { 1. } else { 0. })
-            .inert(),
-        )
+            .inert()
+        }))
     }
 
     fn on_canvas_wheel(&mut self, wheel: rune::WheelEvent, tx: &mut rune::Tx) -> bool {
@@ -293,15 +330,15 @@ impl Editor {
         if wheel.mods.cmd || wheel.mods.ctrl {
             self.dispatch_ui(
                 Action::ZoomAt {
-                    factor: (-wheel.dy * 0.008).exp(),
+                    factor: (wheel.dy * 0.008).exp(),
                     anchor: (wheel.x, wheel.y),
                 },
                 tx,
             );
         } else if wheel.mods.shift && wheel.dx == 0. {
-            self.dispatch_ui(Action::PanBy((-wheel.dy, 0.)), tx);
+            self.dispatch_ui(Action::PanBy((wheel.dy, 0.)), tx);
         } else {
-            self.dispatch_ui(Action::PanBy((-wheel.dx, -wheel.dy)), tx);
+            self.dispatch_ui(Action::PanBy((wheel.dx, wheel.dy)), tx);
         }
         true
     }

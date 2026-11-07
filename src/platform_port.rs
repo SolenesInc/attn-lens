@@ -86,6 +86,10 @@ pub trait PlatformPort: Send + Sync {
     /// Reads text from `image`, optionally within [x, y, width, height]. Slow: call it from [`Self::run`].
     fn ocr(&self, image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String>;
     /// Lets the user pick a color anywhere on screen. `None` means they cancelled.
+    /// True on the fake port: the editor then exposes its state for scripts to assert on.
+    fn exposes_state(&self) -> bool {
+        false
+    }
     fn pick_color(&self, sink: Sink<Result<Option<[u8; 3]>, String>>);
     /// Runs slow work off the UI thread.
     fn run(&self, job: Box<dyn FnOnce() + Send>) {

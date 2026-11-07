@@ -80,8 +80,8 @@ impl Editor {
                 let id = self.start(Operation::Load);
                 let mailbox = self.mailbox.clone();
                 self.port.run(Box::new(move || {
-                    let image = crate::platform::load(&path);
-                    mailbox.post(Message::Image { id, image });
+                    let result = crate::platform::load(&path).map(fresh);
+                    mailbox.post(Message::Replaced { id, result });
                 }));
             }
             Action::PasteImage => {
@@ -89,8 +89,8 @@ impl Editor {
                 let id = self.start(Operation::Paste);
                 let (mailbox, port) = (self.mailbox.clone(), self.port.clone());
                 self.port.run(Box::new(move || {
-                    let image = port.clipboard_image();
-                    mailbox.post(Message::Image { id, image });
+                    let result = port.clipboard_image().map(fresh);
+                    mailbox.post(Message::Replaced { id, result });
                 }));
             }
             Action::SaveImage => {
@@ -365,13 +365,19 @@ impl Editor {
         }));
     }
 
-    /// Applies an edit; a refusal goes to the status line. Crop, resize and rotate
-    /// work on a copy off the UI thread and land through [`Message::Transformed`].
+    /// Applies an edit; a refusal goes to the status line. An edit that replaces the
+    /// image works on a copy off the UI thread and lands with its raster through
+    /// [`Message::Replaced`].
     pub(crate) fn edit(&mut self, edit: DocumentAction, _tx: &mut Tx) {
-        if matches!(
-            edit,
-            DocumentAction::Crop { .. } | DocumentAction::Resize { .. } | DocumentAction::Rotate
-        ) {
+        let replaces_image = match edit {
+            DocumentAction::Crop { .. }
+            | DocumentAction::Resize { .. }
+            | DocumentAction::Rotate => true,
+            DocumentAction::Undo => self.doc().undo_replaces_image(),
+            DocumentAction::Redo => self.doc().redo_replaces_image(),
+            _ => false,
+        };
+        if replaces_image {
             let id = self.start(Operation::Transform);
             self.status = match edit {
                 DocumentAction::Crop { .. } => "Cropping…",
@@ -381,8 +387,11 @@ impl Editor {
             let mut document = self.doc().clone();
             let mailbox = self.mailbox.clone();
             self.port.run(Box::new(move || {
-                let document = edit.apply(&mut document).map(|_| Box::new(document));
-                mailbox.post(Message::Transformed { id, document });
+                let result = edit.apply(&mut document).map(|_| {
+                    let rendered = super::preview::render(&document);
+                    (Box::new(document), rendered)
+                });
+                mailbox.post(Message::Replaced { id, result });
             }));
             return;
         }
@@ -553,13 +562,13 @@ impl Editor {
     pub(crate) fn receive(&mut self, message: Message, tx: &mut Tx) {
         let id = match &message {
             Message::Preview(_) | Message::LensSource { .. } => None,
-            Message::Image { id, .. }
-            | Message::Transformed { id, .. }
+            Message::Replaced { id, .. }
             | Message::Saved { id, .. }
             | Message::Copied { id, .. }
             | Message::Recognized { id, .. }
             | Message::ColorSampled { id, .. } => Some(*id),
         };
+        let operation = self.operation.map(|(_, operation)| operation);
         if let Some(id) = id {
             if self.operation.is_none_or(|(active, _)| active != id) {
                 return;
@@ -575,17 +584,13 @@ impl Editor {
                     self.refresh_lens();
                 }
             }
-            Message::Image { image, .. } => match image {
-                Ok(image) => self.load(Document::new(image)),
-                Err(error) => self.status = error,
-            },
-            Message::Transformed { document, .. } => match document {
-                Ok(document) => {
-                    self.doc = Some(*document);
-                    self.set_selection(vec![]);
-                    self.zoom = None;
-                    self.pan = (0., 0.);
-                    self.changed();
+            Message::Replaced { result, .. } => match result {
+                Ok((document, rendered)) => {
+                    if operation == Some(Operation::Load) || operation == Some(Operation::Paste) {
+                        self.text = None;
+                        self.next_counter = None;
+                    }
+                    self.install(*document, rendered);
                 }
                 Err(error) => self.status = error,
             },
@@ -631,24 +636,18 @@ impl Editor {
         }
     }
 
-    /// A new image replaces the document and resets the view.
-    pub(crate) fn load(&mut self, document: Document) {
-        self.doc = Some(document);
-        self.cancel_gesture();
-        self.set_selection(vec![]);
-        self.text = None;
-        self.next_counter = None;
-        self.zoom = None;
-        self.pan = (0., 0.);
-        self.preview.marks = 0;
-        self.changed();
-    }
-
     fn confirm(&mut self, feedback: CopyFeedback, tx: &mut Tx) {
         self.copy_feedback = Some(feedback);
         self.feedback_until = self.now + FEEDBACK.as_secs_f64();
         tx.wake_after(FEEDBACK);
     }
+}
+
+/// A just-opened image as a document with its raster.
+fn fresh(image: image::RgbaImage) -> (Box<Document>, super::preview::Rendered) {
+    let document = Document::new(image);
+    let rendered = super::preview::render(&document);
+    (Box::new(document), rendered)
 }
 
 /// Rejected here, before any state changes.

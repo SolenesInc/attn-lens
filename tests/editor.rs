@@ -20,7 +20,9 @@ const LATER: [&str; 4] = [
 ];
 
 /// Scripts for behaviour the docs describe in prose, not in a table.
-const PROSE: [&str; 10] = [
+const PROSE: [&str; 12] = [
+    "raster-follows",
+    "transform-together",
     "color-drag-undo",
     "lens-source",
     "long-stroke",
@@ -278,11 +280,15 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
             ));
         }
     }
+    let state: Value = element("editor-state")
+        .and_then(|e| serde_json::from_str(e["label"].as_str()?).ok())
+        .unwrap_or(Value::Null);
+    if !expected["state"].is_null() && !subset(&expected["state"], &state) {
+        fail.push(format!("state is {state}, expected {}", expected["state"]));
+    }
     if let Some(want) = expected["marks"].as_array() {
-        let found: Vec<Value> = (0..)
-            .map_while(|index| node(&format!("mark-{index}")))
-            .map(|n| serde_json::from_str(n["value"].as_str().unwrap()).unwrap())
-            .collect();
+        let empty = vec![];
+        let found = state["marks"].as_array().unwrap_or(&empty);
         if found.len() != want.len() {
             fail.push(format!(
                 "{} marks, expected {}: {found:?}",
@@ -290,7 +296,7 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
                 want.len()
             ));
         }
-        for (index, (want, found)) in want.iter().zip(&found).enumerate() {
+        for (index, (want, found)) in want.iter().zip(found).enumerate() {
             if !subset(want, found) {
                 fail.push(format!("mark {index} is {found}, expected {want}"));
             }
@@ -299,9 +305,9 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
     if let Some(want) = expected["points_over"].as_array() {
         let index = want[0].as_u64().unwrap();
         let least = want[1].as_u64().unwrap() as usize;
-        let found = node(&format!("mark-{index}"))
-            .and_then(|n| serde_json::from_str::<Value>(n["value"].as_str()?).ok())
-            .map_or(0, |mark| mark["points"].as_array().map_or(0, Vec::len));
+        let found = state["marks"][index as usize]["points"]
+            .as_array()
+            .map_or(0, Vec::len);
         if found <= least {
             fail.push(format!(
                 "mark {index} has {found} points, expected over {least}"

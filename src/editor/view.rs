@@ -209,6 +209,7 @@ pub fn view(s: &Editor, cx: &mut Cx<Editor>) -> El {
             s.status = "Drop a PNG or JPEG image.".into();
         })
         .on_key_up(|s: &mut Editor, event, _| s.on_key_up(event))
+        .children(s.state_probe())
         .child(toolbar(s, cx))
         .child(
             row()

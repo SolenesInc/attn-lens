@@ -67,6 +67,11 @@ pub struct EditOutcome {
 /// Vulkan (17 ms at 2,000 points, 65 ms at 20,000).
 pub const MAX_MARK_POINTS: usize = 100_000;
 
+/// A tripwire on all marks' points together: ten strokes at [`MAX_MARK_POINTS`]. Render
+/// time grows with points, 5.3 s at 500,000 on ai-sandbox, so near this every edit
+/// waits seconds for its raster; no drawing done by hand gets close.
+pub const MAX_DOCUMENT_POINTS: usize = 1_000_000;
+
 pub fn validate_mark(mark: &Mark) -> Result<(), String> {
     mark.style.validate()?;
     if mark.points.len() > MAX_MARK_POINTS {
@@ -317,8 +322,11 @@ impl DocumentAction {
     }
 }
 fn check_points(document: &Document, added: usize, removed: usize) -> Result<(), String> {
-    if document.marks.iter().map(|m| m.points.len()).sum::<usize>() - removed + added > 10000 {
-        return Err("Maximum 10000 drawing points".into());
+    let total = document.marks.iter().map(|m| m.points.len()).sum::<usize>() - removed + added;
+    if total > MAX_DOCUMENT_POINTS {
+        return Err(format!(
+            "An image holds at most {MAX_DOCUMENT_POINTS} drawing points; this edit makes {total}."
+        ));
     }
     Ok(())
 }

@@ -216,6 +216,9 @@ impl PlatformPort for FakePort {
     fn ocr(&self, _image: &RgbaImage, _rectangle: Option<[u32; 4]>) -> Result<String, String> {
         Ok(self.script.lock().unwrap().ocr.clone())
     }
+    fn exposes_state(&self) -> bool {
+        true
+    }
     fn pick_color(&self, sink: PickSink) {
         self.script.lock().unwrap().pick = Some(sink);
     }

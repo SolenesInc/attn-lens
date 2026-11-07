@@ -123,6 +123,17 @@ impl Document {
             self.marks.push(mark);
         }
     }
+    /// Whether undo would bring back a different image, not only different marks.
+    pub fn undo_replaces_image(&self) -> bool {
+        self.undo
+            .last()
+            .is_some_and(|s| !Arc::ptr_eq(&s.base, &self.base))
+    }
+    pub fn redo_replaces_image(&self) -> bool {
+        self.redo
+            .last()
+            .is_some_and(|s| !Arc::ptr_eq(&s.base, &self.base))
+    }
     pub fn undo(&mut self) {
         if let Some(previous) = self.undo.pop() {
             self.redo.push(self.snapshot());

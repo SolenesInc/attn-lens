@@ -93,13 +93,11 @@ pub(crate) enum CopyFeedback {
 /// any other is stale and dropped.
 pub(crate) enum Message {
     Preview(preview::Rendered),
-    Image {
+    /// An opened or pasted image, or a crop, resize, rotation or an undo of one: the
+    /// new document with its raster.
+    Replaced {
         id: u64,
-        image: Result<RgbaImage, String>,
-    },
-    Transformed {
-        id: u64,
-        document: Result<Box<Document>, String>,
+        result: Result<(Box<Document>, preview::Rendered), String>,
     },
     Saved {
         id: u64,
@@ -181,6 +179,8 @@ pub struct Editor {
     live_lens: rune::Pixels,
     /// The flatten the current drag asked for; any other result is from an abandoned one.
     lens_request: u64,
+    /// How many points the stroke being drawn may have, set when it starts.
+    stroke_room: usize,
 }
 
 impl Editor {
@@ -224,6 +224,7 @@ impl Editor {
             live_source: None,
             live_lens: rune::Pixels::new(),
             lens_request: 0,
+            stroke_room: 0,
         }
     }
 
