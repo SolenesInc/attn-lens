@@ -634,8 +634,8 @@ impl Editor {
     /// A new image replaces the document and resets the view.
     pub(crate) fn load(&mut self, document: Document) {
         self.doc = Some(document);
-        self.set_selection(vec![]);
         self.cancel_gesture();
+        self.set_selection(vec![]);
         self.text = None;
         self.next_counter = None;
         self.zoom = None;
