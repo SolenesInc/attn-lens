@@ -30,8 +30,8 @@ impl Editor {
                 | Action::Help
                 | Action::Quit
                 | Action::SelectTool(_)
-                | Action::SetColor(_)
                 | Action::SetRgb(_)
+                | Action::SetOpacity(_)
                 | Action::SetStrokeWidth(_)
                 | Action::SetAppearance(_)
                 | Action::SetMagnifierZoom(_)
@@ -195,24 +195,21 @@ impl Editor {
                 self.panel = Panel::Tool;
                 self.picker.open = false;
             }
-            Action::SetColor(color) => {
-                if matches!(
-                    self.options_tool(),
-                    Tool::Select | Tool::Crop | Tool::Pixelate
-                ) {
-                    return Err("Select an annotation or a tool with a color option".into());
-                }
+            Action::SetRgb(rgb) => {
+                self.color_option()?;
                 self.prepare_option_edit(tx);
-                self.defaults[self.options_tool().index()].color = color;
+                self.defaults[self.options_tool().index()].color[..3].copy_from_slice(&rgb);
                 let remember = !self.picker.continuing;
-                self.update_selected(remember, |mark| mark.color = color, tx);
+                self.update_selected(remember, |mark| mark.color[..3].copy_from_slice(&rgb), tx);
                 if !self.picker.continuing {
-                    self.picker.sync([color[0], color[1], color[2]]);
+                    self.picker.sync(rgb);
                 }
             }
-            Action::SetRgb([r, g, b]) => {
-                let alpha = self.tool_settings().color[3];
-                return self.dispatch(Action::SetColor([r, g, b, alpha]), tx);
+            Action::SetOpacity(alpha) => {
+                self.color_option()?;
+                self.prepare_option_edit(tx);
+                self.defaults[self.options_tool().index()].color[3] = alpha;
+                self.update_selected(true, |mark| mark.color[3] = alpha, tx);
             }
             Action::SetStrokeWidth(width) => {
                 self.prepare_option_edit(tx);
@@ -315,6 +312,16 @@ impl Editor {
                 }
             }
             Action::Quit => tx.quit(),
+        }
+        Ok(())
+    }
+
+    fn color_option(&self) -> Result<(), String> {
+        if matches!(
+            self.options_tool(),
+            Tool::Select | Tool::Crop | Tool::Pixelate
+        ) {
+            return Err("Select an annotation or a tool with a color option".into());
         }
         Ok(())
     }
@@ -549,11 +556,7 @@ impl Editor {
                 radius: value,
                 ..settings.style
             }),
-            "Opacity" | "Intensity" => {
-                let mut color = settings.color;
-                color[3] = (value / 100. * 255.).round() as u8;
-                Action::SetColor(color)
-            }
+            "Opacity" | "Intensity" => Action::SetOpacity((value / 100. * 255.).round() as u8),
             _ => unreachable!("registered numeric field {label}"),
         }
     }

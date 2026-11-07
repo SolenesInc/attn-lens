@@ -16,10 +16,12 @@ pub enum Action {
     DuplicateSelection,
     SelectAll,
     SelectTool(Tool),
-    /// The color of the selected marks, otherwise the next mark of the active tool.
-    SetColor([u8; 4]),
-    /// Keeps the current opacity.
+    /// The colour of the selected marks, otherwise of the active tool's next mark. Each
+    /// mark keeps its own opacity.
     SetRgb([u8; 3]),
+    /// The opacity of the selected marks, otherwise of the active tool's next mark. Each
+    /// mark keeps its own colour.
+    SetOpacity(u8),
     SetStrokeWidth(f32),
     SetAppearance(Style),
     SetMagnifierZoom(f32),

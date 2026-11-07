@@ -20,7 +20,8 @@ const LATER: [&str; 4] = [
 ];
 
 /// Scripts for behaviour the docs describe in prose, not in a table.
-const PROSE: [&str; 14] = [
+const PROSE: [&str; 15] = [
+    "recolour-keeps-opacity",
     "lens-follows-drag",
     "lens-tile-held",
     "raster-follows",
@@ -367,6 +368,11 @@ fn every_script_holds() {
         .into_iter()
         .filter(|name| !LATER.contains(&name.as_str()))
         .chain(PROSE.iter().map(|name| name.to_string()))
+        // `EDITOR_SCRIPTS=a,b cargo test --test editor` runs only those scripts.
+        .filter(|name| {
+            std::env::var("EDITOR_SCRIPTS")
+                .map_or(true, |only| only.split(',').any(|wanted| wanted == name))
+        })
         .collect();
     let queue = std::sync::Mutex::new(names);
     let failures = std::sync::Mutex::new(Vec::new());
