@@ -392,6 +392,11 @@ fn the_strip_drops_stills_the_palette_chooses_and_send_delivers() {
         "the bar did not grow"
     );
 
+    // ↓ moves the selection, and the selected row stands out.
+    let moved = run.tree("bar", "palette-moved");
+    let fill = |tree: &Value, key: &str| element(tree, key).unwrap()["fill"].clone();
+    assert_ne!(fill(&moved, "palette-row-1"), fill(&moved, "palette-row-0"));
+
     let chosen = run.tree("bar", "session-chosen");
     assert!(element(&chosen, "palette-row-0").is_none());
     assert_eq!(

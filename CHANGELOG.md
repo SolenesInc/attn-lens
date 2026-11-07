@@ -6,13 +6,15 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
-- **Attn Lens**: ⌘⌥2 freezes the display under the pointer and opens an ink
-  layer with a Send bar. Drag for arrows, ⇧drag for boxes, ⌥T for labels, type a
-  message and press ↩ to send to an attn session, local or on an outpost. Tab
-  opens a palette of sessions grouped by host plus Copy, Save and Edit; ⌘E opens
-  the editor, and the editor's ⌘↩ sends from there. Lens pairs with attn once and
-  keeps the token in the Keychain. A sent or closed capture stays in a corner
-  tile you can reopen.
+- **Attn Lens**: ⌘⌥X opens a crosshair over the live screen: drag for an area,
+  click for the whole display, ↩ for the last area, Esc to cancel. The area stays
+  outlined for the whole capture, its corners adjust it, and the page under it
+  keeps working. Hold fn and drag to draw: a straight drag is an arrow, any other
+  stays freehand, and ⇧ makes a box; the bar's tool row sets highlight, label or
+  counter for the next stroke. Type a message in the bar, or click the page to give
+  it the keys and ⌘⌥C to take them back. ⌘⌥X takes a still, × drops one, Tab opens a
+  palette of sessions, and ↩ or ⌘⌥↩ sends to an attn session, local or on an
+  outpost. Lens pairs with attn once and keeps the token in the Keychain.
 - Missing Screen Recording access opens System Settings with a tile of the app
   to drag into the list (from Hex, MIT).
 - The editor interface follows the system’s light or dark appearance, including

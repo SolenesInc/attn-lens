@@ -19,6 +19,9 @@ editor replaces it. This file's Glance rules still apply to the code that remain
 - `src/lens/mod.rs`: `Lens`, the state every window and the socket read. Each change
   wakes the windows, because a Rune window does not redraw from another's change.
 - `src/lens/session.rs`: Capture, Still, Segment, HostTime.
+- `src/lens/select.rs`, `ink.rs`, `bar.rs`: the area picker, the ink layer and the bar.
+  `app.rs` hosts the first two as a `Surface`. Between presses the ink layer's input is
+  `Regions`, so its corner handles work and all else reaches the page.
 - `src/lens/attn.rs`: the only contract with attn: `attn send sessions`, `attn
   send pair` and `attn send <session>` JSON, plus the Keychain token. Its tests
   use a stand-in `attn`; attn's `cmd/attn/send_stack_test.go` pins the real JSON.
@@ -30,7 +33,8 @@ editor replaces it. This file's Glance rules still apply to the code that remain
 - `scripts/lens-vm.sh`: a macOS VM (Tart) for driven checks, so no key reaches this Mac.
   `setup` once, then `push` to install this checkout signed ad hoc, `driver SCRIPT` to run
   a driver script in the VM's GUI session, `check OUT` to run `scripts/lens-mac-check.sh`
-  against the stand-in `tools/vm/attn`, and `stop` when done: it holds 8 GB. `tools/vm/`
+  and `live OUT` to run `scripts/lens-live.sh`, both against the stand-in `tools/vm/attn`,
+  and `stop` when done: it holds 8 GB. `tools/vm/`
   grants the VM's permissions without a click. Nothing of this Mac's goes in: no shared
   folders, Keychain, tokens or signing identity. Speed budgets and the feel of drawing
   stay on the real Mac; VM numbers do not count for them.

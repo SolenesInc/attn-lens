@@ -240,7 +240,7 @@ fn palette(summary: &Summary, selected: usize, t: &tok::Theme) -> El {
                 .center_y()
                 .radius(6.)
                 .fill(if index == selected {
-                    t.press
+                    t.indicator
                 } else {
                     Color::TRANSPARENT
                 })

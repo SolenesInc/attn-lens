@@ -92,21 +92,17 @@ pub fn mark_from_stroke(
     if path < MIN_TRAVEL {
         return None;
     }
-    Some(
-        draft_mark(start, points)
-            .filter(|m| m.tool != Tool::Pen)
-            .unwrap_or_else(|| {
-                if is_straight(points) {
-                    mark(Tool::Arrow, vec![first, last], STROKE_POINTS, String::new())
-                } else {
-                    let mut points = points.to_vec();
-                    while points.len() > MAX_POINTS {
-                        points = points.iter().step_by(2).copied().collect();
-                    }
-                    mark(Tool::Pen, points, STROKE_POINTS, String::new())
-                }
-            }),
-    )
+    let shaped = draft_mark(start, points).filter(|mark| mark.tool != Tool::Pen);
+    Some(shaped.unwrap_or_else(|| {
+        if is_straight(points) {
+            return mark(Tool::Arrow, vec![first, last], STROKE_POINTS, String::new());
+        }
+        let mut points = points.to_vec();
+        while points.len() > MAX_POINTS {
+            points = points.iter().step_by(2).copied().collect();
+        }
+        mark(Tool::Pen, points, STROKE_POINTS, String::new())
+    }))
 }
 
 /// What a stroke shows while it is being drawn.
