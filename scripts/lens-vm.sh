@@ -77,8 +77,6 @@ setup)
     tart list --quiet | grep -qx "$VM" || {
         tart pull "$IMAGE"
         tart clone "$IMAGE" "$VM"
-        # Room for an 800x500 area beside other windows; the default is 1024x768.
-        tart set "$VM" --display 1440x900
     }
     start
     ;;
