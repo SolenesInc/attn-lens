@@ -1,0 +1,130 @@
+{
+ "row": "Pixelate",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "b"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "block-size-value"
+  },
+  {
+   "t": 0.88,
+   "type": "type",
+   "text": "32",
+   "every": 0.01
+  },
+  {
+   "t": 0.95,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.07,
+   "type": "drag",
+   "dx": 120,
+   "dy": 80,
+   "dur": 0.05,
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 1.37,
+   "type": "mark",
+   "name": "drawn"
+  },
+  {
+   "t": 1.49,
+   "type": "key",
+   "name": "s",
+   "cmd": true
+  },
+  {
+   "t": 1.61,
+   "type": "file-dialog",
+   "path": "$OUT/pixel.png"
+  },
+  {
+   "t": 2.01,
+   "type": "mark",
+   "name": "saved"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "drawn",
+   "marks": [
+    {
+     "tool": "Pixelate",
+     "width": 8,
+     "points": [
+      [
+       20,
+       20
+      ],
+      [
+       140,
+       100
+      ]
+     ]
+    }
+   ],
+   "absent": [
+    "color-presets"
+   ],
+   "value": {
+    "block-size-field": "32"
+   }
+  },
+  {
+   "at": "saved",
+   "png": {
+    "path": "$OUT/pixel.png",
+    "size": [
+     320,
+     200
+    ],
+    "changed": [
+     [
+      130,
+      90
+     ],
+     [
+      21,
+      21
+     ]
+    ],
+    "unchanged": [
+     [
+      300,
+      190
+     ]
+    ]
+   }
+  }
+ ]
+}

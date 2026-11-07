@@ -1,0 +1,85 @@
+{
+ "row": "an image wider than 8192 px",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$WIDE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "r"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "fill-filled"
+  },
+  {
+   "t": 0.88,
+   "type": "drag",
+   "dx": 40,
+   "dy": 40,
+   "dur": 0.05,
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 1.18,
+   "type": "mark",
+   "name": "viewed"
+  },
+  {
+   "t": 1.3,
+   "type": "key",
+   "name": "s",
+   "cmd": true
+  },
+  {
+   "t": 1.42,
+   "type": "file-dialog",
+   "path": "$OUT/wide.png"
+  },
+  {
+   "t": 1.82,
+   "type": "mark",
+   "name": "saved"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "viewed",
+   "text": {
+    "view-size": "View 8192×64, image 8400×66, downscaled"
+   },
+   "canvas": "8400 by 66 pixels"
+  },
+  {
+   "at": "saved",
+   "png": {
+    "path": "$OUT/wide.png",
+    "size": [
+     8400,
+     66
+    ]
+   }
+  }
+ ]
+}

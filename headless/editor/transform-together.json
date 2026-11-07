@@ -1,0 +1,182 @@
+{
+ "row": "an image swap brings its raster with it",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "mark",
+   "name": "jobs:hold"
+  },
+  {
+   "t": 0.68,
+   "type": "key",
+   "name": "x"
+  },
+  {
+   "t": 0.8,
+   "type": "drag",
+   "dx": 100,
+   "dy": 50,
+   "dur": 0.05,
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 1.1,
+   "type": "mark",
+   "name": "cropping"
+  },
+  {
+   "t": 1.22,
+   "type": "mark",
+   "name": "jobs:next"
+  },
+  {
+   "t": 1.44,
+   "type": "mark",
+   "name": "cropped"
+  },
+  {
+   "t": 1.56,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 1.78,
+   "type": "mark",
+   "name": "undoing"
+  },
+  {
+   "t": 1.9,
+   "type": "mark",
+   "name": "jobs:next"
+  },
+  {
+   "t": 2.12,
+   "type": "mark",
+   "name": "undone"
+  },
+  {
+   "t": 2.24,
+   "drop_files": {
+    "paths": [
+     "$LARGE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 2.46,
+   "type": "mark",
+   "name": "loading"
+  },
+  {
+   "t": 2.58,
+   "type": "mark",
+   "name": "jobs:next"
+  },
+  {
+   "t": 2.8,
+   "type": "mark",
+   "name": "loaded"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "cropping",
+   "canvas": "320 by 200 pixels",
+   "state": {
+    "preview": {
+     "size": [
+      320,
+      200
+     ]
+    }
+   }
+  },
+  {
+   "at": "cropped",
+   "canvas": "100 by 50 pixels",
+   "state": {
+    "preview": {
+     "size": [
+      100,
+      50
+     ]
+    }
+   },
+   "rect": {
+    "image": [
+     430,
+     416,
+     100,
+     50
+    ]
+   }
+  },
+  {
+   "at": "undoing",
+   "canvas": "100 by 50 pixels"
+  },
+  {
+   "at": "undone",
+   "canvas": "320 by 200 pixels",
+   "state": {
+    "preview": {
+     "size": [
+      320,
+      200
+     ]
+    }
+   },
+   "rect": {
+    "image": [
+     320,
+     341,
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "loading",
+   "canvas": "320 by 200 pixels"
+  },
+  {
+   "at": "loaded",
+   "canvas": "1000 by 700 pixels",
+   "state": {
+    "preview": {
+     "size": [
+      1000,
+      700
+     ]
+    }
+   }
+  }
+ ]
+}

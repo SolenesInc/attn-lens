@@ -60,11 +60,28 @@ pub struct EditOutcome {
     pub reset_view: bool,
     pub selection: Selection,
 }
+/// A tripwire on one mark's points. A pen adds at most one point per pointer event, so
+/// at 120 events a second this is about 14 minutes of continuous drawing. Measured at
+/// this size on ai-sandbox, on a 3420×2224 image: render 1.4 s off the UI thread, hit
+/// test 54 µs, clone 0.2 ms, and 205 ms a frame to paint the stroke live on software
+/// Vulkan (17 ms at 2,000 points, 65 ms at 20,000).
+pub const MAX_MARK_POINTS: usize = 100_000;
+
+/// A tripwire on all marks' points together: ten strokes at [`MAX_MARK_POINTS`]. Render
+/// time grows with points, 5.3 s at 500,000 on ai-sandbox, so near this every edit
+/// waits seconds for its raster; no drawing done by hand gets close.
+pub const MAX_DOCUMENT_POINTS: usize = 1_000_000;
+
 pub fn validate_mark(mark: &Mark) -> Result<(), String> {
     mark.style.validate()?;
+    if mark.points.len() > MAX_MARK_POINTS {
+        return Err(format!(
+            "A mark holds at most {MAX_MARK_POINTS} points; this one has {}.",
+            mark.points.len()
+        ));
+    }
     if matches!(mark.tool, Tool::Select | Tool::Crop)
         || mark.points.is_empty()
-        || mark.points.len() > 2000
         || !mark.width.is_finite()
         // Stored geometry scales with the image and can lie outside toolbar
         // settings after resizing. Keep it bounded and editable.
@@ -305,8 +322,11 @@ impl DocumentAction {
     }
 }
 fn check_points(document: &Document, added: usize, removed: usize) -> Result<(), String> {
-    if document.marks.iter().map(|m| m.points.len()).sum::<usize>() - removed + added > 10000 {
-        return Err("Maximum 10000 drawing points".into());
+    let total = document.marks.iter().map(|m| m.points.len()).sum::<usize>() - removed + added;
+    if total > MAX_DOCUMENT_POINTS {
+        return Err(format!(
+            "An image holds at most {MAX_DOCUMENT_POINTS} drawing points; this edit makes {total}."
+        ));
     }
     Ok(())
 }
@@ -314,6 +334,23 @@ fn check_points(document: &Document, added: usize, removed: usize) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn too_many_points_names_the_limit() {
+        let mark = Mark {
+            style: Default::default(),
+            tool: Tool::Pen,
+            curve: None,
+            points: vec![(0., 0.); MAX_MARK_POINTS + 1],
+            color: [255, 0, 0, 255],
+            width: 5.,
+            text: String::new(),
+        };
+        assert_eq!(
+            validate_mark(&mark).unwrap_err(),
+            "A mark holds at most 100000 points; this one has 100001."
+        );
+    }
+
     #[test]
     fn resized_annotation_sizes_remain_editable_and_invalid_resize_is_atomic() {
         let mut d = Document::new(image::RgbaImage::new(200, 200));

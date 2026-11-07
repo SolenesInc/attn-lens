@@ -1,0 +1,102 @@
+{
+ "row": "Arrow",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "a"
+  },
+  {
+   "t": 0.68,
+   "type": "drag",
+   "dx": 200,
+   "dy": 0,
+   "dur": 0.05,
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 0.98,
+   "type": "mark",
+   "name": "drawn"
+  },
+  {
+   "t": 1.1,
+   "type": "drag",
+   "dx": 0,
+   "dy": 40,
+   "dur": 0.05,
+   "x": 440,
+   "y": 361
+  },
+  {
+   "t": 1.4,
+   "type": "mark",
+   "name": "bent"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "drawn",
+   "marks": [
+    {
+     "tool": "Arrow",
+     "points": [
+      [
+       20,
+       20
+      ],
+      [
+       220,
+       20
+      ]
+     ],
+     "selected": true
+    }
+   ]
+  },
+  {
+   "at": "bent",
+   "marks": [
+    {
+     "tool": "Arrow",
+     "points": [
+      [
+       20,
+       20
+      ],
+      [
+       220,
+       20
+      ]
+     ],
+     "curve": [
+      120,
+      100
+     ]
+    }
+   ]
+  }
+ ]
+}

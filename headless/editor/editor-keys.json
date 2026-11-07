@@ -1,0 +1,204 @@
+{
+ "row": "tool keys",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "v"
+  },
+  {
+   "t": 0.78,
+   "type": "mark",
+   "name": "tool-v"
+  },
+  {
+   "t": 0.9,
+   "type": "key",
+   "name": "p"
+  },
+  {
+   "t": 1.12,
+   "type": "mark",
+   "name": "tool-p"
+  },
+  {
+   "t": 1.24,
+   "type": "key",
+   "name": "a"
+  },
+  {
+   "t": 1.46,
+   "type": "mark",
+   "name": "tool-a"
+  },
+  {
+   "t": 1.58,
+   "type": "key",
+   "name": "r"
+  },
+  {
+   "t": 1.8,
+   "type": "mark",
+   "name": "tool-r"
+  },
+  {
+   "t": 1.92,
+   "type": "key",
+   "name": "t"
+  },
+  {
+   "t": 2.14,
+   "type": "mark",
+   "name": "tool-t"
+  },
+  {
+   "t": 2.26,
+   "type": "key",
+   "name": "h"
+  },
+  {
+   "t": 2.48,
+   "type": "mark",
+   "name": "tool-h"
+  },
+  {
+   "t": 2.6,
+   "type": "key",
+   "name": "b"
+  },
+  {
+   "t": 2.82,
+   "type": "mark",
+   "name": "tool-b"
+  },
+  {
+   "t": 2.94,
+   "type": "key",
+   "name": "x"
+  },
+  {
+   "t": 3.16,
+   "type": "mark",
+   "name": "tool-x"
+  },
+  {
+   "t": 3.28,
+   "type": "key",
+   "name": "n"
+  },
+  {
+   "t": 3.5,
+   "type": "mark",
+   "name": "tool-n"
+  },
+  {
+   "t": 3.62,
+   "type": "key",
+   "name": "s"
+  },
+  {
+   "t": 3.84,
+   "type": "mark",
+   "name": "tool-s"
+  },
+  {
+   "t": 3.96,
+   "type": "key",
+   "name": "m"
+  },
+  {
+   "t": 4.18,
+   "type": "mark",
+   "name": "tool-m"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "tool-v",
+   "checked": [
+    "tool-select"
+   ]
+  },
+  {
+   "at": "tool-p",
+   "checked": [
+    "tool-pen"
+   ]
+  },
+  {
+   "at": "tool-a",
+   "checked": [
+    "tool-arrow"
+   ]
+  },
+  {
+   "at": "tool-r",
+   "checked": [
+    "tool-rectangle"
+   ]
+  },
+  {
+   "at": "tool-t",
+   "checked": [
+    "tool-text"
+   ]
+  },
+  {
+   "at": "tool-h",
+   "checked": [
+    "tool-highlight"
+   ]
+  },
+  {
+   "at": "tool-b",
+   "checked": [
+    "tool-pixelate"
+   ]
+  },
+  {
+   "at": "tool-x",
+   "checked": [
+    "tool-crop"
+   ]
+  },
+  {
+   "at": "tool-n",
+   "checked": [
+    "tool-counter"
+   ]
+  },
+  {
+   "at": "tool-s",
+   "checked": [
+    "tool-spotlight"
+   ]
+  },
+  {
+   "at": "tool-m",
+   "checked": [
+    "tool-magnifier"
+   ]
+  }
+ ]
+}

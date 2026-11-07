@@ -35,23 +35,52 @@ fn dialog(script: &str) -> Result<Option<PathBuf>, String> {
     let path = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
     Ok(Some(PathBuf::from(path.trim_end())))
 }
-#[cfg(target_os = "macos")]
-pub fn open() -> Result<Option<RgbaImage>, String> {
-    match dialog(
-        "POSIX path of (choose file with prompt \"Open an image in Glance\" of type {\"public.png\", \"public.jpeg\"})",
-    )? {
-        Some(path) => load(&path).map(Some),
-        None => Ok(None),
-    }
-}
-pub fn save(image: RgbaImage) -> Result<Option<PathBuf>, String> {
-    let Some(path) = export_destination(ExportFormat::Png)? else {
-        return Ok(None);
+/// Writes a PNG through a scratch file beside the destination, so a failed write leaves
+/// any existing file as it was. A link is written through to its file, and an existing
+/// file keeps its permissions; a new one gets the umask's, like any other new file.
+pub fn save_png(image: &RgbaImage, path: &std::path::Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let path = match std::fs::canonicalize(path) {
+        Ok(target) => target,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            if std::fs::symlink_metadata(path).is_ok() {
+                return Err(format!(
+                    "{} links to a file that does not exist.",
+                    path.display()
+                ));
+            }
+            path.to_path_buf()
+        }
+        Err(error) => return Err(error.to_string()),
     };
-    image
-        .save_with_format(&path, image::ImageFormat::Png)
+    let folder = path
+        .parent()
+        .filter(|folder| !folder.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    // Created 0666 less the umask, as `open` would create the file itself.
+    let scratch = tempfile::Builder::new()
+        .prefix(".attn-lens-")
+        .suffix(".png")
+        .permissions(std::fs::Permissions::from_mode(0o666))
+        .tempfile_in(folder)
         .map_err(|e| e.to_string())?;
-    Ok(Some(path))
+    if let Ok(existing) = std::fs::metadata(&path) {
+        std::fs::set_permissions(scratch.path(), existing.permissions())
+            .map_err(|e| e.to_string())?;
+    }
+    image
+        .write_to(
+            &mut std::io::BufWriter::new(scratch.as_file()),
+            image::ImageFormat::Png,
+        )
+        .map_err(|e| e.to_string())?;
+    scratch.persist(&path).map_err(|e| e.error.to_string())?;
+    Ok(())
+}
+/// Where a Save dialog starts.
+pub fn pictures_folder() -> Option<PathBuf> {
+    let folder = PathBuf::from(std::env::var_os("HOME")?).join("Pictures");
+    folder.is_dir().then_some(folder)
 }
 #[cfg(target_os = "macos")]
 pub fn copy(image: RgbaImage) -> Result<(), String> {
@@ -86,7 +115,6 @@ pub fn clipboard_image() -> Result<RgbaImage, String> {
 }
 
 enum ExportFormat {
-    Png,
     Gif,
     Mp4,
 }
@@ -94,7 +122,6 @@ enum ExportFormat {
 #[cfg(target_os = "macos")]
 fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
     let (prompt, name, extension, folder) = match format {
-        ExportFormat::Png => ("Save annotated screenshot", "Screenshot", "png", "pictures"),
         ExportFormat::Gif => (
             "Export animated backdrop GIF",
             "Animated Screenshot",
@@ -123,7 +150,7 @@ POSIX path of (choose file name with prompt "{prompt}" default name exportName d
 // Changing a save-dialog path can bypass its overwrite confirmation.
 // An explicitly chosen filename may be replaced; an appended extension must
 // never turn an unconfirmed choice into a replacement (including symlinks).
-fn checked_export_path(mut path: PathBuf, extension: &str) -> Result<PathBuf, String> {
+pub fn checked_export_path(mut path: PathBuf, extension: &str) -> Result<PathBuf, String> {
     if path.extension().is_none() {
         path.set_extension(extension);
         match std::fs::symlink_metadata(&path) {
@@ -214,7 +241,7 @@ pub fn shortcut_label(label: &str) -> String {
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::{clipboard_image, copy, open};
+pub use linux::{clipboard_image, copy};
 #[cfg(target_os = "linux")]
 fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
     linux::destination(format)
@@ -222,6 +249,42 @@ fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
 #[cfg(test)]
 mod tests {
     use super::checked_export_path;
+
+    #[test]
+    fn saving_keeps_the_destination_mode_and_writes_through_links() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let dir = tempfile::tempdir().unwrap();
+        let image = image::RgbaImage::from_pixel(3, 2, image::Rgba([1, 2, 3, 255]));
+        let mode =
+            |path: &std::path::Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+
+        let existing = dir.path().join("existing.png");
+        std::fs::write(&existing, "old").unwrap();
+        std::fs::set_permissions(&existing, std::fs::Permissions::from_mode(0o644)).unwrap();
+        super::save_png(&image, &existing).unwrap();
+        assert_eq!(mode(&existing), 0o644);
+        assert_eq!(image::open(&existing).unwrap().width(), 3);
+
+        // A new file gets what any other new file in this folder gets.
+        let reference = dir.path().join("reference");
+        std::fs::write(&reference, "").unwrap();
+        let new = dir.path().join("new.png");
+        super::save_png(&image, &new).unwrap();
+        assert_eq!(mode(&new), mode(&reference));
+
+        let target = dir.path().join("target.png");
+        std::fs::write(&target, "old").unwrap();
+        let link = dir.path().join("link.png");
+        symlink(&target, &link).unwrap();
+        super::save_png(&image, &link).unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(image::open(&target).unwrap().width(), 3);
+    }
     #[test]
     fn missing_or_invalid_system_fonts_render_with_the_embedded_fallback() {
         use ab_glyph::Font;

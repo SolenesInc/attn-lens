@@ -1,0 +1,228 @@
+{
+ "row": "Text",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "t"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 0.88,
+   "type": "type",
+   "text": "first",
+   "every": 0.01
+  },
+  {
+   "t": 0.98,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.2,
+   "type": "mark",
+   "name": "enter"
+  },
+  {
+   "t": 1.32,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 1.44,
+   "type": "tap",
+   "x": 340,
+   "y": 441
+  },
+  {
+   "t": 1.64,
+   "type": "type",
+   "text": "second",
+   "every": 0.01
+  },
+  {
+   "t": 1.75,
+   "type": "tap",
+   "x": 520,
+   "y": 491
+  },
+  {
+   "t": 2.05,
+   "type": "mark",
+   "name": "clicked-outside"
+  },
+  {
+   "t": 2.17,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 2.29,
+   "type": "tap",
+   "x": 340,
+   "y": 481
+  },
+  {
+   "t": 2.49,
+   "type": "type",
+   "text": "gone",
+   "every": 0.01
+  },
+  {
+   "t": 2.58,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 2.8,
+   "type": "mark",
+   "name": "escaped"
+  },
+  {
+   "t": 2.92,
+   "type": "tap",
+   "x": 380,
+   "y": 501
+  },
+  {
+   "t": 3.12,
+   "paste": "one\ntwo"
+  },
+  {
+   "t": 3.24,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 3.46,
+   "type": "mark",
+   "name": "pasted"
+  },
+  {
+   "t": 3.58,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 3.7,
+   "type": "tap",
+   "x": 380,
+   "y": 521
+  },
+  {
+   "t": 3.9,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 4.12,
+   "type": "mark",
+   "name": "empty"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "enter",
+   "marks": [
+    {
+     "tool": "Text",
+     "text": "first"
+    }
+   ],
+   "absent": [
+    "text-editor"
+   ]
+  },
+  {
+   "at": "clicked-outside",
+   "marks": [
+    {
+     "tool": "Text",
+     "text": "first"
+    },
+    {
+     "tool": "Text",
+     "text": "second",
+     "points": [
+      [
+       20,
+       100
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "at": "escaped",
+   "marks": [
+    {
+     "tool": "Text"
+    },
+    {
+     "tool": "Text"
+    }
+   ],
+   "text": {
+    "status": "Text canceled"
+   }
+  },
+  {
+   "at": "pasted",
+   "marks": [
+    {
+     "tool": "Text"
+    },
+    {
+     "tool": "Text"
+    },
+    {
+     "tool": "Text",
+     "text": "one two"
+    }
+   ]
+  },
+  {
+   "at": "empty",
+   "marks": [
+    {
+     "tool": "Text"
+    },
+    {
+     "tool": "Text"
+    },
+    {
+     "tool": "Text"
+    }
+   ],
+   "text": {
+    "status": "Empty label discarded"
+   }
+  }
+ ]
+}

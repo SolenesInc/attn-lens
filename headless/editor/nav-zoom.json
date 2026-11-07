@@ -1,0 +1,327 @@
+{
+ "row": "navigation",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "1",
+   "cmd": true
+  },
+  {
+   "t": 0.68,
+   "type": "key",
+   "name": "0",
+   "cmd": true
+  },
+  {
+   "t": 0.9,
+   "type": "mark",
+   "name": "actual"
+  },
+  {
+   "t": 1.02,
+   "type": "key",
+   "name": "=",
+   "cmd": true
+  },
+  {
+   "t": 1.24,
+   "type": "mark",
+   "name": "in"
+  },
+  {
+   "t": 1.36,
+   "type": "key",
+   "name": "-",
+   "cmd": true
+  },
+  {
+   "t": 1.58,
+   "type": "mark",
+   "name": "out"
+  },
+  {
+   "t": 1.7,
+   "type": "key",
+   "name": "1",
+   "cmd": true
+  },
+  {
+   "t": 1.82,
+   "type": "wheel",
+   "key": "canvas",
+   "dy": 100,
+   "cmd": true
+  },
+  {
+   "t": 2.04,
+   "type": "mark",
+   "name": "wheel-zoom"
+  },
+  {
+   "t": 2.16,
+   "type": "key",
+   "name": "0",
+   "cmd": true
+  },
+  {
+   "t": 2.28,
+   "type": "wheel",
+   "key": "canvas",
+   "dy": -100,
+   "cmd": true
+  },
+  {
+   "t": 2.5,
+   "type": "mark",
+   "name": "wheel-zoom-out"
+  },
+  {
+   "t": 2.62,
+   "type": "key",
+   "name": "0",
+   "cmd": true
+  },
+  {
+   "t": 2.74,
+   "type": "magnify",
+   "key": "canvas",
+   "delta": 0.5
+  },
+  {
+   "t": 2.96,
+   "type": "mark",
+   "name": "pinch"
+  },
+  {
+   "t": 3.08,
+   "type": "smart-magnify",
+   "key": "canvas"
+  },
+  {
+   "t": 3.3,
+   "type": "mark",
+   "name": "smart"
+  },
+  {
+   "t": 3.42,
+   "type": "key",
+   "name": "z"
+  },
+  {
+   "t": 3.54,
+   "type": "tap",
+   "x": 420,
+   "y": 441
+  },
+  {
+   "t": 3.74,
+   "type": "key-up",
+   "name": "z"
+  },
+  {
+   "t": 3.96,
+   "type": "mark",
+   "name": "z-click"
+  },
+  {
+   "t": 4.08,
+   "type": "key",
+   "name": "1",
+   "cmd": true
+  },
+  {
+   "t": 4.3,
+   "type": "mark",
+   "name": "fit"
+  },
+  {
+   "t": 4.42,
+   "type": "wheel",
+   "key": "canvas",
+   "dx": 30,
+   "dy": 40
+  },
+  {
+   "t": 4.64,
+   "type": "mark",
+   "name": "scrolled"
+  },
+  {
+   "t": 4.76,
+   "type": "key",
+   "name": " "
+  },
+  {
+   "t": 4.88,
+   "type": "drag",
+   "dx": 10,
+   "dy": 10,
+   "dur": 0.05,
+   "x": 420,
+   "y": 441
+  },
+  {
+   "t": 5.08,
+   "type": "key-up",
+   "name": " "
+  },
+  {
+   "t": 5.3,
+   "type": "mark",
+   "name": "space-pan"
+  },
+  {
+   "t": 5.42,
+   "type": "drag",
+   "x": 500,
+   "y": 500,
+   "dx": 5,
+   "dy": 5,
+   "dur": 0.05,
+   "button": "middle"
+  },
+  {
+   "t": 5.72,
+   "type": "mark",
+   "name": "middle-pan"
+  },
+  {
+   "t": 5.84,
+   "type": "key",
+   "name": "1",
+   "cmd": true
+  },
+  {
+   "t": 6.06,
+   "type": "mark",
+   "name": "fit-again"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "actual",
+   "value": {
+    "zoom-label": "100%"
+   }
+  },
+  {
+   "at": "in",
+   "value": {
+    "zoom-label": "125%"
+   }
+  },
+  {
+   "at": "out",
+   "value": {
+    "zoom-label": "100%"
+   }
+  },
+  {
+   "at": "wheel-zoom",
+   "value": {
+    "zoom-label": "223%"
+   }
+  },
+  {
+   "at": "wheel-zoom-out",
+   "value": {
+    "zoom-label": "45%"
+   }
+  },
+  {
+   "at": "pinch",
+   "value": {
+    "zoom-label": "150%"
+   }
+  },
+  {
+   "at": "smart",
+   "value": {
+    "zoom-label": "100%"
+   }
+  },
+  {
+   "at": "z-click",
+   "value": {
+    "zoom-label": "200%"
+   }
+  },
+  {
+   "at": "fit",
+   "rect": {
+    "image": [
+     320,
+     341,
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "scrolled",
+   "rect": {
+    "image": [
+     350,
+     381,
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "space-pan",
+   "rect": {
+    "image": [
+     360,
+     391,
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "middle-pan",
+   "rect": {
+    "image": [
+     365,
+     396,
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "fit-again",
+   "rect": {
+    "image": [
+     320,
+     341,
+     320,
+     200
+    ]
+   }
+  }
+ ]
+}

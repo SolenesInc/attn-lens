@@ -1,0 +1,174 @@
+{
+ "row": "open and save dialogs",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.32,
+   "type": "mark",
+   "name": "empty"
+  },
+  {
+   "t": 0.44,
+   "type": "key",
+   "name": "c",
+   "cmd": true
+  },
+  {
+   "t": 0.66,
+   "type": "mark",
+   "name": "refused"
+  },
+  {
+   "t": 0.78,
+   "type": "key",
+   "name": "o",
+   "cmd": true
+  },
+  {
+   "t": 0.9,
+   "type": "file-dialog-cancel"
+  },
+  {
+   "t": 1.12,
+   "type": "mark",
+   "name": "canceled"
+  },
+  {
+   "t": 1.24,
+   "type": "key",
+   "name": "o",
+   "cmd": true
+  },
+  {
+   "t": 1.36,
+   "type": "file-dialog",
+   "path": "$FIXTURE"
+  },
+  {
+   "t": 1.76,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 1.88,
+   "type": "key",
+   "name": "s",
+   "cmd": true
+  },
+  {
+   "t": 2.0,
+   "type": "file-dialog",
+   "path": "$OUT/noext"
+  },
+  {
+   "t": 2.4,
+   "type": "mark",
+   "name": "appended"
+  },
+  {
+   "t": 2.52,
+   "type": "key",
+   "name": "s",
+   "cmd": true
+  },
+  {
+   "t": 2.64,
+   "type": "file-dialog",
+   "path": "$OUT/noext"
+  },
+  {
+   "t": 3.04,
+   "type": "mark",
+   "name": "no-replace"
+  },
+  {
+   "t": 3.16,
+   "type": "key",
+   "name": "s",
+   "cmd": true
+  },
+  {
+   "t": 3.28,
+   "type": "file-dialog",
+   "path": "$OUT/wrong.gif"
+  },
+  {
+   "t": 3.68,
+   "type": "mark",
+   "name": "wrong-extension"
+  },
+  {
+   "t": 3.8,
+   "drop_files": {
+    "paths": [
+     "$OUT/not-an-image.txt"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 4.02,
+   "type": "mark",
+   "name": "rejected"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "empty",
+   "present": [
+    "editor-empty"
+   ],
+   "text": {
+    "status": ""
+   }
+  },
+  {
+   "at": "refused",
+   "text": {
+    "status": "Open an image first."
+   }
+  },
+  {
+   "at": "canceled",
+   "present": [
+    "editor-empty"
+   ]
+  },
+  {
+   "at": "opened",
+   "canvas": "320 by 200 pixels",
+   "absent": [
+    "editor-empty"
+   ]
+  },
+  {
+   "at": "appended",
+   "png": {
+    "path": "$OUT/noext.png",
+    "size": [
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "no-replace",
+   "status_contains": "already exists"
+  },
+  {
+   "at": "wrong-extension",
+   "status_contains": "ending in .png"
+  },
+  {
+   "at": "rejected",
+   "status_contains": "PNG or JPEG",
+   "canvas": "320 by 200 pixels"
+  }
+ ]
+}
