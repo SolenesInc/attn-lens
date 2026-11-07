@@ -320,6 +320,63 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"existing movie");
         std::fs::remove_file(path).unwrap();
     }
+    /// Encodes through the bundled helper and reads a frame back through its partner,
+    /// on macOS (AVFoundation) and with `native/linux` (FFmpeg). Build the helpers first:
+    /// CI's macOS job compiles them, its Linux job copies `native/linux/glance-video-*`.
+    #[test]
+    #[ignore = "requires the bundled native encoder and frame reader; writes a real video"]
+    fn native_video_roundtrip() {
+        let mut d = Document::new(image::RgbaImage::from_pixel(
+            320,
+            180,
+            image::Rgba([50, 90, 130, 255]),
+        ));
+        d.backdrop = Some(crate::backdrop::Backdrop {
+            motion: Motion::Flow,
+            gradient: true,
+            padding: 40,
+            inner_radius: 0,
+            seconds: 2,
+            ..Default::default()
+        });
+        let encoder = encoder_path().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("roundtrip.mp4");
+        let mut progress = vec![];
+        assert!(
+            encode(&d, &encoder, &path, 0., &AtomicBool::new(false), |p| {
+                progress.push(p)
+            })
+            .unwrap()
+        );
+        assert_eq!(progress.last(), Some(&100));
+        assert!(std::fs::metadata(&path).unwrap().len() > 1000);
+        let reader = encoder.with_file_name("glance-video-frame");
+        let frame = |seconds: &str, out: &Path| {
+            Command::new(&reader)
+                .arg(&path)
+                .arg(seconds)
+                .arg(out)
+                .output()
+                .unwrap()
+        };
+        let still = dir.path().join("frame.png");
+        let read = frame("1", &still);
+        assert!(
+            read.status.success(),
+            "{}",
+            String::from_utf8_lossy(&read.stderr)
+        );
+        let decoded = image::open(&still).unwrap().to_rgba8();
+        // 320×180 framed by 40 px on each side, under both size caps.
+        assert_eq!(decoded.dimensions(), (400, 260));
+        let pixel = decoded.get_pixel(200, 130);
+        for (actual, expected) in pixel.0[..3].iter().zip([50i16, 90, 130]) {
+            assert!((*actual as i16 - expected).abs() < 8, "{pixel:?}");
+        }
+        // Past the 2 s clip there is no frame.
+        assert!(!frame("2.5", &dir.path().join("late.png")).status.success());
+    }
     #[test]
     #[ignore = "requires the built native encoder; writes real QA videos"]
     fn native_motion_export_qa() {
