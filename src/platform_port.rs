@@ -43,11 +43,28 @@ pub enum WatchEvent {
 }
 
 /// Watching stops when this drops.
-pub struct Watch(pub Option<Box<dyn FnOnce() + Send>>);
+pub struct Watch {
+    stop: Option<Box<dyn FnOnce() + Send>>,
+    rebase: Box<dyn Fn() + Send>,
+}
+
+impl Watch {
+    pub fn new(stop: impl FnOnce() + Send + 'static, rebase: impl Fn() + Send + 'static) -> Self {
+        Self {
+            stop: Some(Box::new(stop)),
+            rebase: Box::new(rebase),
+        }
+    }
+
+    /// Compares later frames against the screen as it is now, the one new ink is on.
+    pub fn rebase(&self) {
+        (self.rebase)();
+    }
+}
 
 impl Drop for Watch {
     fn drop(&mut self) {
-        if let Some(stop) = self.0.take() {
+        if let Some(stop) = self.stop.take() {
             stop();
         }
     }

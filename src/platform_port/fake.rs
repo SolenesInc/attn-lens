@@ -4,6 +4,9 @@
 //! key:draw-down  key:draw-up  key:capture  key:voice  key:keyboard  key:send
 //! key:shift-down  key:shift-up
 //! watch:click  watch:scroll  watch:switch  watch:change:0.7
+//! screen:0.7                 the screen changes by 0.7 of the area, unseen until
+//! watch:sample               the next sample reports it, unless a rebase came first
+//! watch:late:scroll          the same events, to the watch that stopped last
 //! say:0.5:1.2:the words      a segment from 0.5 s to 1.2 s, while voice runs
 //! voice:downloading:3:10  voice:loading  voice:warming  voice:listening
 //!                            voice's progress, while it runs
@@ -13,6 +16,7 @@
 //! clipboard:PATH             the system clipboard now holds the image at PATH
 //! ocr:the words              text recognition finds these words from now on
 //! pick:#RRGGBB  pick:cancel  answers a Pick from screen that is waiting
+//! still:fail                 the next still fails
 //! close:editor               presses the window's close button
 //! ```
 //!
@@ -45,7 +49,17 @@ pub const DISPLAY: Area = Area {
     rect: [0., 0., 640., 400.],
 };
 
-type Sinks = Arc<Mutex<(Option<Sink<WatchEvent>>, Option<Sink<VoiceEvent>>)>>;
+#[derive(Default)]
+struct SinkSlots {
+    watch: Option<Sink<WatchEvent>>,
+    /// The watch stopped last: a `watch:late:` mark sends it an event in flight.
+    stopped_watch: Option<Sink<WatchEvent>>,
+    /// What the next sample reports: the change since the baseline.
+    screen_change: f32,
+    voice: Option<Sink<VoiceEvent>>,
+}
+
+type Sinks = Arc<Mutex<SinkSlots>>;
 
 type PickSink = Sink<Result<Option<[u8; 3]>, String>>;
 
@@ -57,9 +71,11 @@ struct Script {
     keys: Option<Sink<KeyEvent>>,
     clipboard: Option<RgbaImage>,
     ocr: String,
+    fail_still: bool,
     pick: Option<PickSink>,
     /// After a `jobs:hold` mark, jobs wait here until a `jobs:next` mark runs the oldest,
-    /// a `jobs:last` mark the newest, or a `jobs:drain` mark every one waiting.
+    /// a `jobs:last` mark the newest, a `jobs:drain` mark every one waiting, or a
+    /// `jobs:release` mark every one waiting, after which jobs run at once again.
     held: Option<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
     close_buttons: Vec<(&'static str, Sink<()>)>,
 }
@@ -102,15 +118,34 @@ impl FakePort {
     }
 
     fn fire(&self, mark: &str) {
-        if mark == "key:shift-down" || mark == "key:shift-up" {
+        if let Some(fraction) = mark.strip_prefix("screen:") {
+            self.sinks.lock().unwrap().screen_change =
+                fraction.parse().expect("screen: mark holds a fraction");
+        } else if mark == "watch:sample" {
+            let mut sinks = self.sinks.lock().unwrap();
+            let fraction = std::mem::take(&mut sinks.screen_change);
+            let sink = sinks.watch.clone();
+            drop(sinks);
+            if let Some(sink) = sink {
+                sink(WatchEvent::Change(fraction));
+            }
+        } else if mark == "key:shift-down" || mark == "key:shift-up" {
             self.shift.store(mark == "key:shift-down", Ordering::SeqCst);
         } else if let Some(event) = key_event(mark) {
             let sink = self.script.lock().unwrap().keys.clone();
             if let Some(sink) = sink {
                 sink(event);
             }
+        } else if let Some(event) = mark
+            .strip_prefix("watch:late:")
+            .and_then(|event| watch_event(&format!("watch:{event}")))
+        {
+            let sink = self.sinks.lock().unwrap().stopped_watch.clone();
+            if let Some(sink) = sink {
+                sink(event);
+            }
         } else if let Some(event) = watch_event(mark) {
-            let sink = self.sinks.lock().unwrap().0.clone();
+            let sink = self.sinks.lock().unwrap().watch.clone();
             if let Some(sink) = sink {
                 sink(event);
             }
@@ -122,9 +157,9 @@ impl FakePort {
             let mut sinks = self.sinks.lock().unwrap();
             // Voice that fails has stopped.
             let sink = if matches!(event, VoiceEvent::Failed(_)) {
-                sinks.1.take()
+                sinks.voice.take()
             } else {
-                sinks.1.clone()
+                sinks.voice.clone()
             };
             drop(sinks);
             if let Some(sink) = sink {
@@ -135,6 +170,8 @@ impl FakePort {
             self.script.lock().unwrap().clipboard = Some(image.to_rgba8());
         } else if let Some(text) = mark.strip_prefix("ocr:") {
             self.script.lock().unwrap().ocr = text.to_string();
+        } else if mark == "still:fail" {
+            self.script.lock().unwrap().fail_still = true;
         } else if mark == "jobs:hold" {
             self.script.lock().unwrap().held = Some(Default::default());
         } else if mark == "jobs:next" || mark == "jobs:last" {
@@ -148,15 +185,14 @@ impl FakePort {
             if let Some(job) = job {
                 job();
             }
-        } else if mark == "jobs:drain" {
-            let jobs = self
-                .script
-                .lock()
-                .unwrap()
-                .held
-                .as_mut()
-                .map(std::mem::take)
-                .unwrap_or_default();
+        } else if mark == "jobs:drain" || mark == "jobs:release" {
+            let mut script = self.script.lock().unwrap();
+            let jobs = if mark == "jobs:release" {
+                script.held.take().unwrap_or_default()
+            } else {
+                script.held.as_mut().map(std::mem::take).unwrap_or_default()
+            };
+            drop(script);
             for job in jobs {
                 job();
             }
@@ -272,6 +308,9 @@ impl PlatformPort for FakePort {
         true
     }
     fn still(&self, area: Area) -> Result<RgbaImage, String> {
+        if std::mem::take(&mut self.script.lock().unwrap().fail_still) {
+            return Err("The fake still failed.".into());
+        }
         // Two pixels per point, as on a Retina display.
         let (width, height) = ((area.rect[2] * 2.) as u32, (area.rect[3] * 2.) as u32);
         Ok(RgbaImage::from_fn(width, height, |x, y| {
@@ -279,17 +318,24 @@ impl PlatformPort for FakePort {
         }))
     }
     fn watch(&self, _area: Area, sink: Sink<WatchEvent>) -> Watch {
-        self.sinks.lock().unwrap().0 = Some(sink);
+        self.sinks.lock().unwrap().watch = Some(sink);
         let sinks = self.sinks.clone();
-        Watch(Some(Box::new(move || sinks.lock().unwrap().0 = None)))
+        let rebase = sinks.clone();
+        Watch::new(
+            move || {
+                let mut sinks = sinks.lock().unwrap();
+                sinks.stopped_watch = sinks.watch.take();
+            },
+            move || rebase.lock().unwrap().screen_change = 0.,
+        )
     }
     fn voice(&self, _source: VoiceSource, sink: Sink<VoiceEvent>) -> Result<Voice, String> {
         let mut sinks = self.sinks.lock().unwrap();
         // The helper holds one recording at a time.
-        if sinks.1.is_some() {
+        if sinks.voice.is_some() {
             return Err("Voice is already running.".into());
         }
-        sinks.1 = Some(sink.clone());
+        sinks.voice = Some(sink.clone());
         drop(sinks);
         let (sinks, last_words, finish_error) = (
             self.sinks.clone(),
@@ -300,7 +346,7 @@ impl PlatformPort for FakePort {
             // After `end_voice` the slot may hold the next voice, on its own helper.
             let sink = {
                 let mut sinks = sinks.lock().unwrap();
-                sinks.1.take_if(|current| Arc::ptr_eq(current, &sink))
+                sinks.voice.take_if(|current| Arc::ptr_eq(current, &sink))
             };
             if let Some(error) = finish_error.lock().unwrap().take() {
                 return Err(error);
@@ -314,7 +360,7 @@ impl PlatformPort for FakePort {
         })))
     }
     fn end_voice(&self) {
-        self.sinks.lock().unwrap().1 = None;
+        self.sinks.lock().unwrap().voice = None;
     }
     fn token(&self) -> Option<String> {
         self.token.lock().unwrap().clone()

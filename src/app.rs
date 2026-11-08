@@ -18,6 +18,9 @@ use rune::{
 };
 use std::sync::{Arc, Mutex};
 
+/// One frame of a 60 Hz display, the fade's slowest useful step.
+const FADE_FRAME: std::time::Duration = std::time::Duration::from_micros(16_667);
+
 const EDITOR_SIZE: (f32, f32) = (1220., 860.);
 /// Room for the toolbar and the sidebar's longest option list.
 const EDITOR_MIN_SIZE: (f32, f32) = (900., 560.);
@@ -322,6 +325,9 @@ pub fn run() -> Result<(), String> {
                 if let Some(next) = lens.port().tick(now) {
                     tx.wake_after(next);
                 }
+                if lens.advance_fades() {
+                    tx.wake_after(FADE_FRAME);
+                }
                 let generation = lens.generation();
                 let changed = generation != s.seen;
                 s.seen = generation;
@@ -372,7 +378,8 @@ pub fn run() -> Result<(), String> {
             ink_view,
             None,
             OverlayOptions {
-                exclude_from_capture: true,
+                // Only so a recording of a driven check can show the ink.
+                exclude_from_capture: !std::env::args().any(|arg| arg == "--ink-in-capture"),
                 input: OverlayInput::None,
                 ..Default::default()
             },
