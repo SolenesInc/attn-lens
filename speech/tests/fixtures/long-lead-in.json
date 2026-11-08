@@ -1,0 +1,10 @@
+{
+  "audio_ms": 12445,
+  "phrases": [
+    {
+      "end_ms": 10945,
+      "start_ms": 9000,
+      "text": "This button does nothing when I click it."
+    }
+  ]
+}

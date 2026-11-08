@@ -2,11 +2,14 @@
 //! Lens needs no Accessibility or Input Monitoring; stills come from capture-core.
 //! AppKit and Carbon calls run on the main thread.
 #![allow(unexpected_cfgs)] // objc 0.2 macros use a legacy cargo-clippy feature.
-use super::{Chord, KeyEvent, PlatformPort, Sink, Voice, Watch, WatchEvent};
+use super::{
+    Chord, KeyEvent, PlatformPort, Sink, Voice, VoiceEvent, VoiceSource, Watch, WatchEvent,
+};
 use crate::{
     lens::{
         attn, capture,
-        session::{Area, DisplayFrame, HostTime, Segment},
+        session::{Area, DisplayFrame, HostTime},
+        voice::{Clock, Speech},
         watch,
     },
     permission_guide::{self, Permission},
@@ -27,7 +30,7 @@ use std::{
     ffi::c_void,
     ptr::NonNull,
     sync::{
-        OnceLock,
+        Arc, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -109,12 +112,33 @@ pub(crate) fn queue_on_main(job: impl FnOnce() + Send + 'static) {
     }
 }
 
-pub struct MacPort;
+pub struct MacPort {
+    speech: Arc<Speech>,
+}
 
 impl MacPort {
     pub fn new() -> Self {
-        Self
+        Self {
+            speech: Arc::default(),
+        }
     }
+
+    fn clock(&self) -> Clock {
+        // SAFETY: plain clock read.
+        Arc::new(|| host_time(unsafe { mach_absolute_time() }))
+    }
+}
+
+/// `mach_absolute_time` ticks as host time, the clock every capture time uses.
+pub fn host_time(ticks: u64) -> HostTime {
+    static TIMEBASE: OnceLock<Timebase> = OnceLock::new();
+    let base = TIMEBASE.get_or_init(|| {
+        let mut base = Timebase::default();
+        // SAFETY: `base` is a valid out pointer.
+        unsafe { mach_timebase_info(&mut base) };
+        base
+    });
+    HostTime(ticks * u64::from(base.numer) / u64::from(base.denom))
 }
 
 impl Default for MacPort {
@@ -188,16 +212,8 @@ fn install_draw_key_monitors(sink: Sink<KeyEvent>) {
 
 impl PlatformPort for MacPort {
     fn now(&self) -> HostTime {
-        static TIMEBASE: OnceLock<Timebase> = OnceLock::new();
-        let base = TIMEBASE.get_or_init(|| {
-            let mut base = Timebase::default();
-            // SAFETY: `base` is a valid out pointer.
-            unsafe { mach_timebase_info(&mut base) };
-            base
-        });
         // SAFETY: plain clock read.
-        let ticks = unsafe { mach_absolute_time() };
-        HostTime(ticks * u64::from(base.numer) / u64::from(base.denom))
+        host_time(unsafe { mach_absolute_time() })
     }
 
     fn keys(&self, sink: Sink<KeyEvent>) {
@@ -266,8 +282,12 @@ impl PlatformPort for MacPort {
         watch::start(area, sink)
     }
 
-    fn voice(&self, _sink: Sink<Segment>) -> Result<Voice, String> {
-        Err("Voice is not available in this build.".into())
+    fn voice(&self, source: VoiceSource, sink: Sink<VoiceEvent>) -> Result<Voice, String> {
+        Ok(self.speech.start(source, self.clock(), sink))
+    }
+
+    fn end_voice(&self) {
+        self.speech.release();
     }
 
     fn token(&self) -> Option<String> {

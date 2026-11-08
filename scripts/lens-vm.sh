@@ -11,6 +11,8 @@
 #                                        run a driver script in the VM's GUI session
 #   scripts/lens-vm.sh check OUT         run lens-mac-check.sh in the VM against tools/vm/attn
 #   scripts/lens-vm.sh live OUT          run lens-live.sh in the VM against tools/vm/attn
+#   scripts/lens-vm.sh voice OUT [FIXTURE]
+#                                        run lens-voice.sh in the VM with a speech fixture
 #   scripts/lens-vm.sh editor OUT        run lens-editor-check.sh in the VM: menus, OCR, Pick
 #                                        from screen, scroll, zoom, light and dark
 #   scripts/lens-vm.sh sh COMMAND        run a shell command in the VM's GUI session
@@ -68,7 +70,8 @@ push() {
     GLANCE_CODESIGN_IDENTITY=- GLANCE_BUNDLE_DEST="$PWD/target/vm/Attn Lens.app" ./scripts/bundle.sh release
     start
     in_vm /bin/sh -c "rm -rf '$GUEST_ROOT' '$GUEST_HOME/Applications/Attn Lens.app'; mkdir -p '$GUEST_ROOT' '$GUEST_HOME/Applications' '$GUEST_HOME/.local/bin'"
-    tar cf - scripts/lens-mac-check.sh scripts/lens-live.sh scripts/lens-editor-check.sh tools/driver tools/vm | in_vm_stdin tar xf - -C "$GUEST_ROOT"
+    tar cf - scripts/lens-mac-check.sh scripts/lens-live.sh scripts/lens-editor-check.sh scripts/lens-voice.sh speech/tests/fixtures tools/driver tools/vm |
+        in_vm_stdin tar xf - -C "$GUEST_ROOT"
     tar cf - -C target/vm 'Attn Lens.app' | in_vm_stdin tar xf - -C "$GUEST_HOME/Applications"
     in_vm /bin/sh -c "cd '$GUEST_ROOT' && /usr/bin/swiftc -O tools/driver/driver.swift -o driver && cp tools/vm/attn '$GUEST_HOME/.local/bin/attn'"
     in_vm_stdin /bin/sh -s <tools/vm/guest-grant.sh
@@ -114,6 +117,13 @@ live)
     mkdir -p "$2"
     in_vm /usr/bin/tar cf - -C "$GUEST_ROOT" out sent | tar xf - -C "$2"
     ;;
+voice)
+    [ $# -ge 2 ] || die "usage: lens-vm.sh voice OUT [FIXTURE]"
+    start
+    in_vm /usr/bin/env LENS_DRIVER_WINDOW=vm /bin/sh -c "cd '$GUEST_ROOT' && scripts/lens-voice.sh '$GUEST_ROOT/out' ${3:-short-phrases}"
+    mkdir -p "$2"
+    in_vm /usr/bin/tar cf - -C "$GUEST_ROOT" out | tar xf - -C "$2"
+    ;;
 editor)
     [ $# -eq 2 ] || die "usage: lens-vm.sh editor OUT"
     start
@@ -138,7 +148,7 @@ destroy)
     tart delete "$VM"
     ;;
 *)
-    sed -n 2,18p "$0" >&2
+    sed -n 2,20p "$0" >&2
     exit 2
     ;;
 esac

@@ -26,6 +26,11 @@ Notable user-visible changes are recorded here.
 - Ink fades on its own when the screen moves under it: a scroll, a click, a window
   switch, or most of the area changing. Clicks and window switches each take a still
   first, and a send takes one more if the screen moved after the last.
+- Voice in Attn Lens: ⌘⌥S during a capture transcribes what you say on this Mac,
+  phrase by phrase, each with the time it was spoken; ⌘⌥S again stops. The first
+  ⌘⌥S downloads the speech model (731 MB) with its progress in the bar, which then
+  shows the model loading, the microphone starting and listening. Send waits for
+  the sentence you are finishing. Missing Microphone access opens System Settings.
 - Missing Screen Recording access opens System Settings with a tile of the app
   to drag into the list (from Hex, MIT).
 - The editor interface follows the system’s light or dark appearance, including

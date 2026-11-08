@@ -13,6 +13,7 @@
  {"t":1.2,"type":"mark","name":"watch:click"},
  {"t":1.3,"type":"mark","name":"watch:switch"},
  {"t":1.4,"type":"mark","name":"key:voice"},
+ {"t":1.45,"type":"mark","name":"voice:listening"},
  {"t":1.5,"type":"mark","name":"say:1.45:1.5:this button does nothing"},
  {"t":1.6,"type":"mark","name":"stills-taken"},
  {"t":1.7,"type":"mark","name":"key:send"},

@@ -1,0 +1,15 @@
+{
+  "audio_ms": 4206,
+  "phrases": [
+    {
+      "end_ms": 1872,
+      "start_ms": 1000,
+      "text": "The page loads."
+    },
+    {
+      "end_ms": 4206,
+      "start_ms": 2872,
+      "text": "And then this error shows up"
+    }
+  ]
+}

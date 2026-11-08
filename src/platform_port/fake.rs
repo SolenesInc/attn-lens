@@ -8,6 +8,11 @@
 //! watch:sample               the next sample reports it, unless a rebase came first
 //! watch:late:scroll          the same events, to the watch that stopped last
 //! say:0.5:1.2:the words      a segment from 0.5 s to 1.2 s, while voice runs
+//! voice:downloading:3:10  voice:loading  voice:warming  voice:listening
+//!                            voice's progress, while it runs
+//! voice:fail:the reason      voice stops on its own
+//! voice:last:0.5:1.2:words   the sentence in progress, which finishing voice delivers
+//! voice:finish-fails:reason  finishing voice fails with this instead
 //! clipboard:PATH             the system clipboard now holds the image at PATH
 //! ocr:the words              text recognition finds these words from now on
 //! pick:#RRGGBB  pick:cancel  answers a Pick from screen that is waiting
@@ -21,7 +26,10 @@
 //! When `ATTN_LENS_FAKE_CLIPBOARD` names a folder, what the app copies lands in
 //! it as `image.png` and `text.txt`, so a test can read what a user would paste.
 //! `ATTN_LENS_FAKE_VIDEO_ENCODER` names a stand-in for the MP4 helper.
-use super::{Chord, FAKE_TICK, KeyEvent, PlatformPort, Sink, Voice, Watch, WatchEvent};
+use super::{
+    Chord, FAKE_TICK, KeyEvent, PlatformPort, Sink, Voice, VoiceEvent, VoiceSource, VoiceStatus,
+    Watch, WatchEvent,
+};
 use crate::lens::session::{Area, DisplayFrame, HostTime, Segment};
 use image::{Rgba, RgbaImage};
 use std::{
@@ -48,7 +56,7 @@ struct SinkSlots {
     stopped_watch: Option<Sink<WatchEvent>>,
     /// What the next sample reports: the change since the baseline.
     screen_change: f32,
-    voice: Option<Sink<Segment>>,
+    voice: Option<Sink<VoiceEvent>>,
 }
 
 type Sinks = Arc<Mutex<SinkSlots>>;
@@ -78,6 +86,9 @@ pub struct FakePort {
     token: Mutex<Option<String>>,
     displays: Mutex<Vec<DisplayFrame>>,
     shift: AtomicBool,
+    /// The sentence a finishing voice delivers before it returns.
+    last_words: Arc<Mutex<Option<Segment>>>,
+    finish_error: Arc<Mutex<Option<String>>>,
 }
 
 impl FakePort {
@@ -95,6 +106,8 @@ impl FakePort {
                 menu_bar: MENU_BAR,
             }]),
             shift: AtomicBool::new(false),
+            last_words: Arc::default(),
+            finish_error: Arc::default(),
         }
     }
 
@@ -136,10 +149,21 @@ impl FakePort {
             if let Some(sink) = sink {
                 sink(event);
             }
-        } else if let Some(segment) = segment(mark) {
-            let sink = self.sinks.lock().unwrap().voice.clone();
+        } else if let Some(reason) = mark.strip_prefix("voice:finish-fails:") {
+            *self.finish_error.lock().unwrap() = Some(reason.into());
+        } else if let Some(words) = mark.strip_prefix("voice:last:") {
+            *self.last_words.lock().unwrap() = segment(&format!("say:{words}"));
+        } else if let Some(event) = voice_event(mark) {
+            let mut sinks = self.sinks.lock().unwrap();
+            // Voice that fails has stopped.
+            let sink = if matches!(event, VoiceEvent::Failed(_)) {
+                sinks.voice.take()
+            } else {
+                sinks.voice.clone()
+            };
+            drop(sinks);
             if let Some(sink) = sink {
-                sink(segment);
+                sink(event);
             }
         } else if let Some(path) = mark.strip_prefix("clipboard:") {
             let image = image::open(path).expect("clipboard: mark names a readable image");
@@ -213,6 +237,28 @@ fn watch_event(mark: &str) -> Option<WatchEvent> {
     })
 }
 
+fn voice_event(mark: &str) -> Option<VoiceEvent> {
+    if let Some(segment) = segment(mark) {
+        return Some(VoiceEvent::Segment(segment));
+    }
+    let event = mark.strip_prefix("voice:")?;
+    if let Some(reason) = event.strip_prefix("fail:") {
+        return Some(VoiceEvent::Failed(reason.into()));
+    }
+    Some(VoiceEvent::Status(match event {
+        "loading" => VoiceStatus::Loading,
+        "warming" => VoiceStatus::WarmingUp,
+        "listening" => VoiceStatus::Listening,
+        _ => {
+            let mut parts = event.strip_prefix("downloading:")?.split(':');
+            VoiceStatus::Downloading {
+                bytes: parts.next()?.parse().ok()?,
+                total: parts.next()?.parse().ok()?,
+            }
+        }
+    }))
+}
+
 fn segment(mark: &str) -> Option<Segment> {
     let mut parts = mark.strip_prefix("say:")?.splitn(3, ':');
     let start = parts.next()?.parse().ok()?;
@@ -283,13 +329,38 @@ impl PlatformPort for FakePort {
             move || rebase.lock().unwrap().screen_change = 0.,
         )
     }
-    fn voice(&self, sink: Sink<Segment>) -> Result<Voice, String> {
-        self.sinks.lock().unwrap().voice = Some(sink);
-        let sinks = self.sinks.clone();
+    fn voice(&self, _source: VoiceSource, sink: Sink<VoiceEvent>) -> Result<Voice, String> {
+        let mut sinks = self.sinks.lock().unwrap();
+        // The helper holds one recording at a time.
+        if sinks.voice.is_some() {
+            return Err("Voice is already running.".into());
+        }
+        sinks.voice = Some(sink.clone());
+        drop(sinks);
+        let (sinks, last_words, finish_error) = (
+            self.sinks.clone(),
+            self.last_words.clone(),
+            self.finish_error.clone(),
+        );
         Ok(Voice(Box::new(move || {
-            sinks.lock().unwrap().voice = None;
+            // After `end_voice` the slot may hold the next voice, on its own helper.
+            let sink = {
+                let mut sinks = sinks.lock().unwrap();
+                sinks.voice.take_if(|current| Arc::ptr_eq(current, &sink))
+            };
+            if let Some(error) = finish_error.lock().unwrap().take() {
+                return Err(error);
+            }
+            if let Some(sink) = sink
+                && let Some(words) = last_words.lock().unwrap().take()
+            {
+                sink(VoiceEvent::Segment(words));
+            }
             Ok(())
         })))
+    }
+    fn end_voice(&self) {
+        self.sinks.lock().unwrap().voice = None;
     }
     fn token(&self) -> Option<String> {
         self.token.lock().unwrap().clone()

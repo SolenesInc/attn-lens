@@ -185,3 +185,97 @@ fn a_live_socket_is_kept_and_a_stale_one_is_replaced() {
     let reply = automation::request(&path, r#"{"cmd":"state"}"#).unwrap();
     assert!(reply.contains(r#""ok":true"#), "{reply}");
 }
+
+#[test]
+fn wait_returns_when_the_state_changes_and_reports_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let harness = Arc::new(Harness::new(dir.path(), None));
+    let at_rest = harness.ask(r#"{"cmd":"wait","since":999,"timeout_ms":0}"#)["generation"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(
+        harness.ask(&format!(
+            r#"{{"cmd":"wait","since":{at_rest},"timeout_ms":0}}"#
+        ))["generation"],
+        at_rest,
+        "nothing changed, so the timeout returns the same generation"
+    );
+
+    let waiter = {
+        let harness = harness.clone();
+        std::thread::spawn(move || {
+            harness.ask(&format!(
+                r#"{{"cmd":"wait","since":{at_rest},"timeout_ms":600000}}"#
+            ))
+        })
+    };
+    harness.ask(r#"{"cmd":"key","key":"capture"}"#);
+    let reply = waiter.join().unwrap();
+    assert!(reply["generation"].as_u64().unwrap() > at_rest);
+    assert!(reply["state"]["picking"].is_array(), "{reply}");
+    assert_eq!(
+        harness.ask(r#"{"cmd":"wait","since":0}"#)["error"],
+        "wait needs a whole number \"timeout_ms\""
+    );
+}
+
+#[test]
+fn a_pick_over_an_open_capture_closes_it_and_its_voice() {
+    let dir = tempfile::tempdir().unwrap();
+    let lens = Harness::new(dir.path(), None);
+    lens.ask(r#"{"cmd":"key","key":"capture"}"#);
+    lens.ask(r#"{"cmd":"pick"}"#);
+    lens.ask(r#"{"cmd":"key","key":"voice"}"#);
+    assert_eq!(lens.state()["voice"]["state"], "starting");
+    let first = lens.state()["capture"]["id"].clone();
+
+    assert_eq!(lens.ask(r#"{"cmd":"pick-last"}"#)["ok"], true);
+    assert_ne!(lens.state()["capture"]["id"], first);
+    assert_eq!(lens.state()["voice"]["state"], "off");
+
+    // The first voice was stopped, so the helper is free for this capture's.
+    lens.ask(r#"{"cmd":"key","key":"voice"}"#);
+    assert_eq!(lens.state()["error"], Value::Null);
+    assert_eq!(lens.state()["voice"]["state"], "starting");
+}
+
+#[test]
+fn voice_wav_takes_only_a_regular_file_by_its_absolute_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let dir = dir.path();
+    let lens = Harness::new(dir, Some("wav"));
+    let fifo = dir.join("voice.wav");
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let refused = lens.ask(&format!(
+        r#"{{"cmd":"voice-wav","path":"{}"}}"#,
+        fifo.display()
+    ));
+    assert_eq!(refused["ok"], false);
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap()
+            .ends_with("is not a regular file."),
+        "{refused}"
+    );
+    let relative = lens.ask(r#"{"cmd":"voice-wav","path":"voice.wav"}"#);
+    assert_eq!(relative["ok"], false, "{relative}");
+    let wav: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "speech/tests/fixtures/short-phrases.wav",
+    ]
+    .iter()
+    .collect();
+    let taken = lens.ask(&format!(
+        r#"{{"cmd":"voice-wav","path":"{}"}}"#,
+        wav.display()
+    ));
+    assert_eq!(taken["ok"], true, "{taken}");
+    assert_eq!(lens.ask(r#"{"cmd":"voice-wav"}"#)["ok"], true);
+}

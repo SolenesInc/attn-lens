@@ -3,7 +3,8 @@
 //! every window can be driven on any machine.
 use crate::lens::session::{Area, DisplayFrame, HostTime, Segment};
 use image::RgbaImage;
-use std::{sync::Arc, time::Duration};
+use serde::Serialize;
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 pub mod fake;
 #[cfg(target_os = "macos")]
@@ -69,11 +70,45 @@ impl Drop for Watch {
     }
 }
 
+/// Where voice audio comes from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VoiceSource {
+    Microphone,
+    /// A WAV file played at real speed, so driven checks need nobody to speak.
+    /// Only the automation socket chooses it.
+    Wav(PathBuf),
+}
+
+/// How far voice has got since ⌘⌥S.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum VoiceStatus {
+    /// The first ⌘⌥S fetches the speech model.
+    Downloading {
+        bytes: u64,
+        total: u64,
+    },
+    /// The model is loading into memory.
+    Loading,
+    /// The model is ready and the microphone has not delivered audio yet.
+    WarmingUp,
+    Listening,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum VoiceEvent {
+    Status(VoiceStatus),
+    Segment(Segment),
+    /// Voice stopped on its own; the capture goes on without it.
+    Failed(String),
+}
+
 /// A running voice source.
 pub struct Voice(pub Box<dyn FnOnce() -> Result<(), String> + Send>);
 
 impl Voice {
-    /// Stops listening and returns once the sentence in progress has reached the sink.
+    /// Stops listening and returns once the sentence in progress has reached the
+    /// sink. Slow: it waits for recognition, so call it from [`PlatformPort::run`].
     pub fn finish(self) -> Result<(), String> {
         (self.0)()
     }
@@ -98,7 +133,12 @@ pub trait PlatformPort: Send + Sync {
     fn screen_recording(&self) -> bool;
     fn still(&self, area: Area) -> Result<RgbaImage, String>;
     fn watch(&self, area: Area, sink: Sink<WatchEvent>) -> Watch;
-    fn voice(&self, sink: Sink<Segment>) -> Result<Voice, String>;
+    /// Starts voice. It reports its progress, then segments, to `sink` from
+    /// other threads, and returns at once.
+    fn voice(&self, source: VoiceSource, sink: Sink<VoiceEvent>) -> Result<Voice, String>;
+    /// Lets go of the speech model once the capture has ended. A voice started
+    /// since keeps it.
+    fn end_voice(&self) {}
     /// The token from pairing with attn.
     fn token(&self) -> Option<String>;
     fn store_token(&self, token: &str) -> Result<(), String>;
