@@ -25,14 +25,19 @@ const MARGIN: f64 = 8.;
 
 /// A still's small picture for the strip.
 pub fn thumbnail(frame: &RgbaImage) -> rune::Pixels {
+    let pixels = rune::Pixels::new();
+    draw_thumbnail(&pixels, frame);
+    pixels
+}
+
+/// Draws `frame` small into `pixels`, which a strip may already be showing.
+pub fn draw_thumbnail(pixels: &rune::Pixels, frame: &RgbaImage) {
     let scale = (f64::from(THUMB.0) / f64::from(frame.width().max(1)))
         .min(f64::from(THUMB.1) / f64::from(frame.height().max(1)));
     let width = ((f64::from(frame.width()) * scale) as u32).max(1);
     let height = ((f64::from(frame.height()) * scale) as u32).max(1);
     let small = image::imageops::thumbnail(frame, width, height);
-    let pixels = rune::Pixels::new();
     pixels.set(width, height, small.into_raw());
-    pixels
 }
 
 /// What stops or follows a send, for the line under the controls.
@@ -99,7 +104,6 @@ pub fn placement(area: [f64; 4], display: DisplayFrame, height: f32) -> [f32; 4]
 
 pub struct Bar {
     pub lens: Arc<Lens>,
-    pub open_editor: Arc<dyn Fn() + Send + Sync>,
     pub seen: u64,
     capture: Option<u64>,
     placing_label: bool,
@@ -108,12 +112,11 @@ pub struct Bar {
 }
 
 impl Bar {
-    pub fn new(lens: Arc<Lens>, open_editor: Arc<dyn Fn() + Send + Sync>) -> Self {
+    pub fn new(lens: Arc<Lens>) -> Self {
         let mut message = TextEdit::new("");
         message.focused = true;
         Self {
             lens,
-            open_editor,
             seen: 0,
             capture: None,
             placing_label: false,
@@ -124,16 +127,25 @@ impl Bar {
 
     /// Follows the shared state: a new capture starts with an empty message, and
     /// placing a label moves the typing to its field.
+    /// A label being placed is finished first: the editor is about to take the still.
+    fn finish_label(&mut self) {
+        if self.placing_label {
+            self.lens.finish_label(&self.label.text);
+        }
+    }
+
     pub fn follow(&mut self) {
-        let (capture, placing) = self.lens.read(|summary| {
+        let (capture, message, placing) = self.lens.read(|summary| {
+            let capture = summary.capture.as_ref();
             (
-                summary.capture.as_ref().map(|c| c.id),
+                capture.map(|c| c.id),
+                capture.map_or(String::new(), |c| c.message.clone()),
                 summary.placing_label,
             )
         });
         if capture != self.capture {
             self.capture = capture;
-            self.message = TextEdit::new("");
+            self.message = TextEdit::new(&message);
         }
         if placing != self.placing_label {
             self.placing_label = placing;
@@ -193,6 +205,10 @@ fn strip(summary: &Summary, t: &tok::Theme) -> El {
                 .size(52., CONTROL)
                 .radius(4.)
                 .fill(t.control_track)
+                .on_press(move |s: &mut Bar| {
+                    s.finish_label();
+                    s.lens.edit_still(id);
+                })
                 .child(el().w_full().h_full().pixels(&still.thumb))
                 .child(
                     el().key(format!("drop-{index}"))
@@ -392,7 +408,10 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
                     .color(t.text_secondary),
             )
             .child(
-                button("edit", "Edit".into(), false, &t).on_press(|s: &mut Bar| (s.open_editor)()),
+                button("edit", "Edit".into(), false, &t).on_press(|s: &mut Bar| {
+                    s.finish_label();
+                    s.lens.edit_latest();
+                }),
             )
             .child(
                 button(

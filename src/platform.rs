@@ -274,6 +274,7 @@ mod tests {
             color: [0, 0, 0, 255],
             width: 4.,
             text: "Glance".into(),
+            drawn: None,
         });
         assert!(
             document.render(None).pixels().any(|pixel| pixel[0] < 128),

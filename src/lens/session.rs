@@ -15,6 +15,9 @@ impl HostTime {
     pub fn from_secs(seconds: f64) -> Self {
         Self((seconds * 1e9) as u64)
     }
+    pub fn after(self, wait: std::time::Duration) -> Self {
+        Self(self.0 + wait.as_nanos() as u64)
+    }
     pub fn since(self, earlier: HostTime) -> std::time::Duration {
         std::time::Duration::from_nanos(self.0.saturating_sub(earlier.0))
     }
@@ -70,8 +73,6 @@ pub struct Still {
     pub area: Area,
     pub thumb: rune::Pixels,
     pub doc: Document,
-    /// One span per mark, by index. A mark added in the editor has none.
-    pub times: Vec<(HostTime, HostTime)>,
 }
 
 /// One phrase of transcript, from its first speech frame to its last.

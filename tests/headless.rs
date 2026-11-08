@@ -838,3 +838,127 @@ fn send_right_after_voice_stops_waits_for_its_last_sentence() {
         Some("Voice stopped: transcription failed")
     );
 }
+
+/// Whether a run of identical pixels shows, which the fake's gradient never has.
+fn is_pixelated(path: &Path) -> bool {
+    let frame = image::open(path).unwrap().to_rgba8();
+    frame.rows().any(|row| {
+        row.collect::<Vec<_>>()
+            .windows(6)
+            .any(|run| run.iter().all(|p| *p == run[0]))
+    })
+}
+
+fn state(run: &Run, mark: &str) -> Value {
+    let tree = run.tree("ink", mark);
+    serde_json::from_str(label(&tree, "capture-state").expect("no capture-state element")).unwrap()
+}
+
+#[test]
+fn an_edited_still_round_trips_and_is_what_is_sent() {
+    let run = Run::new("roundtrip.json", ONE_SESSION);
+    let drawn = capture_state(&run, "drawn");
+    assert_eq!(drawn["stills"][0]["marks"], 1);
+
+    // The still opens in the editor; the live surfaces wait.
+    let editing = run.tree("editor", "editing");
+    assert!(visible(&editing, "editor"));
+    assert!(!visible(&editing, "bar"));
+    assert!(!visible(&editing, "ink"));
+    assert_eq!(state(&run, "editing")["editing"], 0);
+
+    // Back returns to the same capture, with the edit kept and editable.
+    let back = state(&run, "back");
+    assert_eq!(back["editing"], Value::Null);
+    assert_eq!(back["capture"]["id"], drawn["id"]);
+    assert_eq!(back["capture"]["stills"][0]["marks"], 2);
+    // The ink mark keeps its time; the editor's has none.
+    assert_eq!(
+        back["capture"]["stills"][0]["times"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let returned = run.tree("bar", "back");
+    assert!(visible(&returned, "bar"));
+    assert!(!visible(&returned, "editor"));
+
+    // Reopening brings back the marks and the undo history.
+    assert!(visible(&run.tree("editor", "reopened"), "editor"));
+    assert_eq!(state(&run, "undone")["capture"]["stills"][0]["marks"], 1);
+    assert_eq!(
+        state(&run, "back-again")["capture"]["stills"][0]["marks"],
+        2
+    );
+
+    // Send delivers the edited document.
+    assert_eq!(state(&run, "sent")["tile"]["sent"], true);
+    assert!(
+        is_pixelated(&run.path("frame-01.png")),
+        "the sent frame is raw"
+    );
+
+    // The tile holds for 5 s after Send, then leaves.
+    assert!(visible(&run.tree("tile", "tile-holds"), "tile"));
+    let left = run.tree("tile", "tile-left");
+    assert!(!visible(&left, "tile"));
+    assert_eq!(state(&run, "tile-left")["tile"], Value::Null);
+}
+
+#[test]
+fn a_dropped_still_is_not_sent_and_the_other_is_pixelated() {
+    let run = Run::new("roundtrip-secret.json", ONE_SESSION);
+    assert_eq!(
+        capture_state(&run, "two-stills")["stills"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        capture_state(&run, "dropped")["stills"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    run.tree("bar", "sent");
+    assert!(
+        is_pixelated(&run.path("frame-01.png")),
+        "the kept still is raw"
+    );
+    assert!(
+        !run.path("frame-02.png").exists(),
+        "the dropped still was sent"
+    );
+    let args = std::fs::read_to_string(run.path("args")).unwrap();
+    assert_eq!(args.matches(".png").count(), 1, "{args}");
+}
+
+#[test]
+fn send_works_from_inside_the_editor() {
+    let run = Run::new("roundtrip-send.json", ONE_SESSION);
+    assert!(visible(&run.tree("editor", "pixelated"), "editor"));
+    let sent = run.tree("editor", "sent");
+    assert!(!visible(&sent, "editor"));
+    assert_eq!(state(&run, "sent")["send"]["state"], "sent");
+    assert!(
+        is_pixelated(&run.path("frame-01.png")),
+        "the sent frame is raw"
+    );
+}
+
+#[test]
+fn an_escaped_capture_keeps_its_tile_and_reopens() {
+    let run = Run::new("roundtrip-esc.json", ONE_SESSION);
+    let escaped = state(&run, "escaped");
+    assert_eq!(escaped["capture"], Value::Null);
+    assert_eq!(escaped["tile"]["sent"], false);
+    assert_eq!(escaped["tile"]["leaving"], false);
+    assert!(visible(&run.tree("tile", "still-there"), "tile"));
+    let reopened = state(&run, "reopened");
+    assert_eq!(reopened["tile"], Value::Null);
+    assert_eq!(reopened["capture"]["stills"].as_array().unwrap().len(), 2);
+    assert!(visible(&run.tree("bar", "reopened"), "bar"));
+}

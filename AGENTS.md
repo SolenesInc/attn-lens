@@ -31,6 +31,9 @@ This file's Glance rules still apply to the code that remains.
   `app.rs` hosts the picker, the ink layer and the four corner handles as `Surface`s.
   The ink layer takes the pointer only while the draw key is held; the handles are
   small windows of their own, below the menu bar, that hold still during a resize.
+- `src/lens/tile.rs`: the corner tile a closed capture shrinks to. While the editor
+  holds a still (`State::editing`), the live surfaces hide and the watch stops;
+  `EditorCall` is how Lens reaches the editor, and `Editor::leave_still` gives it back.
 - `src/lens/attn.rs`: the only contract with attn: `attn send sessions`, `attn
   send pair` and `attn send <session>` JSON, plus the Keychain token. Its tests
   use a stand-in `attn`; attn's `cmd/attn/send_stack_test.go` pins the real JSON.

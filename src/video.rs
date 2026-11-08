@@ -170,6 +170,7 @@ mod tests {
                 color: [255, 56, 100, 255],
                 width: 5.,
                 text: String::new(),
+                drawn: None,
             });
             d.backdrop = Some(Backdrop {
                 format: Format::Widescreen,

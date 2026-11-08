@@ -17,6 +17,10 @@
 //! {"cmd":"sessions"}
 //! {"cmd":"send","target":"<session id>","message":"..."}
 //! {"cmd":"end"}
+//! {"cmd":"edit"}                                    the newest still in the editor; "still":<id> names one
+//! {"cmd":"back"}                                    back to the capture; "send":true also sends
+//! {"cmd":"reopen"}                                  the tile's capture
+//! {"cmd":"discard"}                                 the tile
 //! {"cmd":"voice-wav","path":"/abs/16k-mono.wav"}    the next ⌘⌥S plays it, not the microphone
 //! {"cmd":"voice-wav"}                               back to the microphone
 //! ```
@@ -134,6 +138,25 @@ fn handle(lens: &Arc<Lens>, request: &Value) -> Result<Value, String> {
             .pick_last()
             .then(|| json!({}))
             .ok_or_else(|| "No last area to use.".to_string()),
+        "edit" => {
+            match request["still"].as_u64() {
+                Some(still) => lens.edit_still(still),
+                None => lens.edit_latest(),
+            }
+            Ok(json!({}))
+        }
+        "back" => {
+            lens.leave_editor(request["send"].as_bool().unwrap_or(false));
+            Ok(json!({}))
+        }
+        "reopen" => {
+            lens.reopen_tile();
+            Ok(json!({}))
+        }
+        "discard" => {
+            lens.discard_tile();
+            Ok(json!({}))
+        }
         "cancel" => {
             lens.cancel_pick();
             Ok(json!({}))

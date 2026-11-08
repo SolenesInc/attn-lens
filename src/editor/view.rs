@@ -65,6 +65,10 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
     let mut tools = row()
         .gap(2.)
         .center_y()
+        .children(
+            s.still
+                .map(|_| capture_button(cx, "back", "‹ Back", Action::BackToCapture)),
+        )
         .child(
             text("attn lens")
                 .font(tok::type_::SECTION)
@@ -208,7 +212,31 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
         .justify_between()
         .fill(t.card)
         .child(tools)
-        .child(actions)
+        .child(
+            row().gap(8.).center_y().child(actions).children(
+                s.still
+                    .map(|_| capture_button(cx, "send-capture", "Send ↩", Action::SendCapture)),
+            ),
+        )
+}
+
+/// A toolbar button that belongs to the capture a still came from.
+fn capture_button(cx: &Cx<Editor>, key: &str, label: &str, action: Action) -> El {
+    let t = tok::theme(cx.system_dark());
+    el().key(key)
+        .h(32.)
+        .px(10.)
+        .center()
+        .radius(8.)
+        .fill(t.control_track)
+        .cursor(Cursor::Pointer)
+        .on_press_tx(move |s: &mut Editor, tx| s.dispatch_ui(action.clone(), tx))
+        .child(
+            text(label.to_string())
+                .font(tok::type_::LABEL)
+                .color(t.text)
+                .inert(),
+        )
 }
 
 /// Export PNG, MP4 or GIF, or cancel the export running.

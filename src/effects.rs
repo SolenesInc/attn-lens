@@ -178,6 +178,7 @@ mod tests {
             width: 2.,
             text: "2".into(),
             curve: None,
+            drawn: None,
         }
     }
     #[test]

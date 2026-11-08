@@ -1,10 +1,10 @@
 # Attn Lens
 
-Attn Lens captures your screen, lets you mark it up in place, and sends it to an
-[attn](https://github.com/victorarias/attn) agent session, on this Mac or on an
-outpost. Press **⌘⌥2**, drag arrows over the frozen screen, type a message, press
-**↩**. The agent gets the message and a command that saves the image where it runs.
-See [Send to an attn session](docs/send.md).
+Attn Lens captures part of your live screen, lets you mark it up in place, and
+sends it to an [attn](https://github.com/victorarias/attn) agent session, on this
+Mac or on an outpost. Press **⌘⌥X** and drag an area. Hold **fn** and drag to draw
+while the page keeps working, press **⌘⌥S** to talk, then press **↩**. The agent
+gets your message and the stills. See [Capture and send](docs/send.md).
 
 To install or update it from a checkout, run `scripts/install.sh`. It builds the
 source, installs `~/Applications/Attn Lens.app`, and restarts Lens if it is
@@ -13,8 +13,8 @@ every build is signed with the same identity: your Apple Development certificate
 or the one `GLANCE_CODESIGN_IDENTITY` names.
 
 Attn Lens is a fork of [Glance](https://github.com/modem-dev/glance-desktop) (MIT).
-It keeps Glance's editor (**⌘E** from a capture) for crop, pixelate, backdrops and
-GIF/MP4 export. The rest of this README describes that editor.
+It keeps Glance's editor, reached from a capture's **Edit** button or any thumbnail,
+for crop, pixelate, backdrops and GIF/MP4 export. The rest of this README describes that editor.
 
 ## Glance
 

@@ -251,6 +251,7 @@ impl Editor {
             } else {
                 String::new()
             },
+            drawn: None,
         };
         match self.tool {
             Tool::Counter => {

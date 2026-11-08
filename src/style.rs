@@ -259,6 +259,7 @@ mod tests {
             color: [255, 0, 0, 255],
             width: 4.,
             text: String::new(),
+            drawn: None,
         }
     }
     #[test]

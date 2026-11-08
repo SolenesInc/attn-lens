@@ -6,6 +6,10 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
+- A capture's stills open in the editor from Edit or a thumbnail. Back returns to
+  the same live capture with the edit kept and undoable, and Send works from the
+  editor. After Send the capture shrinks to a corner tile that leaves after 5 s,
+  stays while hovered and reopens on click; after Esc its tile stays.
 - The editor is back on Rune: every tool and option, selection, undo, resize,
   rotate and smart upscale, the color picker with Pick from screen, Copy as OCR,
   inline text with input methods, native menus and accessibility. Images past 8192
