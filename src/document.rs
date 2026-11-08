@@ -184,8 +184,12 @@ impl Document {
         out
     }
     pub fn export_at(&self, phase: f32) -> RgbaImage {
+        self.export_frame(phase, phase)
+    }
+    /// A still with the entrance at phase `entrance` and a moving background at `phase`.
+    pub fn export_frame(&self, entrance: f32, phase: f32) -> RgbaImage {
         if self.image_animation.enabled() {
-            return crate::animation::Renderer::for_document(self, None).frame(phase);
+            return crate::animation::Renderer::for_document(self, None).compose(entrance, phase);
         }
         if let Some(b) = self.backdrop
             && b.motion != crate::animation::Motion::Still

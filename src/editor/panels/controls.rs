@@ -61,17 +61,17 @@ pub(crate) fn icon_button(
     key: &str,
     label: String,
     glyph: &'static Icon,
-    active: bool,
+    toggle: Option<bool>,
     action: Action,
 ) -> El {
     let t = theme(cx);
+    let active = toggle == Some(true);
     let accent = rgba(super::super::live::ACCENT);
     let mut button = el()
         .key(key.to_string())
         .role("button")
         .label(label.clone())
         .help(label)
-        .checked(active)
         .size(32., 32.)
         .radius(7.)
         .center()
@@ -84,6 +84,10 @@ pub(crate) fn icon_button(
                 .color(if active { accent } else { t.text })
                 .inert(),
         );
+    // Only a toggle has a checked state; an action button reads as a plain button.
+    if let Some(checked) = toggle {
+        button = button.checked(checked);
+    }
     if active {
         button = button.fill(accent.alpha(0.16));
     }
@@ -226,4 +230,101 @@ pub(crate) fn number(
             .child(center)
             .child(arrow(format!("{key}-inc"), "+", step)),
     )
+}
+
+/// A slider's track: the sidebar's width inside its padding.
+const TRACK: f32 = super::WIDTH - 28.;
+
+/// What a slider asks for: the value, and whether it starts a new undo step.
+pub(crate) type SliderAction = fn(u32, bool) -> Action;
+
+/// A value along a track, with its reading beside the label. A drag is one undo step;
+/// arrows, Page Up and Down, Home and End step it as a native slider does.
+pub(crate) fn slider(
+    cx: &Cx<Editor>,
+    label: &str,
+    value: u32,
+    (min, max, step): (u32, u32, u32),
+    shown: String,
+    action: SliderAction,
+) -> El {
+    let t = theme(cx);
+    let accent = rgba(super::super::live::ACCENT);
+    let key = slug(label);
+    let fraction = (value.saturating_sub(min) as f32 / (max - min).max(1) as f32).clamp(0., 1.);
+    let at = move |x: f32, width: f32| {
+        let raw = min as f32 + (x / width.max(1.)).clamp(0., 1.) * (max - min) as f32;
+        let stepped = (raw / step as f32).round() as u32 * step;
+        stepped.clamp(min, max)
+    };
+    let track = el()
+        .key(format!("{key}-slider"))
+        .role("slider")
+        .label(label.to_string())
+        .range_step(step as f64)
+        .range_value(value as f64, min as f64, max as f64)
+        .a11y_value(shown.clone())
+        .w(TRACK)
+        .h(20.)
+        .cursor(Cursor::Pointer)
+        .on_drag(move |s: &mut Editor, drag, tx| {
+            if matches!(drag.phase, rune::Phase::Down) {
+                s.continuing = false;
+            }
+            let revision = s.revision;
+            s.dispatch_ui(action(at(drag.x, drag.w), !s.continuing), tx);
+            // The undo step starts with the first move that changes something.
+            let started = s.continuing || s.revision != revision;
+            s.continuing = started && !matches!(drag.phase, rune::Phase::Up);
+        })
+        .on_step(move |s: &mut Editor, delta, tx| {
+            let next = (value as i64 + delta as i64 * step as i64).clamp(min as i64, max as i64);
+            s.dispatch_ui(action(next as u32, true), tx);
+        })
+        .on_step_limit(move |s: &mut Editor, end, tx| {
+            s.dispatch_ui(action(if end { max } else { min }, true), tx);
+        })
+        .child(
+            el().absolute(0., 8.)
+                .w(TRACK)
+                .h(4.)
+                .radius(2.)
+                .fill(t.control_track)
+                .inert(),
+        )
+        .child(
+            el().absolute(0., 8.)
+                .w(TRACK * fraction)
+                .h(4.)
+                .radius(2.)
+                .fill(accent)
+                .inert(),
+        )
+        .child(
+            el().absolute((TRACK - 14.) * fraction, 3.)
+                .size(14., 14.)
+                .radius(7.)
+                .fill(rgba([255, 255, 255, 255]))
+                .border(1., t.card_border)
+                .inert(),
+        );
+    col()
+        .key(format!("{key}-field"))
+        .gap(4.)
+        .child(
+            row()
+                .justify_between()
+                .child(
+                    text(label.to_string())
+                        .font(tok::type_::LABEL)
+                        .color(t.text_secondary),
+                )
+                .child(
+                    text(shown)
+                        .key(format!("{key}-reading"))
+                        .font(tok::type_::LABEL)
+                        .color(t.text),
+                ),
+        )
+        .child(track)
 }

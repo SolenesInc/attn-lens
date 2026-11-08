@@ -138,6 +138,16 @@
    "at": "tool-v",
    "checked": [
     "tool-select"
+   ],
+   "stateless": [
+    "open",
+    "undo",
+    "redo",
+    "copy",
+    "copy-ocr",
+    "save",
+    "zoom-out",
+    "zoom-in"
    ]
   },
   {

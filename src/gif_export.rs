@@ -281,6 +281,7 @@ mod visual_qa {
         assert!(
             crate::video::encode(
                 &d,
+                &crate::video::encoder_path().unwrap(),
                 &dir.join("focus-demo.mp4"),
                 0.,
                 &AtomicBool::new(false),

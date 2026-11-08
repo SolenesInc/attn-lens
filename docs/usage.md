@@ -139,9 +139,11 @@ Timing changes are undoable; replay and seeking leave history unchanged.
 
 **⌘C** copies the composed image; **⌘S** saves PNG. Both retain full resolution.
 With Animation open, PNG/copy capture the inspected frame; during normal editing
-they capture the fully revealed image.
+they capture the fully revealed image over the backdrop frame on the canvas.
 
-Use **Export → GIF… / MP4…** for an animated backdrop or image entrance.
+Use **Export → GIF… / MP4…** in the toolbar, or **File → Export GIF… / Export MP4…**,
+for an animated backdrop or image entrance. If nothing moves yet, export adds a Flow
+backdrop and opens **Backdrop** instead; export again to save it.
 Exports begin at time zero and preserve aspect ratio:
 
 | Format | Output |
@@ -152,7 +154,8 @@ Exports begin at time zero and preserve aspect ratio:
 
 GIF/MP4 use an ivory matte for transparent areas. Configure the video player to
 loop an MP4. The export progress bar stays at the bottom of the window;
-**Cancel export**, **Export → Cancel export**, or Escape stops it.
+**Cancel export**, **Export → Cancel export**, **File → Cancel Export**, or Escape
+stops it.
 
 Save dialogs suggest timestamped names in Pictures (PNG/GIF) or Movies (MP4).
 Use the matching `.png`, `.gif`, or `.mp4` extension. The editor preserves the

@@ -13,6 +13,8 @@
 #   scripts/lens-vm.sh live OUT          run lens-live.sh in the VM against tools/vm/attn
 #   scripts/lens-vm.sh voice OUT [FIXTURE]
 #                                        run lens-voice.sh in the VM with a speech fixture
+#   scripts/lens-vm.sh editor OUT        run lens-editor-check.sh in the VM: menus, OCR, Pick
+#                                        from screen, scroll, zoom, light and dark
 #   scripts/lens-vm.sh sh COMMAND        run a shell command in the VM's GUI session
 #   scripts/lens-vm.sh pull PATH DEST    copy a file or folder out of the VM
 #   scripts/lens-vm.sh destroy           stop and delete the VM
@@ -68,7 +70,7 @@ push() {
     GLANCE_CODESIGN_IDENTITY=- GLANCE_BUNDLE_DEST="$PWD/target/vm/Attn Lens.app" ./scripts/bundle.sh release
     start
     in_vm /bin/sh -c "rm -rf '$GUEST_ROOT' '$GUEST_HOME/Applications/Attn Lens.app'; mkdir -p '$GUEST_ROOT' '$GUEST_HOME/Applications' '$GUEST_HOME/.local/bin'"
-    tar cf - scripts/lens-mac-check.sh scripts/lens-live.sh scripts/lens-voice.sh speech/tests/fixtures tools/driver tools/vm |
+    tar cf - scripts/lens-mac-check.sh scripts/lens-live.sh scripts/lens-editor-check.sh scripts/lens-voice.sh speech/tests/fixtures tools/driver tools/vm |
         in_vm_stdin tar xf - -C "$GUEST_ROOT"
     tar cf - -C target/vm 'Attn Lens.app' | in_vm_stdin tar xf - -C "$GUEST_HOME/Applications"
     in_vm /bin/sh -c "cd '$GUEST_ROOT' && /usr/bin/swiftc -O tools/driver/driver.swift -o driver && cp tools/vm/attn '$GUEST_HOME/.local/bin/attn'"
@@ -122,6 +124,15 @@ voice)
     mkdir -p "$2"
     in_vm /usr/bin/tar cf - -C "$GUEST_ROOT" out | tar xf - -C "$2"
     ;;
+editor)
+    [ $# -eq 2 ] || die "usage: lens-vm.sh editor OUT"
+    start
+    status=0
+    in_vm /usr/bin/env LENS_DRIVER_WINDOW=vm /bin/sh -c "cd '$GUEST_ROOT' && rm -rf editor-out && scripts/lens-editor-check.sh '$GUEST_ROOT/editor-out'" || status=$?
+    mkdir -p "$2"
+    in_vm /usr/bin/tar cf - -C "$GUEST_ROOT/editor-out" . | tar xf - -C "$2"
+    exit "$status"
+    ;;
 sh)
     [ $# -eq 2 ] || die "usage: lens-vm.sh sh COMMAND"
     start
@@ -137,7 +148,7 @@ destroy)
     tart delete "$VM"
     ;;
 *)
-    sed -n 2,17p "$0" >&2
+    sed -n 2,20p "$0" >&2
     exit 2
     ;;
 esac

@@ -13,6 +13,12 @@ pub const CHECK: Icon = Icon {
     body: r#"<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 6 9 17l-5-5" />"#,
 };
 
+pub const CHEVRON_DOWN: Icon = Icon {
+    name: "chevron-down",
+    view: 24.,
+    body: r#"<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />"#,
+};
+
 pub const COPY: Icon = Icon {
     name: "copy",
     view: 24.,
@@ -67,6 +73,12 @@ pub const PEN_LINE: Icon = Icon {
     body: r#"<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M13 21h8" /> <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />"#,
 };
 
+pub const PLAY: Icon = Icon {
+    name: "play",
+    view: 24.,
+    body: r#"<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />"#,
+};
+
 pub const REDO_2: Icon = Icon {
     name: "redo-2",
     view: 24.,
@@ -113,6 +125,12 @@ pub const UNDO_2: Icon = Icon {
     name: "undo-2",
     view: 24.,
     body: r#"<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 14 4 9l5-5" /> <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" />"#,
+};
+
+pub const VIDEO: Icon = Icon {
+    name: "video",
+    view: 24.,
+    body: r#"<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" /> <rect fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="2" y="6" width="14" height="12" rx="2" />"#,
 };
 
 pub const ZOOM_IN: Icon = Icon {

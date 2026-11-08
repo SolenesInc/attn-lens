@@ -137,6 +137,14 @@ impl Default for Backdrop {
     }
 }
 impl Backdrop {
+    /// How many of `colors` the background shows: Solid one, Gradient and Motion two.
+    pub fn stops(self) -> usize {
+        if self.gradient || self.motion != crate::animation::Motion::Still {
+            2
+        } else {
+            1
+        }
+    }
     pub fn colors(self) -> [u32; 2] {
         self.colors.map_or_else(
             || {

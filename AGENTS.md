@@ -7,9 +7,8 @@ this file describes Glance's rules, which still apply to the code that remains.
 ## Lens entry points
 
 Lens is being rebuilt on Rune. `s-24857n` in the attn garden holds the plan. Glance's
-GPUI code is at `git show a64f4fb:src/...`, the behavior for what has not come back
-yet (backdrop, animation, GIF and MP4). This file's Glance rules still apply to the
-code that remains.
+GPUI code is at `git show a64f4fb:src/...`, the reference for behavior being ported.
+This file's Glance rules still apply to the code that remains.
 
 - `src/app.rs`: the Rune app and its windows. A Dock app (⌘Q quits, a Dock click
   opens the editor). When `rune::tooling::is_headless()` is true, overlays are hosted
@@ -20,7 +19,10 @@ code that remains.
 - `src/editor/`: the editor window. Every toolbar, menu, key and gesture reaches
   `Editor::dispatch` in `dispatch.rs`. `gesture.rs` is the pointer on the canvas;
   `preview.rs` renders the raster off the UI thread; `live.rs` paints marks not yet
-  in it. `tests/editor.rs` runs `headless/editor/*.json`, one script per row of
+  in it. `stage.rs` renders the backdrop behind the image, and whole frames while
+  the Animation panel plays, on the port's `Lane` (one thread on the Mac, so Metal
+  keeps its thread-local state); `export.rs` runs GIF and MP4 export. In scripts,
+  MP4 goes through the stand-in encoder `tests/video-encoder`. `tests/editor.rs` runs `headless/editor/*.json`, one script per row of
   `TOOL_OPTIONS.md` and the tables in `docs/usage.md`; each holds its assertions.
 - `src/lens/mod.rs`: `Lens`, the state every window and the socket read. Each change
   wakes the windows, because a Rune window does not redraw from another's change.
@@ -47,6 +49,8 @@ code that remains.
   `setup` once, then `push` to install this checkout signed ad hoc, `driver SCRIPT` to run
   a driver script in the VM's GUI session, `check OUT` to run `scripts/lens-mac-check.sh`
   and `live OUT` to run `scripts/lens-live.sh`, both against the stand-in `tools/vm/attn`,
+  `editor OUT` to run `scripts/lens-editor-check.sh` (menus, Copy as OCR, Pick from screen,
+  scroll and zoom, light and dark, read through `tools/driver/ax.swift`),
   and `stop` when done: it holds 8 GB. `tools/vm/`
   grants the VM's permissions without a click. Nothing of this Mac's goes in: no shared
   folders, Keychain, tokens or signing identity. Speed budgets and the feel of drawing
