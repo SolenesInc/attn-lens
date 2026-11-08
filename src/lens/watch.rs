@@ -7,8 +7,14 @@
 //! Set `LENS_WATCH_LOG=1` to print every event to stderr: that is how the
 //! thresholds below were measured.
 #![allow(unexpected_cfgs)] // objc 0.2 macros use a legacy cargo-clippy feature.
-use super::{capture, session::Area};
-use crate::platform_port::{Sink, Watch, WatchEvent, mac::queue_on_main};
+use super::{
+    capture,
+    session::{Area, HostTime},
+};
+use crate::platform_port::{
+    Sink, Watch, WatchEvent,
+    mac::{host_now, queue_on_main},
+};
 use block2::RcBlock;
 use image::RgbaImage;
 use objc2::{
@@ -142,7 +148,7 @@ fn change_fraction(before: &RgbaImage, after: &RgbaImage) -> f32 {
 
 /// Polls the front window and compares frames until `stop` drops its sender.
 fn poll(area: Area, switches: Arc<WindowSwitches>, stop: mpsc::Receiver<()>) {
-    let mut previous: Option<RgbaImage> = None;
+    let mut previous: Option<(RgbaImage, HostTime)> = None;
     let mut sampled_at: Option<Instant> = None;
     let mut reported_failure = false;
     while let Err(mpsc::RecvTimeoutError::Timeout) = stop.recv_timeout(WINDOW_POLL) {
@@ -151,15 +157,17 @@ fn poll(area: Area, switches: Arc<WindowSwitches>, stop: mpsc::Receiver<()>) {
             continue;
         }
         sampled_at = Some(Instant::now());
+        let taken = host_now();
         match capture::frame(area, Some(SAMPLE_LONG_EDGE)) {
             Ok(frame) => {
-                if let Some(before) = previous
+                if let Some((before, baseline)) = previous
                     .as_ref()
-                    .filter(|b| b.dimensions() == frame.dimensions())
+                    .filter(|(b, _)| b.dimensions() == frame.dimensions())
                 {
-                    (switches.sink)(WatchEvent::Change(change_fraction(before, &frame)));
+                    let fraction = change_fraction(before, &frame);
+                    (switches.sink)(WatchEvent::Change(fraction, *baseline));
                 }
-                previous = Some(frame);
+                previous = Some((frame, taken));
             }
             Err(error) if !reported_failure => {
                 reported_failure = true;

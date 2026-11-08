@@ -376,6 +376,7 @@ impl Lens {
                 stills: vec![],
                 ink: vec![],
                 view_still: None,
+                view_at: HostTime::default(),
                 next_still: 0,
                 unseen_change: None,
                 send_still_error: None,
@@ -565,12 +566,14 @@ impl Lens {
             }
             (capture.view_still, state.tool)
         };
+        let view_requested = self.port.now();
         let still = match open {
             Some(still) => still,
             None => {
                 let still = self.take_still(Cause::Draw)?;
                 if let Some(capture) = self.state.lock().unwrap().capture.as_mut() {
                     capture.view_still = Some(still);
+                    capture.view_at = view_requested;
                 }
                 still
             }
@@ -736,8 +739,8 @@ impl Lens {
             WatchEvent::Click => Some(Cause::Click),
             WatchEvent::WindowSwitch => Some(Cause::WindowSwitch),
             WatchEvent::Scroll => None,
-            WatchEvent::Change(fraction) if fraction >= CHANGE_FRACTION => None,
-            WatchEvent::Change(_) => return,
+            WatchEvent::Change(fraction, _) if fraction >= CHANGE_FRACTION => None,
+            WatchEvent::Change(..) => return,
         };
         let cause = {
             let mut guard = self.state.lock().unwrap();
@@ -749,6 +752,13 @@ impl Lens {
             else {
                 return;
             };
+            // The change began before this view's still, so that still already shows it.
+            if let WatchEvent::Change(_, baseline) = event
+                && capture.view_still.is_some()
+                && baseline < capture.view_at
+            {
+                return;
+            }
             // A running send has its stills; the page may still be clicked.
             let cause = cause.filter(|_| state.sending != Some(capture.id));
             let news = cause.is_some()

@@ -4,6 +4,7 @@
 //! key:draw-down  key:draw-up  key:capture  key:voice  key:keyboard  key:send
 //! key:shift-down  key:shift-up
 //! watch:click  watch:scroll  watch:switch  watch:change:0.7
+//! watch:change:0.7@1.5      with the time, in seconds, of the frame it compares against
 //! watch:late:scroll          the same events, to the watch that stopped last
 //! say:0.5:1.2:the words      a segment from 0.5 s to 1.2 s, while voice runs
 //! clipboard:PATH             the system clipboard now holds the image at PATH
@@ -181,7 +182,15 @@ fn watch_event(mark: &str) -> Option<WatchEvent> {
         "click" => WatchEvent::Click,
         "scroll" => WatchEvent::Scroll,
         "switch" => WatchEvent::WindowSwitch,
-        _ => WatchEvent::Change(event.strip_prefix("change:")?.parse().ok()?),
+        _ => {
+            // A baseline in the future never counts as older than a view's still.
+            let (fraction, baseline) = event.strip_prefix("change:")?.split_once('@').unzip();
+            let fraction = fraction.or(event.strip_prefix("change:"))?;
+            let baseline = baseline.map_or(Some(HostTime(u64::MAX)), |at| {
+                at.parse().ok().map(HostTime::from_secs)
+            })?;
+            WatchEvent::Change(fraction.parse().ok()?, baseline)
+        }
     })
 }
 

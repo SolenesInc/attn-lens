@@ -37,8 +37,9 @@ pub enum WatchEvent {
     Click,
     Scroll,
     WindowSwitch,
-    /// The fraction of the area that changed since the last frame compared.
-    Change(f32),
+    /// The fraction of the area that changed since the last frame compared, and
+    /// when that frame was taken.
+    Change(f32, HostTime),
 }
 
 /// Watching stops when this drops.
