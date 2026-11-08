@@ -180,14 +180,29 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
     );
 }
 
+/// The child of `a_live_socket_is_kept_and_a_stale_one_is_replaced`.
+#[test]
+#[ignore = "run by a_live_socket_is_kept_and_a_stale_one_is_replaced"]
+fn bind_a_socket_and_exit() {
+    if let Some(path) = std::env::var_os("LENS_TEST_SOCKET") {
+        std::mem::forget(std::os::unix::net::UnixListener::bind(path).unwrap());
+    }
+}
+
 #[test]
 fn a_live_socket_is_kept_and_a_stale_one_is_replaced() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("lens.sock");
     let lens = || Lens::new(Arc::new(FakePort::new(vec![], None)));
 
-    // A socket whose process is gone: bound, then its listener dropped.
-    drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
+    // A socket whose process is gone. Bound in a process of its own: another test
+    // forking here could keep a listener of this process alive past its drop.
+    let bound = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "bind_a_socket_and_exit"])
+        .env("LENS_TEST_SOCKET", &path)
+        .status()
+        .unwrap();
+    assert!(bound.success());
     automation::listen(lens(), &path).unwrap();
 
     let refused = automation::listen(lens(), &path).unwrap_err();

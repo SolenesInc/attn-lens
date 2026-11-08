@@ -151,13 +151,7 @@ fn rows(source: &Source) -> Vec<String> {
     let since = |time: HostTime| clock(time.since(source.started));
     for (index, frame) in source.frames.iter().enumerate() {
         let still = index + 1;
-        // A stroke can read its start just before its frame's time, and its still
-        // comes first all the same.
-        let at = frame
-            .times
-            .iter()
-            .map(|&(start, _)| start)
-            .fold(frame.at, HostTime::min);
+        let at = frame.at;
         let cause = cause_name(frame.cause);
         rows.push((at, 0, format!("{} still {still} ({cause})", since(at))));
         // A mark added in the editor has no span, so it has no row.
@@ -287,7 +281,7 @@ fn layout_sheet(aspects: &[f32], native_widths: &[u32]) -> SheetLayout {
     let scale = (SHEET_MAX_EDGE / total_w.max(total_h))
         .min((SHEET_MAX_PIXELS / (total_w * total_h)).sqrt());
     if scale < 1. {
-        inner = (total_w * scale - 2. * pad).max(64.);
+        inner = (total_w * scale - 2. * pad).floor().max(1.);
     }
     let inner = inner.round() as u32;
     let mut tiles = vec![[0; 4]; aspects.len()];
@@ -531,17 +525,6 @@ mod tests {
     }
 
     #[test]
-    fn a_stroke_that_read_its_start_before_its_frame_still_follows_its_still() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut source = fixture();
-        source.frames[1].times = vec![(at(9.), at(10.))];
-        source.frames[1].at = at(9.000_01);
-        let message = build(&source, dir.path()).unwrap().message;
-        let still = message.find("still 2 (click)").unwrap();
-        assert!(still < message.find("box on still 2").unwrap(), "{message}");
-    }
-
-    #[test]
     fn typed_words_come_before_the_timeline() {
         let dir = tempfile::tempdir().unwrap();
         let mut source = fixture();
@@ -667,7 +650,7 @@ mod tests {
 
     #[test]
     fn every_sheet_stays_inside_its_budget_with_tiles_on_it_and_apart() {
-        let shapes: [f32; 5] = [1.54, 0.46, 2.4, 1.0, 3.2];
+        let shapes: [f32; 6] = [1.54, 0.46, 2.4, 1.0, 3.2, 0.012];
         for count in 1..=STILLS_PER_SHEET {
             for first in 0..shapes.len() {
                 for &native in &[640u32, 3420] {
