@@ -1056,5 +1056,26 @@ fn a_closing_capture_cancels_a_send_queued_in_the_editor() {
 #[test]
 fn an_earlier_voice_finishing_leaves_a_reopened_captures_new_voice() {
     let run = Run::new("roundtrip-voice-reopen.json", ONE_SESSION);
+    // The earlier voice holds the helper until it finishes; ⌘⌥S waits for it.
+    assert_eq!(
+        state(&run, "still-finishing")["voice"]["state"],
+        "finishing"
+    );
     assert_eq!(state(&run, "done")["voice"]["state"], "listening");
+}
+
+#[test]
+fn a_tile_keeps_the_last_sentence_of_a_voice_closed_by_esc() {
+    let run = Run::new("roundtrip-voice-esc.json", ONE_SESSION);
+    // Reopened before the helper finished: Send would wait for it.
+    assert_eq!(state(&run, "reopened")["voice"]["state"], "finishing");
+    let done = state(&run, "done");
+    assert_eq!(done["voice"]["state"], "off");
+    assert_eq!(done["capture"]["segments"][0]["text"], "final words");
+}
+
+#[test]
+fn an_older_still_failing_leaves_a_waiting_edit_alone() {
+    let run = Run::new("roundtrip-edit-older-fails.json", ONE_SESSION);
+    assert!(state(&run, "editing")["editing"].is_number());
 }

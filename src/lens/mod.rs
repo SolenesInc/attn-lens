@@ -1036,6 +1036,7 @@ impl Lens {
     /// Esc and a successful send both close the capture here, voice included.
     fn close_capture(self: &Arc<Self>, mut state: MutexGuard<'_, State>, closing: Closing) {
         let mut capture = state.capture.take();
+        let closing_id = capture.as_ref().map(|c| c.id);
         let voice = capture.as_mut().map(|c| std::mem::take(&mut c.voice));
         let was_editing = state.editing.take().is_some();
         state.edit_when_landed = None;
@@ -1064,6 +1065,25 @@ impl Lens {
         state.watch = None;
         state.label = None;
         state.palette = None;
+        // A tile keeps the voice as finishing, so its last sentence lands in the
+        // capture and a reopened capture's Send waits for it.
+        let run = match &voice {
+            Some(CaptureVoice::Running { run, .. } | CaptureVoice::Finishing { run, .. }) => {
+                Some(*run)
+            }
+            _ => None,
+        };
+        if let Some(run) = run
+            && let Some(tile) = state
+                .tile
+                .as_mut()
+                .filter(|t| Some(t.capture.id) == closing_id)
+        {
+            tile.capture.voice = CaptureVoice::Finishing {
+                run,
+                send_after: false,
+            };
+        }
         let handle = match voice {
             Some(CaptureVoice::Running { handle, .. }) => Some(handle),
             Some(CaptureVoice::Finishing {
@@ -1084,12 +1104,12 @@ impl Lens {
         // A stopping voice keeps its helper to itself, and the next capture gets
         // its own: a helper records one voice at a time.
         self.port.end_voice();
-        let Some(handle) = handle else { return };
+        let (Some(handle), Some(id), Some(run)) = (handle, closing_id, run) else {
+            return;
+        };
+        let lens = self.clone();
         self.port.run(Box::new(move || {
-            // The capture is gone and nobody waits on this, so the bar is not told.
-            if let Err(error) = handle.finish() {
-                eprintln!("Attn Lens: {error}");
-            }
+            lens.voice_stopped(id, run, handle.finish())
         }));
     }
 
@@ -1194,7 +1214,9 @@ impl Lens {
                         }
                     }
                     Err(error) => {
-                        state.edit_when_landed = None;
+                        if state.edit_when_landed == Some(still_id) {
+                            state.edit_when_landed = None;
+                        }
                         // Ink with no frame under it cannot be sent; the next press retries.
                         if let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) {
                             if cause == Cause::Send {
@@ -1284,8 +1306,11 @@ impl Lens {
     fn voice_sink(self: &Arc<Self>, id: u64, run: u64) -> Sink<VoiceEvent> {
         let lens = self.clone();
         Arc::new(move |event| {
-            let mut state = lens.state.lock().unwrap();
-            let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) else {
+            let mut guard = lens.state.lock().unwrap();
+            let state = &mut *guard;
+            let open = state.capture.iter_mut();
+            let closed = state.tile.iter_mut().map(|t| &mut t.capture);
+            let Some(capture) = open.chain(closed).find(|c| c.id == id) else {
                 return;
             };
             let current = matches!(capture.voice, CaptureVoice::Running { run: r, .. } if r == run);
@@ -1304,7 +1329,7 @@ impl Lens {
                     state.error = Some(error);
                 }
             }
-            drop(state);
+            drop(guard);
             lens.changed();
         })
     }
@@ -1312,8 +1337,11 @@ impl Lens {
     /// The finish ⌘⌥S asked for returned. It starts the send that waited for it, or
     /// fails it, as the send would lose the last sentence.
     fn voice_stopped(self: &Arc<Self>, id: u64, run: u64, finished: Result<(), String>) {
-        let mut state = self.state.lock().unwrap();
-        let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) else {
+        let mut guard = self.state.lock().unwrap();
+        let state = &mut *guard;
+        let open = state.capture.iter_mut();
+        let closed = state.tile.iter_mut().map(|t| &mut t.capture);
+        let Some(capture) = open.chain(closed).find(|c| c.id == id) else {
             return;
         };
         // A reopened capture keeps its id, and may be on a newer voice by now.
@@ -1337,7 +1365,7 @@ impl Lens {
             Err(error) => state.error = Some(error),
         }
         let send = send_after && matches!(state.send, SendStatus::Sending);
-        drop(state);
+        drop(guard);
         self.changed();
         if send {
             let lens = self.clone();

@@ -82,22 +82,32 @@
    "name": "reopened"
   },
   {
-   "t": 1.6,
+   "t": 1.55,
    "type": "mark",
    "name": "key:voice"
   },
   {
-   "t": 1.7,
+   "t": 1.65,
    "type": "mark",
-   "name": "voice:listening"
+   "name": "still-finishing"
   },
   {
-   "t": 1.8,
+   "t": 1.7,
    "type": "mark",
    "name": "jobs:release"
   },
   {
-   "t": 2.2,
+   "t": 1.9,
+   "type": "mark",
+   "name": "key:voice"
+  },
+  {
+   "t": 2.0,
+   "type": "mark",
+   "name": "voice:listening"
+  },
+  {
+   "t": 2.3,
    "type": "mark",
    "name": "done"
   }

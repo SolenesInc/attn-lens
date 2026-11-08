@@ -348,17 +348,17 @@ impl PlatformPort for FakePort {
             self.finish_error.clone(),
         );
         Ok(Voice(Box::new(move || {
-            // After `end_voice` the slot may hold the next voice, on its own helper.
-            let sink = {
-                let mut sinks = sinks.lock().unwrap();
-                sinks.voice.take_if(|current| Arc::ptr_eq(current, &sink))
-            };
+            // After `end_voice` the slot may hold the next voice, on its own helper;
+            // this one still delivers its last sentence, as the real helper does.
+            sinks
+                .lock()
+                .unwrap()
+                .voice
+                .take_if(|current| Arc::ptr_eq(current, &sink));
             if let Some(error) = finish_error.lock().unwrap().take() {
                 return Err(error);
             }
-            if let Some(sink) = sink
-                && let Some(words) = last_words.lock().unwrap().take()
-            {
+            if let Some(words) = last_words.lock().unwrap().take() {
                 sink(VoiceEvent::Segment(words));
             }
             Ok(())
