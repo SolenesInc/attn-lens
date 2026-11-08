@@ -7,6 +7,7 @@
 // permission is granted or System Settings closes.
 
 #import <AppKit/AppKit.h>
+#import <AVFoundation/AVFoundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreImage/CoreImage.h>
 #import <QuartzCore/QuartzCore.h>
@@ -14,6 +15,7 @@
 /// Matches `Permission` in src/permission_guide.rs.
 typedef NS_ENUM(NSInteger, LensPermission) {
     LensPermissionScreenRecording = 1,
+    LensPermissionMicrophone = 2,
 };
 
 static NSPanel *guidePanel;
@@ -57,6 +59,8 @@ static NSString *permissionListName(LensPermission permission) {
     switch (permission) {
         case LensPermissionScreenRecording:
             return @"Screen & System Audio Recording";
+        case LensPermissionMicrophone:
+            return @"Microphone";
     }
     return @"Privacy & Security";
 }
@@ -255,6 +259,9 @@ bool lens_permission_granted(int permission) {
     switch ((LensPermission)permission) {
         case LensPermissionScreenRecording:
             return CGPreflightScreenCaptureAccess();
+        case LensPermissionMicrophone:
+            return [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] ==
+                   AVAuthorizationStatusAuthorized;
     }
     return NO;
 }
@@ -467,6 +474,9 @@ void lens_show_permission_guide(int permission) {
     switch (activePermission) {
         case LensPermissionScreenRecording:
             pane = @"Privacy_ScreenCapture";
+            break;
+        case LensPermissionMicrophone:
+            pane = @"Privacy_Microphone";
             break;
     }
     NSURL *settingsURL = [NSURL URLWithString:[NSString stringWithFormat:

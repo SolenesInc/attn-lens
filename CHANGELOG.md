@@ -23,6 +23,11 @@ Notable user-visible changes are recorded here.
   it the keys and ⌘⌥C to take them back. ⌘⌥X takes a still, × drops one, Tab opens a
   palette of sessions, and ↩ or ⌘⌥↩ sends to an attn session, local or on an
   outpost. Lens pairs with attn once and keeps the token in the Keychain.
+- Voice in Attn Lens: ⌘⌥S during a capture transcribes what you say on this Mac,
+  phrase by phrase, each with the time it was spoken; ⌘⌥S again stops. The first
+  ⌘⌥S downloads the speech model (731 MB) with its progress in the bar, which then
+  shows the model loading, the microphone starting and listening. Send waits for
+  the sentence you are finishing. Missing Microphone access opens System Settings.
 - Missing Screen Recording access opens System Settings with a tile of the app
   to drag into the list (from Hex, MIT).
 - The editor interface follows the system’s light or dark appearance, including

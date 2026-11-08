@@ -10,7 +10,13 @@ fn main() {
 
 fn compile_permission_guide() {
     println!("cargo:rerun-if-changed=native/permission_guide.m");
-    for framework in ["AppKit", "CoreGraphics", "CoreImage", "QuartzCore"] {
+    for framework in [
+        "AppKit",
+        "AVFoundation",
+        "CoreGraphics",
+        "CoreImage",
+        "QuartzCore",
+    ] {
         println!("cargo:rustc-link-lib=framework={framework}");
     }
     cc::Build::new()

@@ -6,6 +6,8 @@
 //!
 //! ```text
 //! {"cmd":"state"}
+//! {"cmd":"wait","since":0,"timeout_ms":1000}          blocks until the state changes after generation
+//!                                                   `since`, or the timeout; replies with `generation` and `state`
 //! {"cmd":"key","key":"capture"|"voice"|"keyboard"|"send"|"draw-down"|"draw-up"}
 //! {"cmd":"pick"}                                    the whole display under the pointer
 //! {"cmd":"pick","display":1,"rect":[x,y,w,h]}       rect is optional: the whole display
@@ -15,6 +17,8 @@
 //! {"cmd":"sessions"}
 //! {"cmd":"send","target":"<session id>","message":"..."}
 //! {"cmd":"end"}
+//! {"cmd":"voice-wav","path":"/abs/16k-mono.wav"}    the next ⌘⌥S plays it, not the microphone
+//! {"cmd":"voice-wav"}                               back to the microphone
 //! ```
 //! A reply is `{"ok":true,...}` or `{"ok":false,"error":"..."}`.
 use super::{Lens, session::Cause};
@@ -28,6 +32,7 @@ use std::{
     },
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 /// The socket lives in a directory only this user can enter.
@@ -95,6 +100,16 @@ fn handle(lens: &Arc<Lens>, request: &Value) -> Result<Value, String> {
     let text = |name: &str| request[name].as_str();
     match text("cmd").ok_or("The request needs a \"cmd\".")? {
         "state" => Ok(json!({"state": lens.state_json()})),
+        "wait" => {
+            let number = |key: &str| {
+                request[key]
+                    .as_u64()
+                    .ok_or_else(|| format!("wait needs a whole number \"{key}\""))
+            };
+            let timeout = Duration::from_millis(number("timeout_ms")?);
+            let generation = lens.wait_change(number("since")?, timeout);
+            Ok(json!({"generation": generation, "state": lens.state_json()}))
+        }
         "key" => {
             lens.key(parse_key(text("key").ok_or("key needs a \"key\".")?)?);
             Ok(json!({}))
@@ -145,10 +160,30 @@ fn handle(lens: &Arc<Lens>, request: &Value) -> Result<Value, String> {
             lens.end_capture();
             Ok(json!({}))
         }
+        "voice-wav" => {
+            lens.set_voice_wav(text("path").map(voice_wav).transpose()?);
+            Ok(json!({}))
+        }
         other => Err(format!(
-            "Unknown cmd \"{other}\". Expected state, key, pick, pick-last, cancel, still, sessions, send or end."
+            "Unknown cmd \"{other}\". Expected state, key, pick, pick-last, cancel, still, sessions, send, end or voice-wav."
         )),
     }
+}
+
+/// A WAV for voice must be a regular local file, named by its absolute path.
+fn voice_wav(path: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(path);
+    if !path.is_absolute() {
+        return Err(format!(
+            "voice-wav needs an absolute path, not {}.",
+            path.display()
+        ));
+    }
+    let meta = std::fs::symlink_metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if !meta.file_type().is_file() {
+        return Err(format!("{} is not a regular file.", path.display()));
+    }
+    Ok(path)
 }
 
 fn parse_key(name: &str) -> Result<KeyEvent, String> {
