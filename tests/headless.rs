@@ -843,6 +843,16 @@ fn a_closed_captures_finish_does_not_start_the_next_captures_send() {
 }
 
 #[test]
+fn a_stopped_voices_late_failure_leaves_the_next_voice_running() {
+    let run = Run::new("voice-late-failure.json", ONE_SESSION);
+    let second = run.tree("bar", "second-voice");
+    assert_eq!(text(&second, "voice"), Some("Listening · ⌘⌥S to stop"));
+
+    let later = run.tree("bar", "after-late-failure");
+    assert_eq!(text(&later, "voice"), Some("Listening · ⌘⌥S to stop"));
+}
+
+#[test]
 fn send_right_after_voice_stops_waits_for_its_last_sentence() {
     let run = Run::new("voice-send.json", ONE_SESSION);
 
