@@ -7,14 +7,8 @@
 //! Set `LENS_WATCH_LOG=1` to print every event to stderr: that is how the
 //! thresholds below were measured.
 #![allow(unexpected_cfgs)] // objc 0.2 macros use a legacy cargo-clippy feature.
-use super::{
-    capture,
-    session::{Area, HostTime},
-};
-use crate::platform_port::{
-    Sink, Watch, WatchEvent,
-    mac::{host_now, queue_on_main},
-};
+use super::{capture, session::Area};
+use crate::platform_port::{Sink, Watch, WatchEvent, mac::queue_on_main};
 use block2::RcBlock;
 use image::RgbaImage;
 use objc2::{
@@ -146,28 +140,36 @@ fn change_fraction(before: &RgbaImage, after: &RgbaImage) -> f32 {
     changed as f32 / before.len().max(1) as f32 * 4.
 }
 
-/// Polls the front window and compares frames until `stop` drops its sender.
+/// Polls the front window and compares frames until `stop` loses its sender. A
+/// message on it makes the next frame the baseline, with nothing compared.
 fn poll(area: Area, switches: Arc<WindowSwitches>, stop: mpsc::Receiver<()>) {
-    let mut previous: Option<(RgbaImage, HostTime)> = None;
+    let mut previous: Option<RgbaImage> = None;
+    let mut rebasing = false;
     let mut sampled_at: Option<Instant> = None;
     let mut reported_failure = false;
-    while let Err(mpsc::RecvTimeoutError::Timeout) = stop.recv_timeout(WINDOW_POLL) {
+    loop {
+        match stop.recv_timeout(WINDOW_POLL) {
+            Ok(()) => rebasing = true,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        }
         switches.look();
-        if sampled_at.is_some_and(|at| at.elapsed() < SAMPLE_INTERVAL) {
+        if !rebasing && sampled_at.is_some_and(|at| at.elapsed() < SAMPLE_INTERVAL) {
             continue;
         }
         sampled_at = Some(Instant::now());
-        let taken = host_now();
         match capture::frame(area, Some(SAMPLE_LONG_EDGE)) {
             Ok(frame) => {
-                if let Some((before, baseline)) = previous
+                // A rebase asked for while this frame was on its way replaces the baseline.
+                rebasing |= stop.try_recv().is_ok();
+                if let Some(before) = previous
                     .as_ref()
-                    .filter(|(b, _)| b.dimensions() == frame.dimensions())
+                    .filter(|b| !rebasing && b.dimensions() == frame.dimensions())
                 {
-                    let fraction = change_fraction(before, &frame);
-                    (switches.sink)(WatchEvent::Change(fraction, *baseline));
+                    (switches.sink)(WatchEvent::Change(change_fraction(before, &frame)));
                 }
-                previous = Some((frame, taken));
+                previous = Some(frame);
+                rebasing = false;
             }
             Err(error) if !reported_failure => {
                 reported_failure = true;
@@ -293,14 +295,19 @@ pub fn start(area: Area, sink: Sink<WatchEvent>) -> Watch {
         let installed = install(bounds, main_switches);
         INSTALLED.with(|all| all.borrow_mut().insert(id, installed));
     });
-    let (stop, stopped) = mpsc::channel();
-    std::thread::spawn(move || poll(area, switches, stopped));
-    Watch(Some(Box::new(move || {
-        drop(stop);
-        queue_on_main(move || {
-            if let Some(installed) = INSTALLED.with(|all| all.borrow_mut().remove(&id)) {
-                uninstall(installed);
-            }
-        });
-    })))
+    let (rebase, signals) = mpsc::channel();
+    std::thread::spawn(move || poll(area, switches, signals));
+    Watch::new(
+        move || {
+            queue_on_main(move || {
+                if let Some(installed) = INSTALLED.with(|all| all.borrow_mut().remove(&id)) {
+                    uninstall(installed);
+                }
+            });
+        },
+        // Dropping this sender with the `Watch` is what ends `poll`.
+        move || {
+            let _ = rebase.send(());
+        },
+    )
 }

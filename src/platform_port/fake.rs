@@ -4,7 +4,8 @@
 //! key:draw-down  key:draw-up  key:capture  key:voice  key:keyboard  key:send
 //! key:shift-down  key:shift-up
 //! watch:click  watch:scroll  watch:switch  watch:change:0.7
-//! watch:change:0.7@1.5      with the time, in seconds, of the frame it compares against
+//! screen:0.7                 the screen changes by 0.7 of the area, unseen until
+//! watch:sample               the next sample reports it, unless a rebase came first
 //! watch:late:scroll          the same events, to the watch that stopped last
 //! say:0.5:1.2:the words      a segment from 0.5 s to 1.2 s, while voice runs
 //! clipboard:PATH             the system clipboard now holds the image at PATH
@@ -43,6 +44,8 @@ struct SinkSlots {
     watch: Option<Sink<WatchEvent>>,
     /// The watch stopped last: a `watch:late:` mark sends it an event in flight.
     stopped_watch: Option<Sink<WatchEvent>>,
+    /// What the next sample reports: the change since the baseline.
+    screen_change: f32,
     voice: Option<Sink<Segment>>,
 }
 
@@ -99,7 +102,18 @@ impl FakePort {
     }
 
     fn fire(&self, mark: &str) {
-        if mark == "key:shift-down" || mark == "key:shift-up" {
+        if let Some(fraction) = mark.strip_prefix("screen:") {
+            self.sinks.lock().unwrap().screen_change =
+                fraction.parse().expect("screen: mark holds a fraction");
+        } else if mark == "watch:sample" {
+            let mut sinks = self.sinks.lock().unwrap();
+            let fraction = std::mem::take(&mut sinks.screen_change);
+            let sink = sinks.watch.clone();
+            drop(sinks);
+            if let Some(sink) = sink {
+                sink(WatchEvent::Change(fraction));
+            }
+        } else if mark == "key:shift-down" || mark == "key:shift-up" {
             self.shift.store(mark == "key:shift-down", Ordering::SeqCst);
         } else if let Some(event) = key_event(mark) {
             let sink = self.script.lock().unwrap().keys.clone();
@@ -182,15 +196,7 @@ fn watch_event(mark: &str) -> Option<WatchEvent> {
         "click" => WatchEvent::Click,
         "scroll" => WatchEvent::Scroll,
         "switch" => WatchEvent::WindowSwitch,
-        _ => {
-            // A baseline in the future never counts as older than a view's still.
-            let (fraction, baseline) = event.strip_prefix("change:")?.split_once('@').unzip();
-            let fraction = fraction.or(event.strip_prefix("change:"))?;
-            let baseline = baseline.map_or(Some(HostTime(u64::MAX)), |at| {
-                at.parse().ok().map(HostTime::from_secs)
-            })?;
-            WatchEvent::Change(fraction.parse().ok()?, baseline)
-        }
+        _ => WatchEvent::Change(event.strip_prefix("change:")?.parse().ok()?),
     })
 }
 
@@ -255,10 +261,14 @@ impl PlatformPort for FakePort {
     fn watch(&self, _area: Area, sink: Sink<WatchEvent>) -> Watch {
         self.sinks.lock().unwrap().watch = Some(sink);
         let sinks = self.sinks.clone();
-        Watch(Some(Box::new(move || {
-            let mut sinks = sinks.lock().unwrap();
-            sinks.stopped_watch = sinks.watch.take();
-        })))
+        let rebase = sinks.clone();
+        Watch::new(
+            move || {
+                let mut sinks = sinks.lock().unwrap();
+                sinks.stopped_watch = sinks.watch.take();
+            },
+            move || rebase.lock().unwrap().screen_change = 0.,
+        )
     }
     fn voice(&self, sink: Sink<Segment>) -> Result<Voice, String> {
         self.sinks.lock().unwrap().voice = Some(sink);

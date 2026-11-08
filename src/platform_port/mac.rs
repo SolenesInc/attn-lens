@@ -109,19 +109,6 @@ pub(crate) fn queue_on_main(job: impl FnOnce() + Send + 'static) {
     }
 }
 
-pub(crate) fn host_now() -> HostTime {
-    static TIMEBASE: OnceLock<Timebase> = OnceLock::new();
-    let base = TIMEBASE.get_or_init(|| {
-        let mut base = Timebase::default();
-        // SAFETY: `base` is a valid out pointer.
-        unsafe { mach_timebase_info(&mut base) };
-        base
-    });
-    // SAFETY: plain clock read.
-    let ticks = unsafe { mach_absolute_time() };
-    HostTime(ticks * u64::from(base.numer) / u64::from(base.denom))
-}
-
 pub struct MacPort;
 
 impl MacPort {
@@ -201,7 +188,16 @@ fn install_draw_key_monitors(sink: Sink<KeyEvent>) {
 
 impl PlatformPort for MacPort {
     fn now(&self) -> HostTime {
-        host_now()
+        static TIMEBASE: OnceLock<Timebase> = OnceLock::new();
+        let base = TIMEBASE.get_or_init(|| {
+            let mut base = Timebase::default();
+            // SAFETY: `base` is a valid out pointer.
+            unsafe { mach_timebase_info(&mut base) };
+            base
+        });
+        // SAFETY: plain clock read.
+        let ticks = unsafe { mach_absolute_time() };
+        HostTime(ticks * u64::from(base.numer) / u64::from(base.denom))
     }
 
     fn keys(&self, sink: Sink<KeyEvent>) {

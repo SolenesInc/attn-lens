@@ -440,8 +440,13 @@ fn a_failed_click_still_leaves_the_change_for_send_to_capture() {
 #[test]
 fn a_change_from_before_the_stroke_leaves_its_ink() {
     let run = Run::new("change-before-still.json", ONE_SESSION);
-    assert_eq!(ink_count(&capture_state(&run, "old-baseline")), 1);
-    assert_eq!(ink_count(&capture_state(&run, "new-baseline")), 0);
+    assert_eq!(ink_count(&capture_state(&run, "sampled")), 1);
+}
+
+#[test]
+fn a_change_after_the_stroke_fades_its_ink() {
+    let run = Run::new("change-after-still.json", ONE_SESSION);
+    assert_eq!(ink_count(&capture_state(&run, "sampled")), 0);
 }
 
 #[test]
