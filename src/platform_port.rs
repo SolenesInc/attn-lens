@@ -1,7 +1,7 @@
 //! Everything the UI needs from the machine: keys, screen frames, input watching
 //! and voice. macOS has the real implementation; headless runs use the fake, so
 //! every window can be driven on any machine.
-use crate::lens::session::{Area, HostTime, Segment};
+use crate::lens::session::{Area, DisplayFrame, HostTime, Segment};
 use image::RgbaImage;
 use std::{sync::Arc, time::Duration};
 
@@ -70,6 +70,13 @@ pub trait PlatformPort: Send + Sync {
     fn capture_keys(&self, open: bool);
     /// The whole display under the pointer.
     fn pointer_display(&self) -> Result<Area, String>;
+    /// The displays connected now, which may differ from those at launch.
+    fn displays(&self) -> Vec<DisplayFrame>;
+    /// Gives the port the displays the window factory saw. Only a headless run,
+    /// whose displays come from its script, needs them.
+    fn launch_displays(&self, _displays: Vec<DisplayFrame>) {}
+    /// True while ⇧ is held: it makes the next stroke a box.
+    fn shift_held(&self) -> bool;
     /// True when stills can be taken. Otherwise shows the user how to allow it.
     fn screen_recording(&self) -> bool;
     fn still(&self, area: Area) -> Result<RgbaImage, String>;
@@ -77,6 +84,8 @@ pub trait PlatformPort: Send + Sync {
     fn voice(&self, sink: Sink<Segment>) -> Result<Voice, String>;
     /// The token from pairing with attn.
     fn token(&self) -> Option<String>;
+    fn store_token(&self, token: &str) -> Result<(), String>;
+    fn forget_token(&self);
     /// Puts an image on the system clipboard.
     fn copy_image(&self, image: RgbaImage) -> Result<(), String>;
     /// The image on the system clipboard.

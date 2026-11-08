@@ -2,6 +2,7 @@
 //!
 //! ```text
 //! key:draw-down  key:draw-up  key:capture  key:voice  key:keyboard  key:send
+//! key:shift-down  key:shift-up
 //! watch:click  watch:scroll  watch:switch  watch:change:0.7
 //! say:0.5:1.2:the words      a segment from 0.5 s to 1.2 s, while voice runs
 //! clipboard:PATH             the system clipboard now holds the image at PATH
@@ -17,14 +18,20 @@
 //! it as `image.png` and `text.txt`, so a test can read what a user would paste.
 //! `ATTN_LENS_FAKE_VIDEO_ENCODER` names a stand-in for the MP4 helper.
 use super::{Chord, FAKE_TICK, KeyEvent, PlatformPort, Sink, Voice, Watch, WatchEvent};
-use crate::lens::session::{Area, HostTime, Segment};
+use crate::lens::session::{Area, DisplayFrame, HostTime, Segment};
 use image::{Rgba, RgbaImage};
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
 /// The display a fake capture covers, in points.
+/// The menu bar's height on a Mac display without a notch.
+const MENU_BAR: f64 = 24.;
+
 pub const DISPLAY: Area = Area {
     display: 1,
     rect: [0., 0., 640., 400.],
@@ -43,8 +50,8 @@ struct Script {
     clipboard: Option<RgbaImage>,
     ocr: String,
     pick: Option<PickSink>,
-    /// After a `jobs:hold` mark, jobs wait here until a `jobs:next` mark runs the oldest
-    /// or a `jobs:drain` mark runs every one waiting.
+    /// After a `jobs:hold` mark, jobs wait here until a `jobs:next` mark runs the oldest,
+    /// a `jobs:last` mark the newest, or a `jobs:drain` mark every one waiting.
     held: Option<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
     close_buttons: Vec<(&'static str, Sink<()>)>,
 }
@@ -52,7 +59,9 @@ struct Script {
 pub struct FakePort {
     script: Mutex<Script>,
     sinks: Sinks,
-    token: Option<String>,
+    token: Mutex<Option<String>>,
+    displays: Mutex<Vec<DisplayFrame>>,
+    shift: AtomicBool,
 }
 
 impl FakePort {
@@ -63,7 +72,13 @@ impl FakePort {
                 ..Default::default()
             }),
             sinks: Default::default(),
-            token: token.map(str::to_string),
+            token: Mutex::new(token.map(str::to_string)),
+            displays: Mutex::new(vec![DisplayFrame {
+                id: DISPLAY.display,
+                frame: DISPLAY.rect,
+                menu_bar: MENU_BAR,
+            }]),
+            shift: AtomicBool::new(false),
         }
     }
 
@@ -74,7 +89,9 @@ impl FakePort {
     }
 
     fn fire(&self, mark: &str) {
-        if let Some(event) = key_event(mark) {
+        if mark == "key:shift-down" || mark == "key:shift-up" {
+            self.shift.store(mark == "key:shift-down", Ordering::SeqCst);
+        } else if let Some(event) = key_event(mark) {
             let sink = self.script.lock().unwrap().keys.clone();
             if let Some(sink) = sink {
                 sink(event);
@@ -96,14 +113,14 @@ impl FakePort {
             self.script.lock().unwrap().ocr = text.to_string();
         } else if mark == "jobs:hold" {
             self.script.lock().unwrap().held = Some(Default::default());
-        } else if mark == "jobs:next" {
-            let job = self
-                .script
-                .lock()
-                .unwrap()
-                .held
-                .as_mut()
-                .and_then(|held| held.pop_front());
+        } else if mark == "jobs:next" || mark == "jobs:last" {
+            let job = self.script.lock().unwrap().held.as_mut().and_then(|held| {
+                if mark == "jobs:next" {
+                    held.pop_front()
+                } else {
+                    held.pop_back()
+                }
+            });
             if let Some(job) = job {
                 job();
             }
@@ -192,6 +209,19 @@ impl PlatformPort for FakePort {
     fn pointer_display(&self) -> Result<Area, String> {
         Ok(DISPLAY)
     }
+    fn displays(&self) -> Vec<DisplayFrame> {
+        self.displays.lock().unwrap().clone()
+    }
+    /// The first display is the main one and has the menu bar, as on a Mac.
+    fn launch_displays(&self, mut displays: Vec<DisplayFrame>) {
+        if let Some(main) = displays.first_mut() {
+            main.menu_bar = MENU_BAR;
+        }
+        *self.displays.lock().unwrap() = displays;
+    }
+    fn shift_held(&self) -> bool {
+        self.shift.load(Ordering::SeqCst)
+    }
     fn screen_recording(&self) -> bool {
         true
     }
@@ -216,7 +246,14 @@ impl PlatformPort for FakePort {
         })))
     }
     fn token(&self) -> Option<String> {
-        self.token.clone()
+        self.token.lock().unwrap().clone()
+    }
+    fn store_token(&self, token: &str) -> Result<(), String> {
+        *self.token.lock().unwrap() = Some(token.to_string());
+        Ok(())
+    }
+    fn forget_token(&self) {
+        *self.token.lock().unwrap() = None;
     }
     fn copy_image(&self, image: RgbaImage) -> Result<(), String> {
         if let Some(path) = clipboard_file("image.png") {

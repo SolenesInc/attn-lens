@@ -10,6 +10,7 @@
 #   scripts/lens-vm.sh driver SCRIPT [--front APP ...]
 #                                        run a driver script in the VM's GUI session
 #   scripts/lens-vm.sh check OUT         run lens-mac-check.sh in the VM against tools/vm/attn
+#   scripts/lens-vm.sh live OUT          run lens-live.sh in the VM against tools/vm/attn
 #   scripts/lens-vm.sh sh COMMAND        run a shell command in the VM's GUI session
 #   scripts/lens-vm.sh pull PATH DEST    copy a file or folder out of the VM
 #   scripts/lens-vm.sh destroy           stop and delete the VM
@@ -65,7 +66,7 @@ push() {
     GLANCE_CODESIGN_IDENTITY=- GLANCE_BUNDLE_DEST="$PWD/target/vm/Attn Lens.app" ./scripts/bundle.sh release
     start
     in_vm /bin/sh -c "rm -rf '$GUEST_ROOT' '$GUEST_HOME/Applications/Attn Lens.app'; mkdir -p '$GUEST_ROOT' '$GUEST_HOME/Applications' '$GUEST_HOME/.local/bin'"
-    tar cf - scripts/lens-mac-check.sh tools/driver tools/vm | in_vm_stdin tar xf - -C "$GUEST_ROOT"
+    tar cf - scripts/lens-mac-check.sh scripts/lens-live.sh tools/driver tools/vm | in_vm_stdin tar xf - -C "$GUEST_ROOT"
     tar cf - -C target/vm 'Attn Lens.app' | in_vm_stdin tar xf - -C "$GUEST_HOME/Applications"
     in_vm /bin/sh -c "cd '$GUEST_ROOT' && /usr/bin/swiftc -O tools/driver/driver.swift -o driver && cp tools/vm/attn '$GUEST_HOME/.local/bin/attn'"
     in_vm_stdin /bin/sh -s <tools/vm/guest-grant.sh
@@ -101,6 +102,13 @@ check)
     [ $# -eq 2 ] || die "usage: lens-vm.sh check OUT"
     start
     in_vm /usr/bin/env LENS_DRIVER_WINDOW=vm /bin/sh -c "cd '$GUEST_ROOT' && scripts/lens-mac-check.sh vm-target '$GUEST_ROOT/out'"
+    mkdir -p "$2"
+    in_vm /usr/bin/tar cf - -C "$GUEST_ROOT" out sent | tar xf - -C "$2"
+    ;;
+live)
+    [ $# -eq 2 ] || die "usage: lens-vm.sh live OUT"
+    start
+    in_vm /usr/bin/env LENS_DRIVER_WINDOW=vm /bin/sh -c "cd '$GUEST_ROOT' && scripts/lens-live.sh '$GUEST_ROOT/out'"
     mkdir -p "$2"
     in_vm /usr/bin/tar cf - -C "$GUEST_ROOT" out sent | tar xf - -C "$2"
     ;;

@@ -39,6 +39,8 @@ wait 500
 watch-window Attn Lens
 chord cmd+opt x
 await-window
+expect "picking":[
+lens {"cmd":"pick"}
 expect "capture":{
 expect "bar":true
 down fn

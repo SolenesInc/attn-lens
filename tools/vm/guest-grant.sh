@@ -9,14 +9,18 @@ for service in kTCCServiceScreenCapture kTCCServiceAccessibility kTCCServicePost
     grant "$service" dev.attn.lens
 done
 # macOS 26 also asks before a stream "bypasses the window picker". An entry here with a
-# far hint date stops that dialog, which would otherwise cover the app under test.
-/usr/bin/python3 -I - "$HOME/Applications/Attn Lens.app" <<'PY'
+# far hint date stops that dialog, which would otherwise cover the app under test. An app
+# is keyed by its file URL, a bare binary by its real path. The guest agent needs one
+# because `screencapture` records under it, and its dialog sits over the area's corner.
+/usr/bin/python3 -I - "$HOME/Applications/Attn Lens.app" /opt/homebrew/bin/tart-guest-agent <<'PY'
 import datetime, os, pathlib, plistlib, sys, urllib.parse
 path = pathlib.Path.home() / "Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist"
 approvals = plistlib.loads(path.read_bytes()) if path.exists() else {}
 now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-for app in sys.argv[1:]:
-    approvals["file://" + urllib.parse.quote(app) + "/"] = {
+for client in sys.argv[1:]:
+    key = ("file://" + urllib.parse.quote(client) + "/" if client.endswith(".app")
+           else os.path.realpath(client))
+    approvals[key] = {
         "kScreenCaptureAlertableUsageCount": 1,
         "kScreenCaptureApprovalLastAlerted": now,
         "kScreenCaptureApprovalLastUsed": now,
