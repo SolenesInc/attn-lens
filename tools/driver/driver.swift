@@ -78,7 +78,7 @@ let modifiers: [String: (CGKeyCode, CGEventFlags)] = [
     "cmd": (0x37, .maskCommand), "opt": (0x3A, .maskAlternate),
 ]
 let keys: [String: CGKeyCode] = [
-    "x": 7, "c": 8, "a": 0, "b": 11, "h": 4, "s": 1, "i": 34, "2": 19,
+    "x": 7, "c": 8, "a": 0, "b": 11, "h": 4, "s": 1, "i": 34, "v": 9, "2": 19, "0": 29, "1": 18,
     "return": 36, "esc": 53, "tab": 48, "space": 49, "backtick": 50,
 ]
 var held: CGEventFlags = []

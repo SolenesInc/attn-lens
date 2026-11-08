@@ -58,9 +58,10 @@ const TOOLS: [(Tool, &str, &Icon, &str); 11] = [
 
 fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
     let t = tok::theme(cx.system_dark());
-    let button = |key: &str, label: &str, glyph: &'static Icon, active: bool, action: Action| {
-        super::panels::controls::icon_button(cx, key, label.to_string(), glyph, active, action)
-    };
+    let button =
+        |key: &str, label: &str, glyph: &'static Icon, toggle: Option<bool>, action: Action| {
+            super::panels::controls::icon_button(cx, key, label.to_string(), glyph, toggle, action)
+        };
     let mut tools = row()
         .gap(2.)
         .center_y()
@@ -74,7 +75,7 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
             "open",
             "Open image (⌘O)",
             &icons::FOLDER_OPEN,
-            false,
+            None,
             Action::OpenImage,
         ))
         .child(el().w(1.).h(22.).fill(t.separator));
@@ -83,7 +84,7 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
             key,
             label,
             glyph,
-            s.tool == tool,
+            Some(s.tool == tool),
             Action::SelectTool(tool),
         ));
     }
@@ -107,7 +108,7 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
             "image-tools-button",
             "Image tools",
             &icons::MAXIMIZE,
-            s.panel == super::Panel::Image,
+            Some(s.panel == super::Panel::Image),
             Action::ToggleImageTools,
         ));
     let feedback = s.copy_feedback.map(|feedback| match feedback {
@@ -128,35 +129,35 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
             "undo",
             "Undo (⌘Z)",
             &icons::UNDO_2,
-            false,
+            None,
             Action::Undo,
         ))
         .child(button(
             "redo",
             "Redo (⇧⌘Z)",
             &icons::REDO_2,
-            false,
+            None,
             Action::Redo,
         ))
         .child(button(
             "copy",
             "Copy image (⌘C)",
             &icons::COPY,
-            false,
+            None,
             Action::CopyImage,
         ))
         .child(button(
             "copy-ocr",
             "Copy as OCR",
             &icons::SCAN_TEXT,
-            false,
+            None,
             Action::CopyOcr,
         ))
         .child(button(
             "save",
             "Save PNG (⌘S)",
             &icons::SAVE,
-            false,
+            None,
             Action::SaveImage,
         ))
         .child(export_menu(s, cx))
@@ -164,7 +165,7 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
             "zoom-out",
             "Zoom out (⌘−)",
             &icons::ZOOM_OUT,
-            false,
+            None,
             Action::Zoom(0.8),
         ))
         .child(
@@ -187,7 +188,7 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
             "zoom-in",
             "Zoom in (⌘=)",
             &icons::ZOOM_IN,
-            false,
+            None,
             Action::Zoom(1.25),
         ))
         .children(feedback.map(|feedback| {

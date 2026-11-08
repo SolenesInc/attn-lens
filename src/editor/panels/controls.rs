@@ -61,17 +61,17 @@ pub(crate) fn icon_button(
     key: &str,
     label: String,
     glyph: &'static Icon,
-    active: bool,
+    toggle: Option<bool>,
     action: Action,
 ) -> El {
     let t = theme(cx);
+    let active = toggle == Some(true);
     let accent = rgba(super::super::live::ACCENT);
     let mut button = el()
         .key(key.to_string())
         .role("button")
         .label(label.clone())
         .help(label)
-        .checked(active)
         .size(32., 32.)
         .radius(7.)
         .center()
@@ -84,6 +84,10 @@ pub(crate) fn icon_button(
                 .color(if active { accent } else { t.text })
                 .inert(),
         );
+    // Only a toggle has a checked state; an action button reads as a plain button.
+    if let Some(checked) = toggle {
+        button = button.checked(checked);
+    }
     if active {
         button = button.fill(accent.alpha(0.16));
     }

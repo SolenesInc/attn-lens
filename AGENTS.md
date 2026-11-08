@@ -43,6 +43,8 @@ This file's Glance rules still apply to the code that remains.
   `setup` once, then `push` to install this checkout signed ad hoc, `driver SCRIPT` to run
   a driver script in the VM's GUI session, `check OUT` to run `scripts/lens-mac-check.sh`
   and `live OUT` to run `scripts/lens-live.sh`, both against the stand-in `tools/vm/attn`,
+  `editor OUT` to run `scripts/lens-editor-check.sh` (menus, Copy as OCR, Pick from screen,
+  scroll and zoom, light and dark, read through `tools/driver/ax.swift`),
   and `stop` when done: it holds 8 GB. `tools/vm/`
   grants the VM's permissions without a click. Nothing of this Mac's goes in: no shared
   folders, Keychain, tokens or signing identity. Speed budgets and the feel of drawing
