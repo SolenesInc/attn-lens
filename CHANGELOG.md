@@ -47,6 +47,11 @@ Notable user-visible changes are recorded here.
   The area selector is gone; crop in the editor. Requires macOS 15.
 - The app is Attn Lens (`dev.attn.lens`), and no window opens at launch.
 
+### Fixed
+
+- Attn Lens: a drag started right after the area picker appears now always registers,
+  and captures no longer keep about 10 MB of memory each after they close.
+
 ## [0.5.0] - 2026-10-07
 
 ### Added
