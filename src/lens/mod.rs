@@ -7,6 +7,7 @@ pub mod automation;
 pub mod bar;
 #[cfg(target_os = "macos")]
 pub mod capture;
+pub mod deliver;
 pub mod ink;
 pub mod select;
 pub mod session;
@@ -136,6 +137,8 @@ struct State {
     /// The capture a running send is delivering. It takes no more stills: the
     /// send has its copies and closes the capture when it succeeds.
     sending: Option<u64>,
+    /// The newest listing asked for. An older one finishing later is dropped.
+    listing: u64,
     /// A failure with no capture to hold it, such as a refused still.
     error: Option<String>,
     next_capture: u64,
@@ -452,7 +455,12 @@ impl Lens {
                 AttnStatus::Unpaired("Attn Lens is not paired with attn yet.".into());
             return self.changed();
         };
-        self.state.lock().unwrap().attn = AttnStatus::Loading;
+        let listing = {
+            let mut state = self.state.lock().unwrap();
+            state.attn = AttnStatus::Loading;
+            state.listing += 1;
+            state.listing
+        };
         self.changed();
         let lens = self.clone();
         self.port.run(Box::new(move || {
@@ -460,6 +468,9 @@ impl Lens {
             {
                 let mut guard = lens.state.lock().unwrap();
                 let state = &mut *guard;
+                if state.listing != listing {
+                    return;
+                }
                 match listed {
                     Ok(sessions) => {
                         if let Some(capture) = state.capture.as_mut() {
@@ -1127,29 +1138,35 @@ impl Lens {
 
     fn deliver(&self, id: u64) -> Result<String, attn::Failure> {
         let plain = attn::Failure::Error;
-        let (docs, target, message) = {
+        let (source, target) = {
             let state = self.state.lock().unwrap();
             let capture = state
                 .capture
                 .as_ref()
                 .filter(|c| c.id == id)
                 .ok_or_else(|| plain(CLOSED_BEFORE_SENT.into()))?;
-            (
-                capture
-                    .stills
-                    .iter()
-                    .map(|s| s.doc.clone())
-                    .collect::<Vec<_>>(),
-                capture
-                    .target
-                    .clone()
-                    .ok_or_else(|| plain("The capture has no target session.".into()))?,
-                capture.message.clone(),
-            )
+            let target = capture
+                .target
+                .clone()
+                .ok_or_else(|| plain("The capture has no target session.".into()))?;
+            let frames = capture
+                .stills
+                .iter()
+                .map(|s| deliver::Frame {
+                    at: s.at,
+                    cause: s.cause,
+                    doc: s.doc.clone(),
+                    times: s.times.clone(),
+                })
+                .collect();
+            let source = deliver::Source {
+                started: capture.started,
+                frames,
+                segments: capture.segments.clone(),
+                typed: capture.message.clone(),
+            };
+            (source, target)
         };
-        if docs.is_empty() {
-            return Err(plain("The capture has no still to send.".into()));
-        }
         let token = self
             .port
             .token()
@@ -1158,16 +1175,9 @@ impl Lens {
             .prefix("attn-lens-send-")
             .tempdir()
             .map_err(|e| plain(e.to_string()))?;
-        let mut files: Vec<PathBuf> = vec![];
-        for (index, doc) in docs.iter().enumerate() {
-            let path = dir.path().join(format!("frame-{:02}.png", index + 1));
-            doc.export()
-                .save_with_format(&path, image::ImageFormat::Png)
-                .map_err(|e| plain(e.to_string()))?;
-            files.push(path);
-        }
+        let delivery = deliver::build(&source, dir.path()).map_err(plain)?;
         let bin = attn::locate()?;
-        attn::send(&bin, &token, &target, &files, &message)?;
+        attn::send(&bin, &token, &target, &delivery.files, &delivery.message)?;
         Ok(target)
     }
 

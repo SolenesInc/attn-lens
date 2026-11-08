@@ -25,7 +25,9 @@ assets retain their own licenses; the project license does not replace them.
 - **Hex**, by Christopher Langton, is licensed under MIT. The macOS permission
   guide (`native/permission_guide.m` and `src/permission_guide.rs`) is adapted
   from Hex's `native/permission_guide.m` and `src/desktop/permission_guide.rs`
-  at commit 54d1ebf (<https://github.com/anomalyco/hex>):
+  at commit 54d1ebf (<https://github.com/anomalyco/hex>). The contact sheet's
+  row layout and sizing in `src/lens/deliver.rs` are adapted from Hex's
+  `crates/capture/src/render.rs` at the same commit:
 
   > MIT License
   >
