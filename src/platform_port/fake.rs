@@ -276,7 +276,7 @@ impl PlatformPort for FakePort {
         if sinks.1.is_some() {
             return Err("Voice is already running.".into());
         }
-        sinks.1 = Some(sink);
+        sinks.1 = Some(sink.clone());
         drop(sinks);
         let (sinks, last_words, finish_error) = (
             self.sinks.clone(),
@@ -284,7 +284,11 @@ impl PlatformPort for FakePort {
             self.finish_error.clone(),
         );
         Ok(Voice(Box::new(move || {
-            let sink = sinks.lock().unwrap().1.take();
+            // After `end_voice` the slot may hold the next voice, on its own helper.
+            let sink = {
+                let mut sinks = sinks.lock().unwrap();
+                sinks.1.take_if(|current| Arc::ptr_eq(current, &sink))
+            };
             if let Some(error) = finish_error.lock().unwrap().take() {
                 return Err(error);
             }
@@ -293,6 +297,9 @@ impl PlatformPort for FakePort {
             }
             Ok(())
         })))
+    }
+    fn end_voice(&self) {
+        self.sinks.lock().unwrap().1 = None;
     }
     fn token(&self) -> Option<String> {
         self.token.lock().unwrap().clone()

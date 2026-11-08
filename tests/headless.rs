@@ -648,6 +648,20 @@ fn the_bar_shows_how_far_voice_has_got_and_waits_for_the_last_sentence() {
 }
 
 #[test]
+fn voice_on_a_new_capture_does_not_wait_for_the_last_one_to_stop() {
+    let run = Run::new("voice-new-capture.json", ONE_SESSION);
+
+    // Esc closed the capture and its voice is still stopping, held in a job.
+    let second = run.tree("bar", "second-voice");
+    assert_eq!(text(&second, "voice"), Some("Listening · ⌘⌥S to stop"));
+    assert_eq!(text(&second, "error"), None);
+
+    // The old voice ending leaves the new one running.
+    let later = run.tree("bar", "old-voice-finished");
+    assert_eq!(text(&later, "voice"), Some("Listening · ⌘⌥S to stop"));
+}
+
+#[test]
 fn send_right_after_voice_stops_waits_for_its_last_sentence() {
     let run = Run::new("voice-send.json", ONE_SESSION);
 

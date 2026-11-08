@@ -678,16 +678,15 @@ impl Lens {
         drop(state);
         self.port.capture_keys(false);
         self.changed();
-        // The capture is gone, so its last sentence has nowhere to go; stopping
-        // still waits for it, so the speech model is let go only afterwards.
+        // A stopping voice keeps its helper to itself, and the next capture gets
+        // its own: a helper records one voice at a time.
+        self.port.end_voice();
+        let Some(voice) = voice else { return };
         let lens = self.clone();
         self.port.run(Box::new(move || {
-            if let Some(voice) = voice
-                && let Err(error) = voice.finish()
-            {
+            if let Err(error) = voice.finish() {
                 lens.fail(error);
             }
-            lens.port.end_voice();
         }));
     }
 
