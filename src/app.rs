@@ -18,6 +18,9 @@ use rune::{
 };
 use std::sync::{Arc, Mutex};
 
+/// One frame of a 60 Hz display, the fade's slowest useful step.
+const FADE_FRAME: std::time::Duration = std::time::Duration::from_micros(16_667);
+
 const EDITOR_SIZE: (f32, f32) = (1220., 860.);
 /// Room for the toolbar and the sidebar's longest option list.
 const EDITOR_MIN_SIZE: (f32, f32) = (900., 560.);
@@ -315,6 +318,9 @@ pub fn run() -> Result<(), String> {
                 let lens = s.lens.clone();
                 if let Some(next) = lens.port().tick(now) {
                     tx.wake_after(next);
+                }
+                if lens.advance_fades() {
+                    tx.wake_after(FADE_FRAME);
                 }
                 let generation = lens.generation();
                 let changed = generation != s.seen;

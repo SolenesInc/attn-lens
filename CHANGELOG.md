@@ -20,6 +20,9 @@ Notable user-visible changes are recorded here.
   it the keys and ⌘⌥C to take them back. ⌘⌥X takes a still, × drops one, Tab opens a
   palette of sessions, and ↩ or ⌘⌥↩ sends to an attn session, local or on an
   outpost. Lens pairs with attn once and keeps the token in the Keychain.
+- Ink fades on its own when the screen moves under it: a scroll, a click, a window
+  switch, or most of the area changing. Clicks and window switches each take a still
+  first, and a send takes one more if the screen moved after the last.
 - Missing Screen Recording access opens System Settings with a tile of the app
   to drag into the list (from Hex, MIT).
 - The editor interface follows the system’s light or dark appearance, including

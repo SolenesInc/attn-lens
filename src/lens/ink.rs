@@ -337,7 +337,7 @@ fn mark_element(index: usize, mark: &Mark, origin: (f32, f32)) -> El {
                 .child(
                     text(mark.text.clone())
                         .font(rune::tok::type_::LABEL)
-                        .color(Color::WHITE),
+                        .color(Color::WHITE.alpha(mark.color[3] as f32 / 255.)),
                 )
         }
         _ => el()
@@ -382,6 +382,14 @@ pub fn ink_view(s: &Ink, _: &mut Cx<Ink>) -> El {
         );
     for (index, mark) in marks.iter().enumerate() {
         root = root.child(mark_element(index, mark, origin));
+    }
+    if s.lens.port().exposes_state() {
+        root = root.child(
+            el().key("capture-state")
+                .label(s.lens.state_json().to_string())
+                .absolute(0., 0.)
+                .size(1., 1.),
+        );
     }
     if let Some(mark) = &draft {
         root = root.child(

@@ -87,6 +87,10 @@ pub struct InkMark {
     pub mark: Mark,
     pub times: (HostTime, HostTime),
     pub committed: bool,
+    /// The screen under the mark has changed (D8 on the plan).
+    pub stale: bool,
+    /// When it began to fade: once it is stale and its still exists.
+    pub fade_from: Option<HostTime>,
 }
 
 /// One live session from ⌘⌥X to Send or Esc, over one area.
@@ -100,6 +104,8 @@ pub struct Capture {
     /// The still that strokes on the current view join (D7 on the plan).
     pub view_still: Option<u64>,
     pub next_still: u64,
+    /// The screen changed after the last still, so a send takes one more.
+    pub unseen_change: bool,
     pub segments: Vec<Segment>,
     /// The session id the capture will be sent to.
     pub target: Option<String>,

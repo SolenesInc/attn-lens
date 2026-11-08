@@ -49,7 +49,8 @@ struct Script {
     ocr: String,
     pick: Option<PickSink>,
     /// After a `jobs:hold` mark, jobs wait here until a `jobs:next` mark runs the oldest,
-    /// a `jobs:last` mark the newest, or a `jobs:drain` mark every one waiting.
+    /// a `jobs:last` mark the newest, a `jobs:drain` mark every one waiting, or a
+    /// `jobs:release` mark every one waiting, after which jobs run at once again.
     held: Option<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
 }
 
@@ -121,15 +122,14 @@ impl FakePort {
             if let Some(job) = job {
                 job();
             }
-        } else if mark == "jobs:drain" {
-            let jobs = self
-                .script
-                .lock()
-                .unwrap()
-                .held
-                .as_mut()
-                .map(std::mem::take)
-                .unwrap_or_default();
+        } else if mark == "jobs:drain" || mark == "jobs:release" {
+            let mut script = self.script.lock().unwrap();
+            let jobs = if mark == "jobs:release" {
+                script.held.take().unwrap_or_default()
+            } else {
+                script.held.as_mut().map(std::mem::take).unwrap_or_default()
+            };
+            drop(script);
             for job in jobs {
                 job();
             }

@@ -378,6 +378,87 @@ fn a_still_left_from_a_closed_capture_does_not_stop_the_next_from_sending() {
     assert_eq!((frame.width(), frame.height()), (400, 300), "not B's area");
 }
 
+/// The capture as the ink layer's state element reports it.
+fn capture_state(run: &Run, mark: &str) -> Value {
+    let tree = run.tree("ink", mark);
+    let state = label(&tree, "capture-state").expect("no capture-state element");
+    serde_json::from_str::<Value>(state).unwrap()["capture"].clone()
+}
+
+fn causes(capture: &Value) -> Vec<&str> {
+    capture["stills"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["cause"].as_str().unwrap())
+        .collect()
+}
+
+fn ink_count(capture: &Value) -> usize {
+    capture["ink"].as_array().unwrap().len()
+}
+
+#[test]
+fn stills_come_with_their_causes_and_ink_fades_only_once_its_still_exists() {
+    let run = Run::new("stills.json", ONE_SESSION);
+
+    // A scroll stales the ink, but it stays until its frame is saved.
+    let unsaved = capture_state(&run, "scrolled-unsaved");
+    assert_eq!(causes(&unsaved), Vec::<&str>::new());
+    assert_eq!(ink_count(&unsaved), 1);
+    assert_eq!(unsaved["ink"][0]["fading"], false);
+
+    let fading = capture_state(&run, "fading");
+    assert_eq!(causes(&fading), ["draw"]);
+    assert_eq!(fading["ink"][0]["fading"], true);
+    assert_eq!(ink_count(&capture_state(&run, "faded")), 0);
+
+    // The scroll ended the view, so the next stroke has its own still.
+    let second = capture_state(&run, "drew-after-scroll");
+    assert_eq!(causes(&second), ["draw", "draw"]);
+    assert_eq!(ink_count(&second), 1);
+
+    // A click takes a still and fades the ink.
+    let clicked = capture_state(&run, "clicked");
+    assert_eq!(causes(&clicked), ["draw", "draw", "click"]);
+    assert_eq!(ink_count(&clicked), 0);
+
+    // A change below the threshold leaves ink alone; most of the area clears it.
+    assert_eq!(ink_count(&capture_state(&run, "small-change")), 1);
+    assert_eq!(ink_count(&capture_state(&run, "big-change")), 0);
+
+    let more = capture_state(&run, "two-more");
+    assert_eq!(
+        causes(&more),
+        ["draw", "draw", "click", "draw", "window_switch", "hotkey"]
+    );
+    for still in more["stills"].as_array().unwrap() {
+        for span in still["times"].as_array().unwrap() {
+            let (start, end) = (span[0].as_u64().unwrap(), span[1].as_u64().unwrap());
+            assert!(
+                still["at"].as_u64().unwrap() <= start,
+                "frame after mark: {still}"
+            );
+            assert!(start <= end, "span runs backward: {still}");
+        }
+    }
+    assert_eq!(more["stills"][0]["marks"], 1);
+    assert_eq!(more["stills"][0]["times"].as_array().unwrap().len(), 1);
+
+    // After a resize the watch covers the new area.
+    assert_eq!(causes(&capture_state(&run, "after-resize"))[6], "click");
+
+    // The scroll after the last still gets one at Send.
+    let send = capture_state(&run, "send-still");
+    assert_eq!(*causes(&send).last().unwrap(), "send");
+    assert!(
+        !visible(&run.tree("bar", "sent"), "bar"),
+        "send left it open"
+    );
+    let args = std::fs::read_to_string(run.path("args")).unwrap();
+    assert_eq!(args.matches(".png").count(), 8, "{args}");
+}
+
 #[test]
 fn a_corner_drag_keeps_the_opposite_corner_where_it_was() {
     // The area spans 100–200 across. The top-left corner, dragged past the
