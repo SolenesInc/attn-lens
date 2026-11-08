@@ -372,7 +372,8 @@ pub fn run() -> Result<(), String> {
             ink_view,
             None,
             OverlayOptions {
-                exclude_from_capture: true,
+                // Only so a recording of a driven check can show the ink.
+                exclude_from_capture: !std::env::args().any(|arg| arg == "--ink-in-capture"),
                 input: OverlayInput::None,
                 ..Default::default()
             },

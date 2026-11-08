@@ -10,6 +10,8 @@ pub mod capture;
 pub mod ink;
 pub mod select;
 pub mod session;
+#[cfg(target_os = "macos")]
+pub mod watch;
 
 use crate::{
     document::Document,
@@ -26,9 +28,11 @@ use std::{
     },
 };
 
-/// The fraction of the area that counts as a new screen (D8 on the plan). Not yet
-/// measured: C5 on the stills seed sets it from real pages on the Mac.
-const CHANGE_FRACTION: f32 = 0.5;
+/// The fraction of the area that counts as a new screen (D8 on the plan), past the
+/// largest change that is not one. Measured on Safari pages (C5 on s-dqjzpt): 250 ms
+/// apart, a big scroll changes up to 0.50, a tab between similar articles 0.35,
+/// playing video 0.39, a blinking cursor 0.0004. Video cuts reach 0.96 and do count.
+const CHANGE_FRACTION: f32 = 0.6;
 
 /// How long ink takes to fade: a feel choice, judged in the user's session (C15).
 const FADE: std::time::Duration = std::time::Duration::from_millis(250);

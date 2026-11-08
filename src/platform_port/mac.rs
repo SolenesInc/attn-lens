@@ -7,6 +7,7 @@ use crate::{
     lens::{
         attn, capture,
         session::{Area, DisplayFrame, HostTime, Segment},
+        watch,
     },
     permission_guide::{self, Permission},
 };
@@ -83,14 +84,19 @@ struct Timebase {
 
 /// Runs `job` on the main thread: now if this is it, otherwise soon.
 fn on_main(job: impl FnOnce() + Send + 'static) {
+    // SAFETY: plain libc query.
+    if unsafe { pthread_main_np() } != 0 {
+        return job();
+    }
+    queue_on_main(job);
+}
+
+/// Runs `job` on the main thread after everything queued before it, from any thread.
+pub(crate) fn queue_on_main(job: impl FnOnce() + Send + 'static) {
     extern "C" fn trampoline(context: *mut c_void) {
         // SAFETY: `context` is the box leaked below, and this runs once.
         let job = unsafe { Box::from_raw(context.cast::<Box<dyn FnOnce() + Send>>()) };
         job();
-    }
-    // SAFETY: plain libc query.
-    if unsafe { pthread_main_np() } != 0 {
-        return job();
     }
     let job: Box<Box<dyn FnOnce() + Send>> = Box::new(Box::new(job));
     // SAFETY: the main queue outlives the process, and the trampoline takes ownership.
@@ -256,9 +262,8 @@ impl PlatformPort for MacPort {
         capture::screenshot(area)
     }
 
-    /// No events yet: nothing about the screen reaches a capture but keys.
-    fn watch(&self, _area: Area, _sink: Sink<WatchEvent>) -> Watch {
-        Watch(None)
+    fn watch(&self, area: Area, sink: Sink<WatchEvent>) -> Watch {
+        watch::start(area, sink)
     }
 
     fn voice(&self, _sink: Sink<Segment>) -> Result<Voice, String> {
