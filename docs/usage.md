@@ -139,7 +139,7 @@ Timing changes are undoable; replay and seeking leave history unchanged.
 
 **⌘C** copies the composed image; **⌘S** saves PNG. Both retain full resolution.
 With Animation open, PNG/copy capture the inspected frame; during normal editing
-they capture the fully revealed image.
+they capture the fully revealed image over the backdrop frame on the canvas.
 
 Use **Export → GIF… / MP4…** in the toolbar, or **File → Export GIF… / Export MP4…**,
 for an animated backdrop or image entrance. If nothing moves yet, export adds a Flow

@@ -203,6 +203,53 @@
    "t": 7.15,
    "type": "mark",
    "name": "canvas-press"
+  },
+  {
+   "t": 7.27,
+   "type": "tap",
+   "key": "backdrop-button"
+  },
+  {
+   "t": 7.39,
+   "type": "tap",
+   "key": "background-motion"
+  },
+  {
+   "t": 7.69,
+   "type": "tap",
+   "key": "playback"
+  },
+  {
+   "t": 7.81,
+   "type": "key",
+   "name": "c",
+   "cmd": true
+  },
+  {
+   "t": 8.21,
+   "type": "mark",
+   "name": "copied-early"
+  },
+  {
+   "t": 8.33,
+   "type": "tap",
+   "key": "playback"
+  },
+  {
+   "t": 10.33,
+   "type": "tap",
+   "key": "playback"
+  },
+  {
+   "t": 10.45,
+   "type": "key",
+   "name": "c",
+   "cmd": true
+  },
+  {
+   "t": 10.85,
+   "type": "mark",
+   "name": "copied-later"
   }
  ],
  "asserts": [
@@ -482,6 +529,50 @@
    "absent": [
     "animation-panel"
    ]
+  },
+  {
+   "at": "copied-early",
+   "state": {
+    "playback": {
+     "playing": false
+    }
+   },
+   "clipboard": {
+    "pixels": [
+     [
+      2,
+      2,
+      [
+       36,
+       154,
+       150,
+       255
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "at": "copied-later",
+   "state": {
+    "playback": {
+     "playing": false
+    }
+   },
+   "clipboard": {
+    "pixels": [
+     [
+      2,
+      2,
+      [
+       42,
+       166,
+       152,
+       255
+      ]
+     ]
+    ]
+   }
   }
  ]
 }

@@ -139,20 +139,20 @@ impl Editor {
         }
     }
 
-    /// The phase a PNG or copy captures: the frame being inspected in the Animation
-    /// panel, otherwise the image fully revealed over the current backdrop frame.
-    pub(crate) fn export_phase(&self) -> f32 {
+    /// The entrance and backdrop phases a PNG or copy captures: the frame being
+    /// inspected in the Animation panel, otherwise the image fully revealed over the
+    /// backdrop frame on the canvas.
+    pub(crate) fn export_phase(&self) -> (f32, f32) {
+        let phase = self.phase();
         let Some(doc) = &self.doc else {
-            return 0.;
+            return (phase, phase);
         };
         let a = doc.image_animation;
-        if !a.enabled() {
-            return self.phase();
-        }
-        if self.panel == Panel::Animation {
-            self.phase()
+        if !a.enabled() || self.panel == Panel::Animation {
+            (phase, phase)
         } else {
-            (a.delay_ms + a.duration_ms) as f32 / 1000. / a.seconds as f32
+            let revealed = (a.delay_ms + a.duration_ms) as f32 / 1000. / a.seconds as f32;
+            (revealed, phase)
         }
     }
 

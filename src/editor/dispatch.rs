@@ -129,7 +129,7 @@ impl Editor {
                 let phase = self.export_phase();
                 let (mailbox, port) = (self.mailbox.clone(), self.port.clone());
                 self.port.run(Box::new(move || {
-                    let result = port.copy_image(document.export_at(phase));
+                    let result = port.copy_image(document.export_frame(phase.0, phase.1));
                     mailbox.post(Message::Copied { id, result });
                 }));
             }
@@ -646,8 +646,8 @@ impl Editor {
         let phase = self.export_phase();
         let mailbox = self.mailbox.clone();
         self.port.run(Box::new(move || {
-            let result =
-                crate::platform::save_png(&document.export_at(phase), &path).map(|()| path);
+            let result = crate::platform::save_png(&document.export_frame(phase.0, phase.1), &path)
+                .map(|()| path);
             mailbox.post(Message::Saved { id, result });
         }));
     }

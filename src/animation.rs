@@ -339,11 +339,16 @@ impl Renderer {
         renderer
     }
     pub fn frame(&self, phase: f32) -> RgbaImage {
+        self.compose(phase, phase)
+    }
+    /// A frame with the entrance at phase `entrance` and the background at `phase`, so
+    /// a still can show the image revealed over the moving background as it is now.
+    pub fn compose(&self, entrance: f32, phase: f32) -> RgbaImage {
         let foreground = entrance::render_foreground(
             &self.foreground,
             self.image_animation,
             self.image_bounds,
-            phase * self.image_animation.seconds as f32,
+            entrance * self.image_animation.seconds as f32,
         );
         let s = scene(self.b, phase);
         let mut out = if self.b.motion.uses_shader() {
