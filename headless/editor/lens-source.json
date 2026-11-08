@@ -1,0 +1,116 @@
+{
+ "row": "a lens result from an abandoned drag",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "mark",
+   "name": "jobs:hold"
+  },
+  {
+   "t": 0.68,
+   "type": "key",
+   "name": "m"
+  },
+  {
+   "t": 0.8,
+   "type": "down",
+   "x": 360,
+   "y": 381
+  },
+  {
+   "t": 0.92,
+   "type": "move",
+   "x": 440,
+   "y": 431
+  },
+  {
+   "t": 1.04,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 1.16,
+   "type": "up",
+   "x": 440,
+   "y": 431
+  },
+  {
+   "t": 1.28,
+   "type": "down",
+   "x": 380,
+   "y": 401
+  },
+  {
+   "t": 1.4,
+   "type": "move",
+   "x": 470,
+   "y": 461
+  },
+  {
+   "t": 1.52,
+   "type": "mark",
+   "name": "jobs:next"
+  },
+  {
+   "t": 1.74,
+   "type": "mark",
+   "name": "stale-refused"
+  },
+  {
+   "t": 1.86,
+   "type": "mark",
+   "name": "jobs:next"
+  },
+  {
+   "t": 1.98,
+   "type": "mark",
+   "name": "jobs:next"
+  },
+  {
+   "t": 2.2,
+   "type": "mark",
+   "name": "current-accepted"
+  },
+  {
+   "t": 2.32,
+   "type": "up",
+   "x": 470,
+   "y": 461
+  }
+ ],
+ "asserts": [
+  {
+   "at": "stale-refused",
+   "absent": [
+    "lens"
+   ]
+  },
+  {
+   "at": "current-accepted",
+   "present": [
+    "lens"
+   ]
+  }
+ ]
+}

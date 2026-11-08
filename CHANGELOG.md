@@ -6,6 +6,11 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
+- The editor is back on Rune: every tool and option, selection, undo, resize,
+  rotate and smart upscale, the color picker with Pick from screen, Copy as OCR,
+  inline text with input methods, native menus and accessibility. Images past 8192
+  pixels view downscaled and still save at full size. Pan with Space-drag or the
+  middle button; right-drag no longer pans.
 - **Attn Lens**: ⌘⌥X opens a crosshair over the live screen: drag for an area,
   click for the whole display, ↩ for the last area, Esc to cancel. The area stays
   outlined for the whole capture, its corners adjust it, and the page under it

@@ -1,0 +1,92 @@
+{
+ "row": "PNG",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "r"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "fill-filled"
+  },
+  {
+   "t": 0.88,
+   "type": "drag",
+   "dx": 40,
+   "dy": 40,
+   "dur": 0.05,
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 1.08,
+   "type": "key",
+   "name": "s",
+   "cmd": true
+  },
+  {
+   "t": 1.2,
+   "type": "file-dialog",
+   "path": "$OUT/out.png"
+  },
+  {
+   "t": 1.6,
+   "type": "mark",
+   "name": "saved"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "saved",
+   "png": {
+    "path": "$OUT/out.png",
+    "size": [
+     320,
+     200
+    ],
+    "pixels": [
+     [
+      40,
+      40,
+      [
+       255,
+       56,
+       100,
+       255
+      ]
+     ]
+    ],
+    "unchanged": [
+     [
+      200,
+      150
+     ]
+    ]
+   },
+   "status_contains": "Saved"
+  }
+ ]
+}

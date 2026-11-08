@@ -7,8 +7,9 @@ this file describes Glance's rules, which still apply to the code that remains.
 ## Lens entry points
 
 Lens is being rebuilt on Rune. `s-24857n` in the attn garden holds the plan. Glance's
-GPUI editor is gone; `git show a64f4fb:src/...` is its behavior until the Rune
-editor replaces it. This file's Glance rules still apply to the code that remains.
+GPUI code is at `git show a64f4fb:src/...`, the behavior for what has not come back
+yet (backdrop, animation, GIF and MP4). This file's Glance rules still apply to the
+code that remains.
 
 - `src/app.rs`: the Rune app and its windows. A Dock app (⌘Q quits, a Dock click
   opens the editor). When `rune::tooling::is_headless()` is true, overlays are hosted
@@ -16,12 +17,18 @@ editor replaces it. This file's Glance rules still apply to the code that remain
 - `src/platform_port.rs`: `PlatformPort`, everything the UI asks of the machine.
   `platform_port/mac.rs` is real; `platform_port/fake.rs` is driven by script marks.
   The draw key is one constant in `mac.rs`.
+- `src/editor/`: the editor window. Every toolbar, menu, key and gesture reaches
+  `Editor::dispatch` in `dispatch.rs`. `gesture.rs` is the pointer on the canvas;
+  `preview.rs` renders the raster off the UI thread; `live.rs` paints marks not yet
+  in it. `tests/editor.rs` runs `headless/editor/*.json`, one script per row of
+  `TOOL_OPTIONS.md` and the tables in `docs/usage.md`; each holds its assertions.
 - `src/lens/mod.rs`: `Lens`, the state every window and the socket read. Each change
   wakes the windows, because a Rune window does not redraw from another's change.
 - `src/lens/session.rs`: Capture, Still, Segment, HostTime.
 - `src/lens/select.rs`, `ink.rs`, `bar.rs`: the area picker, the ink layer and the bar.
-  `app.rs` hosts the first two as a `Surface`. Between presses the ink layer's input is
-  `Regions`, so its corner handles work and all else reaches the page.
+  `app.rs` hosts the picker, the ink layer and the four corner handles as `Surface`s.
+  The ink layer takes the pointer only while the draw key is held; the handles are
+  small windows of their own, below the menu bar, that hold still during a resize.
 - `src/lens/attn.rs`: the only contract with attn: `attn send sessions`, `attn
   send pair` and `attn send <session>` JSON, plus the Keychain token. Its tests
   use a stand-in `attn`; attn's `cmd/attn/send_stack_test.go` pins the real JSON.
@@ -65,7 +72,7 @@ JavaScript toolchain.
 - `src/platform.rs`: dialogs, fonts, and clipboard; Linux lives in `src/platform/linux.rs`.
 - `native/`: AVFoundation/FFmpeg helpers. `scripts/bundle.sh`: macOS packaging.
 
-See `docs/usage.md` for Glance's editor behavior, which the Rune editor rebuilds.
+See `docs/usage.md` for the editor's behavior.
 `PLAN.md` is historical; do not use its early scope as the current feature list.
 
 ## Working rules

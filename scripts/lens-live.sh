@@ -85,7 +85,10 @@ mark typed
 
 down fn
 expect "input":"All"
-wait 30
+# The ink layer takes the pointer on Rune's next loop turn, which nothing outside
+# Lens can see; 30 ms was not enough on the VM under load. The real fn-to-ink time
+# is measured on the real Mac (C14, C15), not here.
+wait 300
 drag 200 200 400 200 8 16
 expect "marks":1
 wait 30

@@ -1,0 +1,140 @@
+{
+ "row": "Magnifier",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "m"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "zoom-3×"
+  },
+  {
+   "t": 0.88,
+   "type": "tap",
+   "key": "lens-diameter-value"
+  },
+  {
+   "t": 1.08,
+   "type": "type",
+   "text": "96",
+   "every": 0.01
+  },
+  {
+   "t": 1.15,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.27,
+   "type": "drag",
+   "dx": 150,
+   "dy": 50,
+   "dur": 0.05,
+   "x": 380,
+   "y": 401
+  },
+  {
+   "t": 1.57,
+   "type": "mark",
+   "name": "drawn"
+  },
+  {
+   "t": 1.69,
+   "type": "tap",
+   "key": "zoom-4×"
+  },
+  {
+   "t": 1.99,
+   "type": "mark",
+   "name": "zoom-changed"
+  },
+  {
+   "t": 2.11,
+   "type": "tap",
+   "key": "color-blue"
+  },
+  {
+   "t": 2.41,
+   "type": "mark",
+   "name": "border"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "drawn",
+   "marks": [
+    {
+     "tool": "Magnifier",
+     "text": "3",
+     "width": 4,
+     "points": [
+      [
+       60,
+       60
+      ],
+      [
+       210,
+       110
+      ]
+     ]
+    }
+   ],
+   "checked": [
+    "zoom-3×"
+   ],
+   "value": {
+    "lens-diameter-field": "96"
+   }
+  },
+  {
+   "at": "zoom-changed",
+   "marks": [
+    {
+     "tool": "Magnifier",
+     "text": "4"
+    }
+   ],
+   "checked": [
+    "zoom-4×"
+   ]
+  },
+  {
+   "at": "border",
+   "marks": [
+    {
+     "tool": "Magnifier",
+     "color": [
+      76,
+      141,
+      255,
+      255
+     ]
+    }
+   ]
+  }
+ ]
+}

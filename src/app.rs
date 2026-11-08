@@ -1,6 +1,7 @@
 //! The Rune app: a Dock app whose windows read the Lens state. It starts with no
 //! window, ⌘⌥X opens the area picker, and a Dock click opens the empty editor.
 use crate::{
+    editor::{self, Editor},
     lens::{
         Input, KeyOwner, Lens, Summary, automation,
         bar::{self, Bar},
@@ -13,31 +14,13 @@ use crate::{
 use rune::{
     AnyWindowSpec, App, AppHandle, AppSpec, Cx, DisplayTarget, El, KeyEvent, KeyPolicy,
     NativeDisplayId, OverlayHandle, OverlayInput, OverlayLevel, OverlayOptions, OverlayPlacement,
-    OverlaySpec, Tx, WindowOptions, WindowSpec, col, text, tok,
+    OverlaySpec, Tx, WindowOptions, WindowSpec,
 };
 use std::sync::{Arc, Mutex};
 
 const EDITOR_SIZE: (f32, f32) = (1220., 860.);
-
-struct Editor {
-    me: AppHandle<Editor>,
-}
-
-fn editor_view(_: &Editor, cx: &mut Cx<Editor>) -> El {
-    let t = tok::theme(cx.system_dark());
-    col()
-        .key("editor")
-        .w_full()
-        .h_full()
-        .center()
-        .fill(t.bg)
-        .child(
-            text("Open an image to edit it")
-                .key("editor-empty")
-                .font(tok::type_::BODY)
-                .color(t.text_secondary),
-        )
-}
+/// Room for the toolbar and the sidebar's longest option list.
+const EDITOR_MIN_SIZE: (f32, f32) = (900., 560.);
 
 /// A view that is an overlay on the Mac and an ordinary window when headless,
 /// where Rune draws no overlays (D2 on the plan). This is the only platform branch.
@@ -307,21 +290,25 @@ pub fn run() -> Result<(), String> {
         );
         lens.listen();
 
-        let editor = App::new(AppSpec::new(
-            "Attn Lens",
-            EDITOR_SIZE,
-            || unreachable!(),
-            editor_view,
-        ))
+        let editor = App::new(AppSpec {
+            poll: Some(|s: &mut Editor, now, tx: &mut Tx| s.poll(now, tx)),
+            on_key: Some(|s: &mut Editor, event, tx: &mut Tx| s.on_key(event, tx)),
+            min_size: Some(EDITOR_MIN_SIZE),
+            ..AppSpec::new("Attn Lens", EDITOR_SIZE, || unreachable!(), editor::view)
+        })
         .windowless();
         let me = editor.handle();
         let visible = me.clone();
         lens.report_window("editor", move || visible.is_visible());
         let opener = me.clone();
-        let editor = editor.init(move || Editor { me }).on_reopen(|s, _, _| {
-            s.me.open();
-            true
-        });
+        let port = lens.port().clone();
+        let editor = editor::menus::install(editor)
+            .init(move || Editor::new(me, port))
+            .on_focus(|s, focused, _| s.on_window_focus(focused))
+            .on_reopen(|s, _, _| {
+                s.open_window();
+                true
+            });
 
         let mut bar = App::new(AppSpec {
             poll: Some(|s: &mut Bar, now, tx: &mut Tx| {

@@ -1,0 +1,139 @@
+{
+ "row": "Spotlight",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "s"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "color-ink"
+  },
+  {
+   "t": 0.88,
+   "type": "tap",
+   "key": "dim-surroundings-value"
+  },
+  {
+   "t": 1.08,
+   "type": "type",
+   "text": "50",
+   "every": 0.01
+  },
+  {
+   "t": 1.15,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.27,
+   "type": "drag",
+   "dx": 80,
+   "dy": 60,
+   "dur": 0.05,
+   "x": 420,
+   "y": 401
+  },
+  {
+   "t": 1.57,
+   "type": "mark",
+   "name": "drawn"
+  },
+  {
+   "t": 1.69,
+   "type": "key",
+   "name": "s",
+   "cmd": true
+  },
+  {
+   "t": 1.81,
+   "type": "file-dialog",
+   "path": "$OUT/spot.png"
+  },
+  {
+   "t": 2.21,
+   "type": "mark",
+   "name": "saved"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "drawn",
+   "marks": [
+    {
+     "tool": "Spotlight",
+     "color": [
+      32,
+      34,
+      42,
+      255
+     ],
+     "style": {
+      "dim": 0.5
+     },
+     "points": [
+      [
+       100,
+       60
+      ],
+      [
+       180,
+       120
+      ]
+     ]
+    }
+   ],
+   "value": {
+    "dim-surroundings-field": "50"
+   },
+   "text": {
+    "tool-name": "Selected"
+   }
+  },
+  {
+   "at": "saved",
+   "png": {
+    "path": "$OUT/spot.png",
+    "size": [
+     320,
+     200
+    ],
+    "changed": [
+     [
+      10,
+      10
+     ]
+    ],
+    "unchanged": [
+     [
+      140,
+      90
+     ]
+    ]
+   }
+  }
+ ]
+}

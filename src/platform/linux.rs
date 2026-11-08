@@ -31,17 +31,8 @@ fn dialog(args: &[&str]) -> Result<Option<PathBuf>, String> {
     }
     Ok(Some(PathBuf::from(path.trim_end())))
 }
-pub fn open() -> Result<Option<RgbaImage>, String> {
-    dialog(&[
-        "--title=Open an image in Glance",
-        "--file-filter=Images | *.png *.jpg *.jpeg *.webp",
-    ])?
-    .map(|path| load(&path))
-    .transpose()
-}
 pub fn destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
     let extension = match format {
-        ExportFormat::Png => "png",
         ExportFormat::Gif => "gif",
         ExportFormat::Mp4 => "mp4",
     };

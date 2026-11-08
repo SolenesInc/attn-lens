@@ -1,0 +1,222 @@
+{
+ "row": "Image tools",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "r"
+  },
+  {
+   "t": 0.68,
+   "type": "drag",
+   "dx": 50,
+   "dy": 30,
+   "dur": 0.05,
+   "x": 360,
+   "y": 381
+  },
+  {
+   "t": 0.88,
+   "type": "tap",
+   "key": "image-tools-button"
+  },
+  {
+   "t": 1.18,
+   "type": "mark",
+   "name": "panel"
+  },
+  {
+   "t": 1.3,
+   "type": "tap",
+   "key": "smart-upscale"
+  },
+  {
+   "t": 1.5,
+   "type": "tap",
+   "key": "scale-150%"
+  },
+  {
+   "t": 1.8,
+   "type": "mark",
+   "name": "options"
+  },
+  {
+   "t": 1.92,
+   "type": "tap",
+   "key": "apply-resize"
+  },
+  {
+   "t": 2.22,
+   "type": "mark",
+   "name": "resized"
+  },
+  {
+   "t": 2.34,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 2.56,
+   "type": "mark",
+   "name": "resize-undone"
+  },
+  {
+   "t": 2.68,
+   "type": "tap",
+   "key": "rotate"
+  },
+  {
+   "t": 2.98,
+   "type": "mark",
+   "name": "rotated"
+  },
+  {
+   "t": 3.1,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 3.32,
+   "type": "mark",
+   "name": "rotate-undone"
+  },
+  {
+   "t": 3.44,
+   "type": "mark",
+   "name": "clipboard:$WIDE_SMALL"
+  },
+  {
+   "t": 3.56,
+   "type": "tap",
+   "key": "paste-image"
+  },
+  {
+   "t": 3.86,
+   "type": "mark",
+   "name": "pasted"
+  },
+  {
+   "t": 3.98,
+   "type": "tap",
+   "key": "image-done"
+  },
+  {
+   "t": 4.28,
+   "type": "mark",
+   "name": "done"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "panel",
+   "present": [
+    "image-tools"
+   ],
+   "text": {
+    "resize-target": "320×200 → 640×400"
+   },
+   "checked": [
+    "scale-200%",
+    "smart-upscale"
+   ]
+  },
+  {
+   "at": "options",
+   "unchecked": [
+    "smart-upscale"
+   ],
+   "text": {
+    "resize-target": "320×200 → 480×300"
+   }
+  },
+  {
+   "at": "resized",
+   "canvas": "480 by 300 pixels",
+   "marks": [
+    {
+     "tool": "Box",
+     "points": [
+      [
+       60,
+       60
+      ],
+      [
+       135,
+       105
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "at": "resize-undone",
+   "canvas": "320 by 200 pixels",
+   "marks": [
+    {
+     "tool": "Box",
+     "points": [
+      [
+       40,
+       40
+      ],
+      [
+       90,
+       70
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "at": "rotated",
+   "canvas": "200 by 320 pixels",
+   "marks": []
+  },
+  {
+   "at": "rotate-undone",
+   "canvas": "320 by 200 pixels",
+   "marks": [
+    {
+     "tool": "Box"
+    }
+   ]
+  },
+  {
+   "at": "pasted",
+   "canvas": "64 by 48 pixels",
+   "marks": []
+  },
+  {
+   "at": "done",
+   "absent": [
+    "image-tools"
+   ],
+   "present": [
+    "tool-options"
+   ]
+  }
+ ]
+}

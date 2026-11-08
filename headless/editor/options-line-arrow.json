@@ -1,0 +1,173 @@
+{
+ "row": "Line / Arrow",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "a"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "stroke-dash"
+  },
+  {
+   "t": 0.88,
+   "type": "tap",
+   "key": "start-arrow"
+  },
+  {
+   "t": 1.08,
+   "type": "tap",
+   "key": "end-dot"
+  },
+  {
+   "t": 1.28,
+   "type": "drag",
+   "dx": 200,
+   "dy": 0,
+   "dur": 0.05,
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 1.58,
+   "type": "mark",
+   "name": "drawn"
+  },
+  {
+   "t": 1.7,
+   "type": "tap",
+   "key": "start-none"
+  },
+  {
+   "t": 1.9,
+   "type": "tap",
+   "key": "end-none"
+  },
+  {
+   "t": 2.2,
+   "type": "mark",
+   "name": "plain-line"
+  },
+  {
+   "t": 2.32,
+   "type": "tap",
+   "key": "add-point"
+  },
+  {
+   "t": 2.62,
+   "type": "mark",
+   "name": "point-added"
+  },
+  {
+   "t": 2.74,
+   "type": "tap",
+   "key": "straighten"
+  },
+  {
+   "t": 3.04,
+   "type": "mark",
+   "name": "straightened"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "drawn",
+   "marks": [
+    {
+     "tool": "Arrow",
+     "style": {
+      "dash": "dashed",
+      "start": "arrow",
+      "end": "dot"
+     },
+     "points": [
+      [
+       20,
+       20
+      ],
+      [
+       220,
+       20
+      ]
+     ],
+     "selected": true
+    }
+   ]
+  },
+  {
+   "at": "plain-line",
+   "marks": [
+    {
+     "tool": "Arrow",
+     "style": {
+      "start": "none",
+      "end": "none"
+     }
+    }
+   ]
+  },
+  {
+   "at": "point-added",
+   "marks": [
+    {
+     "tool": "Arrow",
+     "points": [
+      [
+       20,
+       20
+      ],
+      [
+       120,
+       20
+      ],
+      [
+       220,
+       20
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "at": "straightened",
+   "marks": [
+    {
+     "tool": "Arrow",
+     "points": [
+      [
+       20,
+       20
+      ],
+      [
+       220,
+       20
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

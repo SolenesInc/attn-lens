@@ -86,6 +86,20 @@ pub trait PlatformPort: Send + Sync {
     fn token(&self) -> Option<String>;
     fn store_token(&self, token: &str) -> Result<(), String>;
     fn forget_token(&self);
+    /// Puts an image on the system clipboard.
+    fn copy_image(&self, image: RgbaImage) -> Result<(), String>;
+    /// The image on the system clipboard.
+    fn clipboard_image(&self) -> Result<RgbaImage, String>;
+    /// Puts text on the system clipboard.
+    fn copy_text(&self, text: &str) -> Result<(), String>;
+    /// Reads text from `image`, optionally within [x, y, width, height]. Slow: call it from [`Self::run`].
+    fn ocr(&self, image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String>;
+    /// Lets the user pick a color anywhere on screen. `None` means they cancelled.
+    /// True on the fake port: the editor then exposes its state for scripts to assert on.
+    fn exposes_state(&self) -> bool {
+        false
+    }
+    fn pick_color(&self, sink: Sink<Result<Option<[u8; 3]>, String>>);
     /// Runs slow work off the UI thread.
     fn run(&self, job: Box<dyn FnOnce() + Send>) {
         std::thread::spawn(job);

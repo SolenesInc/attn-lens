@@ -1,0 +1,195 @@
+{
+ "row": "colour picker",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "p"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "custom-color"
+  },
+  {
+   "t": 0.98,
+   "type": "mark",
+   "name": "open"
+  },
+  {
+   "t": 1.1,
+   "type": "tap",
+   "key": "opacity-dec"
+  },
+  {
+   "t": 1.3,
+   "type": "tap",
+   "key": "hex-field"
+  },
+  {
+   "t": 1.5,
+   "type": "key",
+   "name": "a",
+   "cmd": true
+  },
+  {
+   "t": 1.62,
+   "type": "type",
+   "text": "#123456",
+   "every": 0.01
+  },
+  {
+   "t": 1.74,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.96,
+   "type": "mark",
+   "name": "hex"
+  },
+  {
+   "t": 2.08,
+   "type": "tap",
+   "key": "hex-field"
+  },
+  {
+   "t": 2.28,
+   "type": "key",
+   "name": "a",
+   "cmd": true
+  },
+  {
+   "t": 2.4,
+   "type": "type",
+   "text": "nope",
+   "every": 0.01
+  },
+  {
+   "t": 2.49,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 2.71,
+   "type": "mark",
+   "name": "bad-hex"
+  },
+  {
+   "t": 2.83,
+   "type": "tap",
+   "key": "pick-screen"
+  },
+  {
+   "t": 3.13,
+   "type": "mark",
+   "name": "picking"
+  },
+  {
+   "t": 3.25,
+   "type": "mark",
+   "name": "pick:#102030"
+  },
+  {
+   "t": 3.47,
+   "type": "mark",
+   "name": "picked"
+  },
+  {
+   "t": 3.59,
+   "type": "tap",
+   "key": "pick-screen"
+  },
+  {
+   "t": 3.79,
+   "type": "mark",
+   "name": "pick:cancel"
+  },
+  {
+   "t": 4.01,
+   "type": "mark",
+   "name": "pick-canceled"
+  },
+  {
+   "t": 4.13,
+   "type": "tap",
+   "key": "color-wheel"
+  },
+  {
+   "t": 4.43,
+   "type": "mark",
+   "name": "wheel"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "open",
+   "present": [
+    "color-wheel",
+    "color-value",
+    "hex-field"
+   ]
+  },
+  {
+   "at": "hex",
+   "value": {
+    "custom-color": "#123456"
+   }
+  },
+  {
+   "at": "bad-hex",
+   "present": [
+    "hex-error"
+   ],
+   "value": {
+    "custom-color": "#123456"
+   }
+  },
+  {
+   "at": "picking",
+   "text": {
+    "status": "Pick a screen color • Escape to cancel"
+   }
+  },
+  {
+   "at": "picked",
+   "value": {
+    "custom-color": "#102030",
+    "opacity-field": "90"
+   }
+  },
+  {
+   "at": "pick-canceled",
+   "value": {
+    "custom-color": "#102030"
+   }
+  },
+  {
+   "at": "wheel",
+   "value": {
+    "custom-color": "#303030"
+   }
+  }
+ ]
+}
