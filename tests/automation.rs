@@ -72,8 +72,18 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
     assert_eq!(lens.state()["capture"]["area"]["rect"][2], 640.);
     assert_eq!(lens.ask(r#"{"cmd":"key","key":"draw-down"}"#)["ok"], true);
     assert_eq!(lens.state()["input"], "All");
+    let stroke = r#"{"cmd":"stroke","points":[[10,10],[200,120]]}"#;
+    assert_eq!(lens.ask(stroke)["ok"], true);
+    assert_eq!(lens.state()["capture"]["stills"][0]["cause"], "draw");
+    assert_eq!(lens.state()["capture"]["stills"][0]["marks"], 1);
     lens.ask(r#"{"cmd":"key","key":"draw-up"}"#);
     assert_eq!(lens.state()["input"], "None");
+    assert!(
+        lens.ask(stroke)["error"]
+            .as_str()
+            .unwrap()
+            .contains("draw-down")
+    );
 
     assert_eq!(lens.ask(r#"{"cmd":"sessions"}"#)["sessions"][0]["id"], "s1");
 
@@ -85,7 +95,7 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
     let failed = lens.state();
     assert_eq!(failed["send"]["state"], "failed");
     assert_eq!(failed["send"]["error"], "send: session closed is closed");
-    assert_eq!(failed["capture"]["stills"][0]["cause"], "send");
+    assert_eq!(failed["capture"]["stills"][0]["cause"], "draw");
 
     // Sending again uses the stills it has, then closes the capture.
     lens.ask(r#"{"cmd":"key","key":"capture"}"#);
