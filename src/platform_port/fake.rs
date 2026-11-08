@@ -292,7 +292,9 @@ impl PlatformPort for FakePort {
             if let Some(error) = finish_error.lock().unwrap().take() {
                 return Err(error);
             }
-            if let (Some(sink), Some(words)) = (sink, last_words.lock().unwrap().take()) {
+            if let Some(sink) = sink
+                && let Some(words) = last_words.lock().unwrap().take()
+            {
                 sink(VoiceEvent::Segment(words));
             }
             Ok(())

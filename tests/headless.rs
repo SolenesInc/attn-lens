@@ -662,6 +662,19 @@ fn voice_on_a_new_capture_does_not_wait_for_the_last_one_to_stop() {
 }
 
 #[test]
+fn a_closed_captures_finish_does_not_start_the_next_captures_send() {
+    let run = Run::new("voice-closed-finish.json", ONE_SESSION);
+
+    // The first capture's finish returned, then the newest job ran: the second
+    // capture's own finish, not a send the first one started in its place.
+    run.tree("bar", "old-finish-returned");
+    assert!(!run.path("args").exists(), "sent before its voice finished");
+
+    assert!(!visible(&run.tree("bar", "sent"), "bar"));
+    assert!(run.path("args").exists());
+}
+
+#[test]
 fn send_right_after_voice_stops_waits_for_its_last_sentence() {
     let run = Run::new("voice-send.json", ONE_SESSION);
 

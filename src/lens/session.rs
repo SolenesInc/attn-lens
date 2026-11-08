@@ -1,5 +1,8 @@
 //! One capture and what it holds, on one clock.
-use crate::document::{Document, Mark};
+use crate::{
+    document::{Document, Mark},
+    platform_port::{Voice, VoiceStatus},
+};
 use serde::Serialize;
 
 /// Nanoseconds on the host clock. There is one clock: the macOS port reads
@@ -89,6 +92,24 @@ pub struct InkMark {
     pub committed: bool,
 }
 
+/// A capture's voice. It lives and ends with the capture, so a finish that returns
+/// after the capture closed finds nothing to change.
+#[derive(Default)]
+pub enum CaptureVoice {
+    #[default]
+    Off,
+    Running {
+        /// Which ⌘⌥S started it, so a stopped voice's late progress is ignored.
+        run: u64,
+        handle: Voice,
+        /// `None` until the port reports progress.
+        status: Option<VoiceStatus>,
+    },
+    /// Waiting for the sentence in progress. `send_after`: Send came meanwhile, and
+    /// starts, or fails, once this finish returns, so it carries the last sentence.
+    Finishing { send_after: bool },
+}
+
 /// One live session from ⌘⌥X to Send or Esc, over one area.
 pub struct Capture {
     pub id: u64,
@@ -104,4 +125,5 @@ pub struct Capture {
     /// The session id the capture will be sent to.
     pub target: Option<String>,
     pub message: String,
+    pub voice: CaptureVoice,
 }
