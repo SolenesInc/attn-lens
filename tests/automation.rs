@@ -103,7 +103,7 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
         args.starts_with("send s1 --token-stdin --json --file "),
         "{args}"
     );
-    assert!(args.ends_with("-m look here\n"), "{args}");
+    assert!(args.contains("-m look here\n\nScreen capture"), "{args}");
     for frame in ["frame-01.png", "frame-02.png"] {
         let image = image::open(dir.join(frame)).unwrap();
         assert_eq!((image.width(), image.height()), (1280, 800));

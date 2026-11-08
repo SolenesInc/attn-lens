@@ -305,7 +305,7 @@ fn draw(mut shape: Shape, mark: &Mark, origin: (f32, f32)) -> Shape {
 }
 
 /// The word a mark is listed by, so the tree says what was drawn.
-fn kind(mark: &Mark) -> &'static str {
+pub(super) fn kind(mark: &Mark) -> &'static str {
     match mark.tool {
         Tool::Pen => "freehand",
         Tool::Arrow => "arrow",
