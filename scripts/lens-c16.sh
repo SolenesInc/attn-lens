@@ -28,6 +28,7 @@ with wave.open(sys.argv[2], "wb") as out:
 PY
 
 /usr/bin/swiftc -O tools/driver/driver.swift -o "$OUT/driver"
+/usr/bin/swiftc -O tools/driver/ax.swift -o "$OUT/ax"
 quit() {
     osascript -e 'if application id "dev.attn.lens" is running then tell application id "dev.attn.lens" to quit' \
         -e 'repeat while application id "dev.attn.lens" is running' -e 'delay 0.1' -e 'end repeat'
@@ -36,6 +37,12 @@ quit
 open --env "RUNE_OVERLAY_FRAME_LOG=$OUT/frames.jsonl" "$APP" --args --automation
 until state >/dev/null 2>&1; do sleep 0.1; done
 trap 'quit || true' EXIT
+# A Dock press in the first moments after launch can be lost, so wait for the menus,
+# which Lens installs once its event loop runs. 100 × 0.1 s is past any launch seen.
+for _ in $(seq 1 100); do
+    "$OUT/ax" menus "Attn Lens" 2>/dev/null | grep -xF "File > Open Image…" >/dev/null && break
+    sleep 0.1
+done
 
 cat >"$OUT/open.txt" <<SCRIPT
 dock Attn Lens
