@@ -1079,3 +1079,9 @@ fn an_older_still_failing_leaves_a_waiting_edit_alone() {
     let run = Run::new("roundtrip-edit-older-fails.json", ONE_SESSION);
     assert!(state(&run, "editing")["editing"].is_number());
 }
+
+#[test]
+fn esc_during_a_send_that_finishes_voice_leaves_no_stuck_voice() {
+    let run = Run::new("roundtrip-send-esc-voice.json", ONE_SESSION);
+    assert_eq!(state(&run, "reopened")["voice"]["state"], "off");
+}

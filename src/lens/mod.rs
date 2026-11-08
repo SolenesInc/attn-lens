@@ -1308,9 +1308,7 @@ impl Lens {
         Arc::new(move |event| {
             let mut guard = lens.state.lock().unwrap();
             let state = &mut *guard;
-            let open = state.capture.iter_mut();
-            let closed = state.tile.iter_mut().map(|t| &mut t.capture);
-            let Some(capture) = open.chain(closed).find(|c| c.id == id) else {
+            let Some(capture) = capture_by_id(&mut state.capture, &mut state.tile, id) else {
                 return;
             };
             let current = matches!(capture.voice, CaptureVoice::Running { run: r, .. } if r == run);
@@ -1339,9 +1337,7 @@ impl Lens {
     fn voice_stopped(self: &Arc<Self>, id: u64, run: u64, finished: Result<(), String>) {
         let mut guard = self.state.lock().unwrap();
         let state = &mut *guard;
-        let open = state.capture.iter_mut();
-        let closed = state.tile.iter_mut().map(|t| &mut t.capture);
-        let Some(capture) = open.chain(closed).find(|c| c.id == id) else {
+        let Some(capture) = capture_by_id(&mut state.capture, &mut state.tile, id) else {
             return;
         };
         // A reopened capture keeps its id, and may be on a newer voice by now.
@@ -1447,11 +1443,10 @@ impl Lens {
     fn finish_send(self: &Arc<Self>, id: u64, voice: Option<Voice>) {
         let voice = voice.map_or(Ok(()), |voice| {
             let finished = voice.finish();
-            let mut state = self.state.lock().unwrap();
-            if let Some(capture) = state
-                .capture
-                .as_mut()
-                .filter(|c| c.id == id && matches!(c.voice, CaptureVoice::Finishing { .. }))
+            let mut guard = self.state.lock().unwrap();
+            let state = &mut *guard;
+            if let Some(capture) = capture_by_id(&mut state.capture, &mut state.tile, id)
+                .filter(|c| matches!(c.voice, CaptureVoice::Finishing { .. }))
             {
                 capture.voice = CaptureVoice::Off;
             }
@@ -1705,6 +1700,16 @@ fn failure_text(failure: attn::Failure) -> String {
     match failure {
         attn::Failure::NotPaired(text) | attn::Failure::Error(text) => text,
     }
+}
+
+/// The capture with this id, open or kept in the tile.
+fn capture_by_id<'a>(
+    open: &'a mut Option<Capture>,
+    tile: &'a mut Option<Tile>,
+    id: u64,
+) -> Option<&'a mut Capture> {
+    let closed = tile.iter_mut().map(|t| &mut t.capture);
+    open.iter_mut().chain(closed).find(|c| c.id == id)
 }
 
 /// Puts finished ink on the stills whose frames have arrived, so a stroke and its
