@@ -3424,7 +3424,7 @@ checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 [[package]]
 name = "rune"
 version = "0.0.1"
-source = "git+https://github.com/SolenesInc/rune.git?rev=640b7203299a943c963030cbe9e3421f4e50ee2b#640b7203299a943c963030cbe9e3421f4e50ee2b"
+source = "git+https://github.com/SolenesInc/rune.git?rev=d156954653e969838dbb7d70f5740152dada2b07#d156954653e969838dbb7d70f5740152dada2b07"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -3500,12 +3500,12 @@ dependencies = [
 [[package]]
 name = "rune-motion"
 version = "0.1.0"
-source = "git+https://github.com/SolenesInc/rune.git?rev=640b7203299a943c963030cbe9e3421f4e50ee2b#640b7203299a943c963030cbe9e3421f4e50ee2b"
+source = "git+https://github.com/SolenesInc/rune.git?rev=d156954653e969838dbb7d70f5740152dada2b07#d156954653e969838dbb7d70f5740152dada2b07"
 
 [[package]]
 name = "rune-staging"
 version = "0.0.1"
-source = "git+https://github.com/SolenesInc/rune.git?rev=640b7203299a943c963030cbe9e3421f4e50ee2b#640b7203299a943c963030cbe9e3421f4e50ee2b"
+source = "git+https://github.com/SolenesInc/rune.git?rev=d156954653e969838dbb7d70f5740152dada2b07#d156954653e969838dbb7d70f5740152dada2b07"
 dependencies = [
  "wgpu",
 ]
@@ -3513,7 +3513,7 @@ dependencies = [
 [[package]]
 name = "rune-taffy"
 version = "0.0.1"
-source = "git+https://github.com/SolenesInc/rune.git?rev=640b7203299a943c963030cbe9e3421f4e50ee2b#640b7203299a943c963030cbe9e3421f4e50ee2b"
+source = "git+https://github.com/SolenesInc/rune.git?rev=d156954653e969838dbb7d70f5740152dada2b07#d156954653e969838dbb7d70f5740152dada2b07"
 dependencies = [
  "taffy",
 ]
