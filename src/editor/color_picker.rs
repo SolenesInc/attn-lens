@@ -78,6 +78,8 @@ fn wheel_pixels() -> Pixels {
 
 pub(crate) struct ColorPicker {
     pub open: bool,
+    /// Which backdrop colour the picker edits; `None` edits marks.
+    pub stop: Option<usize>,
     hsv: [f32; 3],
     /// During a drag on the wheel or slider, every move after the first shares one undo step.
     pub continuing: bool,
@@ -90,6 +92,7 @@ impl Default for ColorPicker {
     fn default() -> Self {
         Self {
             open: false,
+            stop: None,
             hsv: [0., 1., 1.],
             continuing: false,
             hex: TextEdit::new(""),
@@ -112,18 +115,50 @@ impl ColorPicker {
 }
 
 impl Editor {
+    /// An open backdrop picker shows its colour as it is after any action, such as a
+    /// palette or undo. It closes when the background stops showing that colour.
+    pub(crate) fn follow_backdrop_picker(&mut self) {
+        let Some(stop) = self.picker.stop.filter(|_| self.picker.open) else {
+            return;
+        };
+        let b = self.current_backdrop();
+        if stop >= b.stops() {
+            self.picker.open = false;
+            return;
+        }
+        let color = b.colors()[stop];
+        let rgb = [(color >> 16) as u8, (color >> 8) as u8, color as u8];
+        // The wheel's own drags already match; leave the hex field being typed alone.
+        if from_hsv(self.picker.hsv) != rgb {
+            self.picker.sync(rgb);
+        }
+    }
+
     fn apply_picked(&mut self, drag: &Drag, tx: &mut Tx) {
         let rgb = from_hsv(self.picker.hsv);
         if matches!(drag.phase, Phase::Down) {
             self.picker.continuing = false;
         }
         let revision = self.revision;
-        self.dispatch_ui(Action::SetRgb(rgb), tx);
+        let action = self.picked(rgb, !self.picker.continuing);
+        self.dispatch_ui(action, tx);
         // The undo step starts with the first move that changes something: a press at the
         // current colour saves nothing, so later moves have to.
         let started = self.picker.continuing || self.revision != revision;
         self.picker.continuing = started && !matches!(drag.phase, Phase::Up);
         self.picker.hex = TextEdit::new(hex(rgb));
+    }
+
+    /// What a picked colour changes: the backdrop colour being edited, or the marks.
+    pub(crate) fn picked(&self, rgb: [u8; 3], remember: bool) -> Action {
+        match self.picker.stop {
+            Some(stop) => Action::SetBackdropColor {
+                stop,
+                rgb,
+                remember,
+            },
+            None => Action::SetRgb(rgb),
+        }
     }
 
     fn on_wheel_drag(&mut self, drag: &mut Drag, tx: &mut Tx) {
@@ -142,7 +177,8 @@ impl Editor {
     fn apply_hex(&mut self, tx: &mut Tx) {
         match parse_hex(&self.picker.hex.text) {
             Some(rgb) => {
-                self.dispatch_ui(Action::SetRgb(rgb), tx);
+                let action = self.picked(rgb, true);
+                self.dispatch_ui(action, tx);
             }
             None => self.picker.hex_invalid = true,
         }

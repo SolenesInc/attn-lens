@@ -1,0 +1,200 @@
+{
+ "row": "recolouring several marks keeps each mark's opacity",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "p"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "opacity-value"
+  },
+  {
+   "t": 0.88,
+   "type": "type",
+   "text": "20",
+   "every": 0.01
+  },
+  {
+   "t": 1.0,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.12,
+   "type": "drag",
+   "dx": 80,
+   "dy": 40,
+   "dur": 0.05,
+   "x": 340,
+   "y": 360
+  },
+  {
+   "t": 1.42,
+   "type": "key",
+   "name": "r"
+  },
+  {
+   "t": 1.54,
+   "type": "tap",
+   "key": "color-blue"
+  },
+  {
+   "t": 1.74,
+   "type": "drag",
+   "dx": 40,
+   "dy": 40,
+   "dur": 0.05,
+   "x": 520,
+   "y": 380
+  },
+  {
+   "t": 2.04,
+   "type": "key",
+   "name": "a",
+   "cmd": true
+  },
+  {
+   "t": 2.16,
+   "type": "tap",
+   "key": "color-mint"
+  },
+  {
+   "t": 2.46,
+   "type": "mark",
+   "name": "recoloured"
+  },
+  {
+   "t": 2.58,
+   "type": "tap",
+   "key": "opacity-value"
+  },
+  {
+   "t": 2.78,
+   "type": "type",
+   "text": "50",
+   "every": 0.01
+  },
+  {
+   "t": 2.9,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 3.2,
+   "type": "mark",
+   "name": "faded"
+  },
+  {
+   "t": 3.32,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 3.44,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 3.74,
+   "type": "mark",
+   "name": "undone"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "recoloured",
+   "marks": [
+    {
+     "tool": "Pen",
+     "color": [
+      38,
+      182,
+      144,
+      51
+     ]
+    },
+    {
+     "tool": "Box",
+     "color": [
+      38,
+      182,
+      144,
+      255
+     ]
+    }
+   ]
+  },
+  {
+   "at": "faded",
+   "marks": [
+    {
+     "tool": "Pen",
+     "color": [
+      38,
+      182,
+      144,
+      128
+     ]
+    },
+    {
+     "tool": "Box",
+     "color": [
+      38,
+      182,
+      144,
+      128
+     ]
+    }
+   ]
+  },
+  {
+   "at": "undone",
+   "marks": [
+    {
+     "tool": "Pen",
+     "color": [
+      255,
+      56,
+      100,
+      51
+     ]
+    },
+    {
+     "tool": "Box",
+     "color": [
+      76,
+      141,
+      255,
+      255
+     ]
+    }
+   ]
+  }
+ ]
+}

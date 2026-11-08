@@ -7,6 +7,7 @@ pub mod actions;
 mod canvas;
 mod color_picker;
 mod dispatch;
+mod export;
 mod gesture;
 mod icons;
 mod keys;
@@ -14,6 +15,7 @@ mod live;
 pub mod menus;
 mod panels;
 mod preview;
+mod stage;
 mod view;
 
 use crate::{
@@ -66,6 +68,8 @@ pub(crate) struct NumberDraft {
 pub(crate) enum Panel {
     Tool,
     Image,
+    Backdrop,
+    Animation,
 }
 
 /// Slow work in flight. Only one runs at a time.
@@ -78,6 +82,7 @@ pub(crate) enum Operation {
     Paste,
     Ocr,
     ColorSample,
+    Export,
 }
 
 /// What the toolbar says about the last copy.
@@ -93,6 +98,17 @@ pub(crate) enum CopyFeedback {
 /// any other is stale and dropped.
 pub(crate) enum Message {
     Preview(preview::Rendered),
+    /// A backdrop or entrance frame for the canvas.
+    Frame(Box<stage::Frame>),
+    ExportProgress {
+        id: u64,
+        percent: u32,
+    },
+    /// `None` when the export was cancelled.
+    Exported {
+        id: u64,
+        result: Result<Option<std::path::PathBuf>, String>,
+    },
     /// An opened or pasted image, or a crop, resize, rotation or an undo of one: the
     /// new document with its raster.
     Replaced {
@@ -188,6 +204,15 @@ pub struct Editor {
     lens: live::LensState,
     /// How many points the stroke being drawn may have, set when it starts.
     stroke_room: usize,
+    /// The backdrop's settings while it is turned off, so turning it on brings them back.
+    backdrop_off: Option<crate::backdrop::Backdrop>,
+    /// During a slider drag, every move after the first shares one undo step.
+    continuing: bool,
+    stage: stage::Stage,
+    playback: stage::Playback,
+    export: Option<export::Export>,
+    /// Between a Dock click opening the window and its close button.
+    open: bool,
 }
 
 impl Editor {
@@ -196,6 +221,7 @@ impl Editor {
             messages: Default::default(),
             window: me.clone(),
         };
+        let stage = stage::Stage::new(port.lane());
         Self {
             me,
             port,
@@ -233,12 +259,25 @@ impl Editor {
             lens_request: 0,
             lens: live::LensState::default(),
             stroke_room: 0,
+            backdrop_off: None,
+            continuing: false,
+            stage,
+            playback: stage::Playback::default(),
+            export: None,
+            open: false,
         }
     }
 
     /// Opens the window; a Dock click lands here.
-    pub fn open_window(&self) {
+    pub fn open_window(&mut self) {
+        self.open = true;
         self.me.open();
+    }
+
+    /// The window closed; Lens keeps running, so the editor only hides. Preview
+    /// playback stops until it opens again.
+    pub fn on_window_close(&mut self) {
+        self.open = false;
     }
 
     pub(crate) fn doc(&self) -> &Document {
@@ -302,17 +341,22 @@ impl Editor {
             return Layout::default();
         };
         let (width, height) = doc.base.dimensions();
-        let (output_width, output_height) = doc
-            .backdrop
-            .map_or((width, height), |b| b.dimensions((width, height)));
-        // Fit leaves room around the image, and never enlarges it.
+        let frame = self.frame_backdrop().map(|b| b.layout((width, height)));
+        let (output_width, output_height) =
+            frame.as_ref().map_or((width, height), |f| f.dimensions);
+        let origin = frame.map_or((0, 0), |f| f.origin);
+        // Fit leaves room around the picture, and never enlarges it.
         let fit = ((self.canvas.0 - 80.) / output_width as f32)
             .min((self.canvas.1 - 70.) / output_height as f32)
             .clamp(0.01, 1.);
         let scale = self.zoom.unwrap_or(fit);
         Layout {
-            x: (self.canvas.0 - width as f32 * scale) / 2. + self.pan.0,
-            y: (self.canvas.1 - height as f32 * scale) / 2. + self.pan.1,
+            x: (self.canvas.0 - output_width as f32 * scale) / 2.
+                + origin.0 as f32 * scale
+                + self.pan.0,
+            y: (self.canvas.1 - output_height as f32 * scale) / 2.
+                + origin.1 as f32 * scale
+                + self.pan.1,
             scale,
             width: width as f32,
             height: height as f32,
@@ -336,6 +380,10 @@ impl Editor {
         let changed = expired || !messages.is_empty();
         for message in messages {
             self.receive(message, tx);
+        }
+        if let Some(next) = self.advance(now) {
+            tx.wake_after(next);
+            return true;
         }
         changed
     }

@@ -222,34 +222,53 @@ pub struct Renderer {
     transparent_background: bool,
 }
 impl Renderer {
-    pub fn new(source: &RgbaImage, mut b: Backdrop, max_edge: Option<u32>) -> Self {
-        let dimensions = b.dimensions(source.dimensions());
-        let source = b.extend_edges(source);
+    pub fn new(source: &RgbaImage, b: Backdrop, max_edge: Option<u32>) -> Self {
+        Self::build(source.dimensions(), Some(source), b, max_edge)
+    }
+
+    /// The background, colours and shadow for an image of `source` size, without the
+    /// image: the editor draws the image itself, over this layer.
+    pub fn backdrop(source: (u32, u32), b: Backdrop, max_edge: Option<u32>) -> Self {
+        Self::build(source, None, b, max_edge)
+    }
+
+    fn build(
+        source_size: (u32, u32),
+        source: Option<&RgbaImage>,
+        mut b: Backdrop,
+        max_edge: Option<u32>,
+    ) -> Self {
+        let dimensions = b.dimensions(source_size);
         let (w, h) = max_edge.map_or(dimensions, |cap| b.format.video_dimensions(dimensions, cap));
         let scale = (w as f32 / dimensions.0 as f32)
             .min(h as f32 / dimensions.1 as f32)
             .min(1.);
-        let source = if scale < 1. {
-            std::borrow::Cow::Owned(crate::enhance::resize(
-                &source,
-                (
-                    (source.width() as f32 * scale).round().max(1.) as u32,
-                    (source.height() as f32 * scale).round().max(1.) as u32,
-                ),
-                false,
-            ))
+        let extended = b.image_dimensions(source_size);
+        let size = if scale < 1. {
+            (
+                (extended.0 as f32 * scale).round().max(1.) as u32,
+                (extended.1 as f32 * scale).round().max(1.) as u32,
+            )
         } else {
-            source
+            extended
         };
+        let source = source.map(|source| {
+            let source = b.extend_edges(source);
+            if scale < 1. {
+                std::borrow::Cow::Owned(crate::enhance::resize(&source, size, false))
+            } else {
+                source
+            }
+        });
         b.padding = (b.padding as f32 * scale).round() as u32;
         b.inner_radius = (b.inner_radius as f32 * scale).round() as u32;
         b.shadow = (b.shadow as f32 * scale).round() as u32;
         let mut foreground = RgbaImage::new(w, h);
-        let frame = crate::backdrop::Frame::centered((w, h), source.dimensions());
+        let frame = crate::backdrop::Frame::centered((w, h), size);
         let (left, top) = frame.origin;
         let (left_f, top_f) = (left as f32, top as f32);
-        let sw = source.width() as f32;
-        let sh = source.height() as f32;
+        let sw = size.0 as f32;
+        let sh = size.1 as f32;
         for (x, y, p) in foreground.enumerate_pixels_mut() {
             let px = x as f32 + 0.5;
             let py = y as f32 + 0.5;
@@ -270,7 +289,12 @@ impl Renderer {
                     (0.22 * (-2. * (d / (blur * 0.6)).powi(2)).exp() * 255.).round() as u8,
                 ]);
             }
-            if x >= left && y >= top && x < left + source.width() && y < top + source.height() {
+            if let Some(source) = &source
+                && x >= left
+                && y >= top
+                && x < left + size.0
+                && y < top + size.1
+            {
                 let mut src = *source.get_pixel(x - left, y - top);
                 src[3] = (src[3] as f32
                     * crate::backdrop::coverage(crate::backdrop::distance(
@@ -315,11 +339,16 @@ impl Renderer {
         renderer
     }
     pub fn frame(&self, phase: f32) -> RgbaImage {
+        self.compose(phase, phase)
+    }
+    /// A frame with the entrance at phase `entrance` and the background at `phase`, so
+    /// a still can show the image revealed over the moving background as it is now.
+    pub fn compose(&self, entrance: f32, phase: f32) -> RgbaImage {
         let foreground = entrance::render_foreground(
             &self.foreground,
             self.image_animation,
             self.image_bounds,
-            phase * self.image_animation.seconds as f32,
+            entrance * self.image_animation.seconds as f32,
         );
         let s = scene(self.b, phase);
         let mut out = if self.b.motion.uses_shader() {

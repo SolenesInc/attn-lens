@@ -8,6 +8,7 @@
 //! clipboard:PATH             the system clipboard now holds the image at PATH
 //! ocr:the words              text recognition finds these words from now on
 //! pick:#RRGGBB  pick:cancel  answers a Pick from screen that is waiting
+//! close:editor               presses the window's close button
 //! ```
 //!
 //! Any other mark is left to the script. Work runs inline, so a tree read at a
@@ -15,6 +16,7 @@
 //!
 //! When `ATTN_LENS_FAKE_CLIPBOARD` names a folder, what the app copies lands in
 //! it as `image.png` and `text.txt`, so a test can read what a user would paste.
+//! `ATTN_LENS_FAKE_VIDEO_ENCODER` names a stand-in for the MP4 helper.
 use super::{Chord, FAKE_TICK, KeyEvent, PlatformPort, Sink, Voice, Watch, WatchEvent};
 use crate::lens::session::{Area, DisplayFrame, HostTime, Segment};
 use image::{Rgba, RgbaImage};
@@ -51,6 +53,7 @@ struct Script {
     /// After a `jobs:hold` mark, jobs wait here until a `jobs:next` mark runs the oldest,
     /// a `jobs:last` mark the newest, or a `jobs:drain` mark every one waiting.
     held: Option<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
+    close_buttons: Vec<(&'static str, Sink<()>)>,
 }
 
 pub struct FakePort {
@@ -133,6 +136,16 @@ impl FakePort {
             for job in jobs {
                 job();
             }
+        } else if let Some(window) = mark.strip_prefix("close:") {
+            let press = self
+                .script
+                .lock()
+                .unwrap()
+                .close_buttons
+                .iter()
+                .find(|(w, _)| *w == window)
+                .map(|(_, press)| press.clone());
+            press.expect("close: names a window with a close button")(());
         } else if let Some(answer) = mark.strip_prefix("pick:") {
             let sink = self.script.lock().unwrap().pick.take();
             if let Some(sink) = sink {
@@ -268,6 +281,23 @@ impl PlatformPort for FakePort {
     }
     fn exposes_state(&self) -> bool {
         true
+    }
+    fn lane(&self) -> super::Lane {
+        super::Lane::inline()
+    }
+    /// `ATTN_LENS_FAKE_VIDEO_ENCODER` names a stand-in for the helper.
+    fn video_encoder(&self) -> Result<std::path::PathBuf, String> {
+        match std::env::var_os("ATTN_LENS_FAKE_VIDEO_ENCODER") {
+            Some(path) => Ok(path.into()),
+            None => crate::video::encoder_path(),
+        }
+    }
+    fn close_button(&self, window: &'static str, press: Sink<()>) {
+        self.script
+            .lock()
+            .unwrap()
+            .close_buttons
+            .push((window, press));
     }
     fn pick_color(&self, sink: PickSink) {
         self.script.lock().unwrap().pick = Some(sink);

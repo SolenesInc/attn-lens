@@ -132,7 +132,7 @@ impl Editor {
                 .on_press_tx(|s: &mut Editor, tx| s.dispatch_ui(Action::ToggleColorPicker, tx)),
         );
         let mut section = col().gap(8.).child(field(cx, label, swatches));
-        if self.picker.open {
+        if self.picker.open && self.picker.stop.is_none() {
             section = section.child(self.color_picker_view(cx));
         }
         section.child(button(

@@ -1,6 +1,9 @@
 //! Native menus. Each item dispatches the same action a key or button does. Key
 //! equivalents go to the window first, so a focused text field keeps its own keys.
-use super::{Editor, actions::Action};
+use super::{
+    Editor,
+    actions::{Action, AnimationFormat},
+};
 use crate::document::Tool;
 use rune::{App, MenuItem};
 
@@ -19,6 +22,10 @@ pub fn install(mut app: App<Editor>) -> App<Editor> {
     let items = [
         item!("File", "Open Image…", Action::OpenImage, "cmd+o"),
         item!("File", "Save PNG…", Action::SaveImage, "cmd+s"),
+        MenuItem::separator().menu("File"),
+        item!("File", "Export MP4…", Action::Export(AnimationFormat::Mp4)),
+        item!("File", "Export GIF…", Action::Export(AnimationFormat::Gif)),
+        item!("File", "Cancel Export", Action::CancelExport),
         item!("Edit", "Copy as OCR", Action::CopyOcr),
         item!("Edit", "Paste Image", Action::PasteImage),
         item!("Edit", "Delete", Action::Delete),
@@ -36,6 +43,8 @@ pub fn install(mut app: App<Editor>) -> App<Editor> {
         item!("Draw", "Magnifier", Action::SelectTool(Tool::Magnifier)),
         MenuItem::separator().menu("Draw"),
         item!("Draw", "Crop", Action::SelectTool(Tool::Crop)),
+        item!("Draw", "Backdrop", Action::ToggleBackdrop),
+        item!("Draw", "Animation", Action::ToggleAnimationPanel),
         item!("Draw", "Resize & Rotate", Action::ToggleImageTools),
         item!("Zoom", "Fit to Window", Action::Fit, "cmd+1"),
         item!("Zoom", "Actual Size", Action::ActualSize, "cmd+0"),

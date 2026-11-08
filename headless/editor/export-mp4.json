@@ -1,0 +1,344 @@
+{
+ "row": "MP4",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 0.76,
+   "type": "menu-pick",
+   "id": "mp4"
+  },
+  {
+   "t": 0.91,
+   "type": "mark",
+   "name": "nothing-moves"
+  },
+  {
+   "t": 1.06,
+   "type": "drag",
+   "key": "duration-slider",
+   "dx": -116,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 1.28,
+   "type": "tap",
+   "key": "animation-button"
+  },
+  {
+   "t": 1.4,
+   "type": "tap",
+   "key": "entrance-diagonal-reveal"
+  },
+  {
+   "t": 1.52,
+   "type": "tap",
+   "key": "playback"
+  },
+  {
+   "t": 1.72,
+   "type": "mark",
+   "name": "jobs:hold"
+  },
+  {
+   "t": 1.84,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 2.04,
+   "type": "menu-pick",
+   "id": "mp4"
+  },
+  {
+   "t": 2.24,
+   "type": "file-dialog",
+   "path": "$OUT/button.mp4"
+  },
+  {
+   "t": 2.39,
+   "type": "mark",
+   "name": "exporting-button"
+  },
+  {
+   "t": 2.51,
+   "type": "tap",
+   "key": "export-cancel"
+  },
+  {
+   "t": 2.66,
+   "type": "mark",
+   "name": "canceling-button"
+  },
+  {
+   "t": 2.86,
+   "type": "mark",
+   "name": "jobs:drain"
+  },
+  {
+   "t": 3.01,
+   "type": "mark",
+   "name": "canceled-button"
+  },
+  {
+   "t": 3.21,
+   "type": "mark",
+   "name": "jobs:hold"
+  },
+  {
+   "t": 3.33,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 3.53,
+   "type": "menu-pick",
+   "id": "mp4"
+  },
+  {
+   "t": 3.73,
+   "type": "file-dialog",
+   "path": "$OUT/escape.mp4"
+  },
+  {
+   "t": 3.88,
+   "type": "mark",
+   "name": "exporting-escape"
+  },
+  {
+   "t": 4.0,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 4.15,
+   "type": "mark",
+   "name": "canceling-escape"
+  },
+  {
+   "t": 4.35,
+   "type": "mark",
+   "name": "jobs:drain"
+  },
+  {
+   "t": 4.5,
+   "type": "mark",
+   "name": "canceled-escape"
+  },
+  {
+   "t": 4.7,
+   "type": "mark",
+   "name": "jobs:hold"
+  },
+  {
+   "t": 4.82,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 5.02,
+   "type": "menu-pick",
+   "id": "mp4"
+  },
+  {
+   "t": 5.22,
+   "type": "file-dialog",
+   "path": "$OUT/menu.mp4"
+  },
+  {
+   "t": 5.37,
+   "type": "mark",
+   "name": "exporting-menu"
+  },
+  {
+   "t": 5.49,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 5.69,
+   "type": "menu-pick",
+   "id": "cancel"
+  },
+  {
+   "t": 5.84,
+   "type": "mark",
+   "name": "canceling-menu"
+  },
+  {
+   "t": 6.04,
+   "type": "mark",
+   "name": "jobs:drain"
+  },
+  {
+   "t": 6.19,
+   "type": "mark",
+   "name": "canceled-menu"
+  },
+  {
+   "t": 6.31,
+   "type": "tap",
+   "key": "export"
+  },
+  {
+   "t": 6.51,
+   "type": "menu-pick",
+   "id": "mp4"
+  },
+  {
+   "t": 6.71,
+   "type": "file-dialog",
+   "path": "$OUT/out.mp4"
+  },
+  {
+   "t": 6.91,
+   "type": "mark",
+   "name": "jobs:drain"
+  },
+  {
+   "t": 7.51,
+   "type": "mark",
+   "name": "exported"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "nothing-moves",
+   "state": {
+    "backdrop": {
+     "motion": "flow"
+    },
+    "panel": "Backdrop",
+    "export": null
+   },
+   "status_contains": "export MP4 again"
+  },
+  {
+   "at": "exporting-button",
+   "state": {
+    "export": {
+     "format": "MP4",
+     "percent": 0
+    }
+   },
+   "present": [
+    "export-progress",
+    "export-cancel"
+   ],
+   "text": {
+    "export-percent": "Exporting MP4\u2026 0%",
+    "status": "Exporting MP4\u2026"
+   }
+  },
+  {
+   "at": "canceling-button",
+   "text": {
+    "status": "Canceling export\u2026"
+   },
+   "present": [
+    "export-progress"
+   ]
+  },
+  {
+   "at": "canceled-button",
+   "text": {
+    "status": "Export canceled"
+   },
+   "absent": [
+    "export-progress"
+   ],
+   "state": {
+    "export": null
+   },
+   "no_file": [
+    "$OUT/button.mp4"
+   ]
+  },
+  {
+   "at": "canceling-escape",
+   "text": {
+    "status": "Canceling export\u2026"
+   },
+   "present": [
+    "export-progress"
+   ]
+  },
+  {
+   "at": "canceled-escape",
+   "text": {
+    "status": "Export canceled"
+   },
+   "absent": [
+    "export-progress"
+   ],
+   "state": {
+    "export": null
+   },
+   "no_file": [
+    "$OUT/escape.mp4"
+   ]
+  },
+  {
+   "at": "canceling-menu",
+   "text": {
+    "status": "Canceling export\u2026"
+   },
+   "present": [
+    "export-progress"
+   ]
+  },
+  {
+   "at": "canceled-menu",
+   "text": {
+    "status": "Export canceled"
+   },
+   "absent": [
+    "export-progress"
+   ],
+   "state": {
+    "export": null
+   },
+   "no_file": [
+    "$OUT/menu.mp4"
+   ]
+  },
+  {
+   "at": "exported",
+   "status_contains": "Exported MP4 ",
+   "absent": [
+    "export-progress"
+   ],
+   "state": {
+    "export": null
+   },
+   "file_text": {
+    "$OUT/out.mp4": "448 328 30 60 35266560"
+   }
+  }
+ ]
+}

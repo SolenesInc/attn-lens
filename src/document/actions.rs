@@ -36,11 +36,17 @@ pub enum DocumentAction {
         smart: bool,
     },
     Rotate,
+    /// `remember: false` folds the change into the last undo step, as a slider drag does
+    /// after its first move.
     SetBackdrop {
         backdrop: Option<Backdrop>,
+        #[serde(default = "remember_default")]
+        remember: bool,
     },
     SetImageAnimation {
         animation: crate::animation::ImageAnimation,
+        #[serde(default = "remember_default")]
+        remember: bool,
     },
     Undo,
     Redo,
@@ -273,7 +279,7 @@ impl DocumentAction {
                 outcome.reset_view = true;
                 outcome.selection = Selection::Clear;
             }
-            Self::SetBackdrop { backdrop } => {
+            Self::SetBackdrop { backdrop, remember } => {
                 if let Some(b) = backdrop
                     && (b.preset >= PRESETS.len()
                         || b.padding > 512
@@ -291,16 +297,23 @@ impl DocumentAction {
                 }
                 outcome.changed = document.backdrop != backdrop;
                 if outcome.changed {
-                    document.remember();
+                    if remember {
+                        document.remember();
+                    }
                     document.backdrop = backdrop;
                     document.image_animation = animation;
                 }
             }
-            Self::SetImageAnimation { animation } => {
+            Self::SetImageAnimation {
+                animation,
+                remember,
+            } => {
                 animation.validate()?;
                 outcome.changed = document.image_animation != animation;
                 if outcome.changed {
-                    document.remember();
+                    if remember {
+                        document.remember();
+                    }
                     document.image_animation = animation;
                     if let Some(b) = &mut document.backdrop {
                         b.seconds = animation.seconds;
@@ -448,6 +461,7 @@ mod tests {
                 effect: crate::animation::Entrance::Pop,
                 ..Default::default()
             },
+            remember: true,
         }
         .apply(&mut d)
         .unwrap();
@@ -545,6 +559,7 @@ mod tests {
                     preset: PRESETS.len(),
                     ..Default::default()
                 }),
+                remember: true,
             },
         ] {
             assert!(edit.apply(&mut document).is_err());

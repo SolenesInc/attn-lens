@@ -94,20 +94,64 @@ pub trait PlatformPort: Send + Sync {
     fn copy_text(&self, text: &str) -> Result<(), String>;
     /// Reads text from `image`, optionally within [x, y, width, height]. Slow: call it from [`Self::run`].
     fn ocr(&self, image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String>;
-    /// Lets the user pick a color anywhere on screen. `None` means they cancelled.
     /// True on the fake port: the editor then exposes its state for scripts to assert on.
     fn exposes_state(&self) -> bool {
         false
     }
+    /// Lets the user pick a color anywhere on screen. `None` means they cancelled.
     fn pick_color(&self, sink: Sink<Result<Option<[u8; 3]>, String>>);
     /// Runs slow work off the UI thread.
     fn run(&self, job: Box<dyn FnOnce() + Send>) {
         std::thread::spawn(job);
     }
+    /// One long-lived thread that runs its jobs in order, for work that keeps GPU state
+    /// per thread, such as animation frames. The fake runs them inline.
+    fn lane(&self) -> Lane {
+        Lane::thread()
+    }
+    /// The helper that encodes MP4, which `scripts/bundle.sh` puts beside the app.
+    fn video_encoder(&self) -> Result<std::path::PathBuf, String> {
+        crate::video::encoder_path()
+    }
     /// Called from each window's `poll` with Rune's clock. A port whose events
     /// follow that clock returns when to call again.
     fn tick(&self, _now: f64) -> Option<Duration> {
         None
+    }
+    /// What pressing `window`'s close button does. On the Mac the window has a real
+    /// one, so this does nothing; the fake presses it on a `close:WINDOW` mark.
+    fn close_button(&self, _window: &'static str, _press: Sink<()>) {}
+}
+
+type Job = Box<dyn FnOnce() + Send>;
+
+/// Where [`PlatformPort::lane`] sends its jobs.
+pub struct Lane(Box<dyn Fn(Job) + Send + Sync>);
+
+impl Lane {
+    fn thread() -> Self {
+        let (send, jobs) = std::sync::mpsc::channel::<Job>();
+        std::thread::Builder::new()
+            .name("lane".into())
+            .spawn(move || {
+                for job in jobs {
+                    job();
+                }
+            })
+            .expect("start the lane thread");
+        // The thread ends when the last sender drops.
+        let send = std::sync::Mutex::new(send);
+        Self(Box::new(move |job| {
+            let _ = send.lock().unwrap().send(job);
+        }))
+    }
+
+    pub fn inline() -> Self {
+        Self(Box::new(|job| job()))
+    }
+
+    pub fn run(&self, job: Job) {
+        (self.0)(job)
     }
 }
 
