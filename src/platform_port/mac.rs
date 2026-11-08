@@ -6,7 +6,7 @@ use super::{Chord, KeyEvent, PlatformPort, Sink, Voice, Watch, WatchEvent};
 use crate::{
     lens::{
         attn, capture,
-        session::{Area, HostTime, Segment},
+        session::{Area, DisplayFrame, HostTime, Segment},
     },
     permission_guide::{self, Permission},
 };
@@ -35,6 +35,8 @@ use std::{
 const DRAW_KEY_FLAG: u64 = 0x80_0000;
 /// `NSEventMaskFlagsChanged`.
 const FLAGS_CHANGED_MASK: u64 = 1 << 12;
+/// `NSEventModifierFlagShift`.
+const SHIFT_FLAG: u64 = 0x2_0000;
 
 const COMMAND_OPTION: Modifiers = Modifiers::SUPER.union(Modifiers::ALT);
 
@@ -231,6 +233,17 @@ impl PlatformPort for MacPort {
         })
     }
 
+    fn displays(&self) -> Vec<DisplayFrame> {
+        capture::displays()
+    }
+
+    fn shift_held(&self) -> bool {
+        let class = AnyClass::get(c"NSEvent").expect("AppKit is linked");
+        // SAFETY: a class property that needs no permission and works off the main thread.
+        let flags: u64 = unsafe { msg_send![class, modifierFlags] };
+        flags & SHIFT_FLAG != 0
+    }
+
     fn screen_recording(&self) -> bool {
         let granted = permission_guide::granted(Permission::ScreenRecording);
         if !granted {
@@ -254,6 +267,16 @@ impl PlatformPort for MacPort {
 
     fn token(&self) -> Option<String> {
         attn::token()
+    }
+
+    fn store_token(&self, token: &str) -> Result<(), String> {
+        attn::store_token(token).map_err(|failure| match failure {
+            attn::Failure::NotPaired(text) | attn::Failure::Error(text) => text,
+        })
+    }
+
+    fn forget_token(&self) {
+        attn::forget_token();
     }
 
     fn copy_image(&self, image: RgbaImage) -> Result<(), String> {

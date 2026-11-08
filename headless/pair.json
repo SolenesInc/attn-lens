@@ -1,0 +1,9 @@
+{"displays":[{"id":1,"frame":[0,0,1280,800],"scale":2,"primary":true}],
+ "events":[
+ {"t":0.1,"type":"mark","name":"key:capture"},
+ {"t":0.2,"type":"tap","x":400,"y":300},
+ {"t":0.4,"type":"mark","name":"unpaired"},
+ {"t":0.5,"type":"key","name":"Enter"},
+ {"t":0.7,"type":"mark","name":"paired"},
+ {"t":0.8,"type":"mark","name":"end"}
+]}

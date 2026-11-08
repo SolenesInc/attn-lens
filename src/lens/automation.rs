@@ -7,6 +7,10 @@
 //! ```text
 //! {"cmd":"state"}
 //! {"cmd":"key","key":"capture"|"voice"|"keyboard"|"send"|"draw-down"|"draw-up"}
+//! {"cmd":"pick"}                                    the whole display under the pointer
+//! {"cmd":"pick","display":1,"rect":[x,y,w,h]}       rect is optional: the whole display
+//! {"cmd":"pick-last"}
+//! {"cmd":"cancel"}
 //! {"cmd":"still","cause":"hotkey"}
 //! {"cmd":"sessions"}
 //! {"cmd":"send","target":"<session id>","message":"..."}
@@ -95,6 +99,30 @@ fn handle(lens: &Arc<Lens>, request: &Value) -> Result<Value, String> {
             lens.key(parse_key(text("key").ok_or("key needs a \"key\".")?)?);
             Ok(json!({}))
         }
+        "pick" => {
+            match request["display"].as_u64() {
+                Some(display) => {
+                    let rect = match &request["rect"] {
+                        Value::Null => None,
+                        rect => Some(
+                            serde_json::from_value(rect.clone())
+                                .map_err(|_| "rect needs [x, y, width, height].")?,
+                        ),
+                    };
+                    lens.pick(display as u32, rect)?;
+                }
+                None => lens.pick_pointer_display()?,
+            }
+            Ok(json!({}))
+        }
+        "pick-last" => lens
+            .pick_last()
+            .then(|| json!({}))
+            .ok_or_else(|| "No last area to use.".to_string()),
+        "cancel" => {
+            lens.cancel_pick();
+            Ok(json!({}))
+        }
         "still" => {
             lens.take_still(parse_cause(text("cause").unwrap_or("hotkey"))?);
             Ok(json!({}))
@@ -118,7 +146,7 @@ fn handle(lens: &Arc<Lens>, request: &Value) -> Result<Value, String> {
             Ok(json!({}))
         }
         other => Err(format!(
-            "Unknown cmd \"{other}\". Expected state, key, still, sessions, send or end."
+            "Unknown cmd \"{other}\". Expected state, key, pick, pick-last, cancel, still, sessions, send or end."
         )),
     }
 }
