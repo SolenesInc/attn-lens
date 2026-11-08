@@ -16,8 +16,8 @@ and editing shortcuts.
 | Select | Selected marks' options; duplicate, delete, nudge | Click or box-select; Shift adds/toggles; drag moves the group |
 | Draw / Pen | Color, thickness, opacity, Raw / Smooth / Adaptive cleanup | Raw retains input; Smooth rounds jitter; Adaptive preserves sharp turns. Original points stay editable, so cleanup can be changed later. |
 | Line / Arrow | Color, thickness, opacity, solid / dashed / dotted, independent start/end (none, arrow, dot), add point, straighten | No ends makes a plain line; both arrows makes a double arrow. Add point creates a draggable waypoint; a two-point arrow retains its bend handle. |
-| Box | Color, border thickness, opacity, outline / filled, solid / dashed / dotted border, corner radius | Shift draws a square; filled boxes can be picked by their interior |
-| Text | Color, font size, opacity | Native inline single-line editing |
+| Box | Color, opacity, outline / filled, corner radius; an outline also has thickness and solid / dashed / dotted border | Shift draws a square; filled boxes can be picked by their interior |
+| Text | Color, font size, opacity | Inline single-line editing |
 | Highlight | Color, intensity | Transparent rectangular tint; Shift draws a square |
 | Pixelate | Block size | Larger blocks obscure more detail; Shift draws a square |
 | Crop | Free / 1:1 / 4:3 / 16:9 / 9:16 aspect | Drag applies crop; constrained endpoints remain within the image; undo restores it |

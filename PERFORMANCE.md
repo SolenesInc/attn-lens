@@ -1,158 +1,63 @@
-# Drawing performance
+# Editor performance
 
-## Drawing path
+How the editor keeps pixel work off the UI thread. This file holds design, not
+numbers: speed is measured on a real Mac, against the current build, and VM runs do
+not count.
 
-Pointer events append image-coordinate points and notify GPUI directly. The live
-stroke is an antialiased GPU path with round caps and joins. Pointer motion does
-not clone screenshot pixels, rasterize annotations, create RenderImages or upload
-textures. Nearby samples within 0.35 screen pixels are coalesced; long paths are
-split into overlapping chunks to avoid GPUI's u16 vertex limit.
+## Drawing
 
-Completed marks remain visible as GPU overlays until a worker has produced the
-composed preview. Only one preview worker runs at a time; newer changes coalesce
-into its next job. Revision checks reject stale results after undo/new captures.
-Crop and full-resolution export also run on workers. Idle hotkey/completion
-polling was replaced by an async event channel, removing the former 24 ms delay
-and periodic wakeups.
+A pointer move appends image-coordinate points to the gesture and repaints the marks
+in `src/editor/live.rs`, in canvas points. It does not touch screenshot pixels or
+rasterize annotations. Pen samples closer than 0.35 screen pixels are coalesced.
 
-Undo states and export snapshots share immutable source image pixels through
-Arc. Adding an annotation no longer duplicates the screenshot. Crop creates a
-new image and retains the old shared source for undo.
+Marks stay live until the raster has caught up with them. `src/editor/preview.rs`
+renders the raster one job at a time, off the UI thread; a result for an old
+revision asks for another. Crop, resize and rotation run the same way, and land
+with their raster.
 
-## Reproduce
+Dragging a mark leaves the document unchanged until release. The raster stops below
+the first moved mark, and that mark and the ones above it are drawn live. Release
+commits one undo step.
 
-```sh
-cargo test --release --locked drawing_preparation_benchmark -- --ignored --nocapture
-```
+Zoom and pan change only the view transform.
 
-Measured locally on this Mac, optimized build, 100 samples after 10 warmups.
-The legacy comparison reproduces the former 1600×900 preview copy/composition,
-BGRA conversion and RenderImage allocation. GPU measurement includes mark
-cloning and GPUI path tessellation, with a 4K image-coordinate stroke at 40% scale.
+## Undo and memory
 
-| Stroke points | GPU path p50 | GPU path p95 | Former raster p50 | Former raster p95 |
-| --- | ---: | ---: | ---: | ---: |
-| 500 | 0.082 ms | 0.093 ms | 0.655 ms | 0.791 ms |
-| 2,000 | 0.194 ms | 0.200 ms | 0.625 ms | 0.647 ms |
-| 10,000 | 0.986 ms | 1.037 ms | 0.839 ms | 0.869 ms |
+Undo states and render snapshots share the immutable source image through `Arc`, so
+adding a mark does not copy the screenshot. Crop creates a new image and keeps the
+old one for undo. History holds 30 states.
 
-4K history commit (two-point marks, capped at 30 undo states): p50 **0.001 ms**, p95 **0.002 ms**.
+## Backdrops and animation
 
-These are CPU preparation measurements, not input-to-display latency or measured
-frame rate. They exclude GPUI layout/painting, Metal execution, texture uploads,
-OS input scheduling and display refresh. The old approach also waited up to
-24 ms for its polling timer and uploaded a new preview texture during drawing;
-the new live path does neither. At extremely long stroke lengths tessellation
-can cost more CPU than the bounded raster comparison, and was approximately 1 ms in
-this run. No fixed FPS or display latency guarantee is claimed.
+`src/editor/stage.rs` renders frames one at a time on the port's `Lane`, and the
+newest request wins. A frame stays on screen until the next lands. Playback time
+advances only while the window is visible and showing the frame it asked for, so
+playback waits for a slow frame instead of skipping it. Backdrop frames and playing
+entrances render at a 960 px edge, paused entrances at 1920 px, at 30 frames per
+second of preview time.
 
-## Editing and preview
+`src/motion_shader.rs` runs the backdrop effects in Metal, with a matching CPU
+evaluator if Metal fails. Periodic motion is driven by the sine and cosine of the
+loop phase, so a loop's first and last frames meet.
 
-Compositor history/crop, pixelation bounds, non-destructive drafts, shared 4K
-history pixels, and 10,000-point path chunking are covered by automated tests.
-See [QA.md](QA.md) for desktop acceptance and the
-[QA record](docs/qa-history.md) for historical results.
+## Export
 
-Backdrop controls paint their live preview through GPUI. Changing padding,
-colors, gradients, corners or shadow only updates framing metadata; it does not
-clone screenshot pixels or invoke the raster compositor. Full-resolution
-backdrop composition runs on the existing export worker. Slider undo snapshots
-share the immutable screenshot Arc, and each drag produces one history entry.
+GIF and MP4 export run off the UI thread and stream one frame at a time to the
+encoder. GIF is 20 fps at a 960 px edge, with one 256-color palette learned across
+the whole clip, which prevents shimmer. MP4 is 30 fps at a 1920 px edge, encoded by
+an AVFoundation helper.
 
-Resize, adaptive sharpening and rotation run on the existing worker channel.
-Image edits swap in completed previews; normal canvas pointer events retain the
-GPU overlay path. Upscale redraws vector annotations instead of enlarging their
-rasterized pixels. Output limits are checked before allocating resized buffers.
+## Measure
 
-Object dragging retains the original document until mouse-up. A worker prepares
-the raster prefix below the selected object once per gesture; the selected mark
-and subsequent layers render as GPU overlays during pointer movement. Release
-commits one history snapshot and schedules the normal composed preview. Pixelation
-regions above that prefix use their selection outline during dragging and are
-fully recomposited on release. No screenshot rasterization runs in mouse-move.
-
-Pinch, wheel zoom and pan update only the viewport transform and request a GPUI
-redraw. AppKit magnify/smart-magnify events are bridged into the editor channel
-because GPUI 0.2.2 does not expose these events. The monitor is local to the app,
-filters to canvas bounds, and is removed when the editor drops. No timer polling,
-screenshot recomposition or texture upload is used by zoom or pan handlers.
-
-Arrow endpoint and curvature drags update vector geometry and paint a quadratic
-GPU path with a filled triangular head. The midpoint lies on the visible curve;
-export uses the same geometry with a supersampled coverage mask to avoid colored
-alpha fringes. The mask is allocated only on the compositor worker. Curved-arrow
-path preparation measured p50 0.005 ms / p95 0.006 ms over 1,000 release samples.
-
-## Animated backdrops
-
-Display-frame requests run only for an active window with a playing motion
-backdrop. Flow paints GPUI gradient and shadow primitives while keeping the screenshot
-texture constant. Shader effects use the worker path described below; Nebula
-also paints crisp star points above its worker-rendered background. Animation
-leaves source pixels and undo history unchanged. Pause, window deactivation,
-and static backgrounds stop ongoing frame requests. Drawing and object edits
-retain the GPU overlay path.
-
-Video export composites the screenshot/annotations once, caches the foreground
-and shadow coverage, then streams one bounded frame at a time to an AVFoundation
-helper. Soft-blob export shading uses a cached lookup of GPUI's Gaussian
-integration. Opaque foreground pixels bypass animated shading. H.264 output is
-30 fps with a maximum 1920 px edge; no frame sequence is retained in memory.
-Encoding speed varies with output size and effect. Native display timing and
-input latency require separate measurements.
-
-MCP operations use a serial IPC worker. Image import, document transforms, PNG rendering, and MP4 encode/decode do not run on the GPUI thread. The worker snapshots shared document pixels/history, then applies edits only if the editor revision is unchanged. Preview rendering uses the existing asynchronous cache. Video frames stream to AVFoundation rather than accumulating a clip in memory; inline PNG previews are bounded and do not upscale small source images.
-
-Focus effects: spotlight drafts use GPU quads; magnifier drafts use a bounded circular texture with asynchronous source sampling. A lens texture key includes source position, zoom, radius and document revision, but excludes bubble position, so dragging only the lens reuses its texture. Source-handle movement coalesces sampling jobs. Pointer handlers never rasterize a focus effect. Final focus composition is performed by the existing preview/export workers.
-
-GIF encoding renders the fixed foreground once and streams 20 fps frames at ≤960px. A fixed 256-color palette sampled across the whole animation prevents per-frame palette shimmer. All eight background effects pass a periodic endpoint check and a last-to-first step-size check.
-
-Liquid, Lava, Aurora, Contours, Prism and Painterly use a runtime-compiled Metal compute pipeline and a reused shared
-output buffer. GPUI 0.2.2 does not expose custom RGBA shader painting, so this
-prototype reads GPU output into an image and uploads it to GPUI's atlas. Preview
-starts at a 960 px edge and samples 30 frames per second; unchanged/paused
-frames reuse the existing image. Old atlas entries are removed on replacement
-or when leaving shader effects. Effect selection is included in the preview
-cache key, so switching effects at the same phase/palette refreshes the image.
-Screenshot/annotation textures remain unchanged.
-Each editor uses one persistent preview worker. Shader initialization, Metal
-execution/waiting, readback and BGRA conversion run on that worker; the UI only
-requests a frame, consumes the latest completion and paints the cached image.
-The mailbox holds at most one pending request and one completed frame, and
-replaces pending requests when playback advances. The prior valid frame stays
-visible while rendering. Effect, palette, size, duration and pause changes
-invalidate older generations. Paused, busy and inactive redraws hold their
-requested phase, so completion notifications cannot restart suspended playback.
-Closing an editor signals worker shutdown without waiting on a GPU command.
-GPUI atlas upload and image painting still run through its normal UI render path.
-Playback adapts between 960, 720 and 480 px edges using worker render time
-(shader execution, readback and BGRA conversion). An exponential moving average
-above 24 ms for three completions steps down one tier; a completion over 80 ms
-also steps down. The first two completions after a scene/tier change are excluded
-to avoid reacting to shader compilation and buffer allocation. Recovery takes
-90 consecutive completions with an average below 8 ms and each sample below 12 ms.
-This leaves headroom when pixel count increases and avoids repeated quality
-changes. Paused/busy/inactive previews render once at the 960 px cap. The prior
-image remains visible during a tier change; aspect ratio is preserved and small
-previews are never upscaled for rendering. The measurements exclude GPUI upload
-and display, so this controls worker throughput rather than measured display FPS.
-Export does not use the adaptive controller.
-Export uses the same shader at the requested output size, then composites the
-cached foreground and shadow on the CPU. A matching CPU evaluator is used only
-if Metal initialization or execution fails.
-
-The shader QA measured approximately 0.42 ms/frame for compute plus readback at
-960×540 and 1920×1080 on this Mac. This excludes BGRA conversion, GPUI atlas
-upload, layout, foreground composition and display latency; it is not an
-end-to-end frame-rate measurement. Reproduce with:
+These print timings for their own boundary. They are not input-to-display latency
+or a frame rate.
 
 ```sh
-cargo test --locked liquid_visual_qa -- --ignored --nocapture
+cargo test --release --locked document_commit_benchmark -- --ignored --nocapture
+cargo test --locked foreground_sampling_benchmark -- --ignored --nocapture
+cargo test --locked motion_gallery_qa -- --ignored --nocapture
 ```
 
-`motion_gallery_qa` generates portrait/landscape samples of all six shader
-effects and measures their compute-plus-readback cost. Painterly evaluates
-fourteen textured brush marks per pixel; Lava evaluates six merging metaballs.
-The geometric, contour and aurora modes use independent formulas rather than
-recoloring Liquid or Flow. All periodic motion is driven by sine/cosine of the
-loop phase, so frame zero and frame one match exactly.
+`document_commit_benchmark` commits a two-point mark to a 4K document.
+`motion_gallery_qa` renders samples of the shader effects and measures their
+compute-plus-readback cost.

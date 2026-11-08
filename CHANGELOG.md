@@ -57,6 +57,7 @@ Notable user-visible changes are recorded here.
 
 ### Fixed
 
+- The app menu reads "Attn Lens", from the bundle, rather than the executable's name.
 - Attn Lens: a drag started right after the area picker appears now always registers,
   and captures no longer keep about 10 MB of memory each after they close.
 

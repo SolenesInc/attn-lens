@@ -11,6 +11,7 @@
 //! voice:downloading:3:10  voice:loading  voice:warming  voice:listening
 //!                            voice's progress, while it runs
 //! voice:fail:the reason      voice stops on its own
+//! voice:late:fail:the reason  the last finished voice reports this after its finish returned
 //! voice:last:0.5:1.2:words   the sentence in progress, which finishing voice delivers
 //! voice:finish-fails:reason  finishing voice fails with this instead
 //! clipboard:PATH             the system clipboard now holds the image at PATH
@@ -59,6 +60,8 @@ struct SinkSlots {
     /// What the next sample reports: the change since the baseline.
     screen_change: f32,
     voice: Option<Sink<VoiceEvent>>,
+    /// The voice whose finish returned last, which can still report.
+    finished_voice: Option<Sink<VoiceEvent>>,
 }
 
 type Sinks = Arc<Mutex<SinkSlots>>;
@@ -155,6 +158,14 @@ impl FakePort {
             *self.finish_error.lock().unwrap() = Some(reason.into());
         } else if let Some(words) = mark.strip_prefix("voice:last:") {
             *self.last_words.lock().unwrap() = segment(&format!("say:{words}"));
+        } else if let Some(event) = mark
+            .strip_prefix("voice:late:")
+            .and_then(|late| voice_event(&format!("voice:{late}")))
+        {
+            let sink = self.sinks.lock().unwrap().finished_voice.clone();
+            if let Some(sink) = sink {
+                sink(event);
+            }
         } else if let Some(event) = voice_event(mark) {
             let mut sinks = self.sinks.lock().unwrap();
             // Voice that fails has stopped.
@@ -350,11 +361,11 @@ impl PlatformPort for FakePort {
         Ok(Voice(Box::new(move || {
             // After `end_voice` the slot may hold the next voice, on its own helper;
             // this one still delivers its last sentence, as the real helper does.
-            sinks
-                .lock()
-                .unwrap()
-                .voice
-                .take_if(|current| Arc::ptr_eq(current, &sink));
+            {
+                let mut sinks = sinks.lock().unwrap();
+                sinks.voice.take_if(|current| Arc::ptr_eq(current, &sink));
+                sinks.finished_voice = Some(sink.clone());
+            }
             if let Some(error) = finish_error.lock().unwrap().take() {
                 return Err(error);
             }
