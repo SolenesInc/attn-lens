@@ -195,7 +195,8 @@ pub struct Lens {
     state: Mutex<State>,
     /// The capture of each still being taken. A send waits for its capture's
     /// stills so none is left out; another capture's stills are not its concern.
-    pending_stills: (Mutex<Vec<u64>>, Condvar),
+    /// Stills on their way, as (capture id, still id).
+    pending_stills: (Mutex<Vec<(u64, u64)>>, Condvar),
     /// Counts changes; the condvar wakes whoever waits for the next one.
     generation: (Mutex<u64>, Condvar),
     wakers: Mutex<Vec<Box<dyn Fn() + Send>>>,
@@ -310,6 +311,11 @@ impl Lens {
         self.call_editor(EditorCall::Leave { send });
     }
 
+    fn still_pending(&self, capture: u64) -> bool {
+        let pending = self.pending_stills.0.lock().unwrap();
+        pending.iter().any(|&(of, _)| of == capture)
+    }
+
     /// The bar's Edit: the newest still, which may be still on its way. With none
     /// taken yet, takes one to edit.
     pub fn edit_latest(self: &Arc<Self>) {
@@ -318,11 +324,20 @@ impl Lens {
             let Some(capture) = state.capture.as_ref() else {
                 return;
             };
-            let in_flight = self.pending_stills.0.lock().unwrap().contains(&capture.id);
             let latest = capture.stills.last().map(|s| s.id);
             let next = state.next_still;
-            if in_flight {
-                state.edit_when_landed = next.checked_sub(1);
+            let newest_pending = self
+                .pending_stills
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|&&(of, _)| of == capture.id)
+                .map(|&(_, still)| still)
+                .max()
+                .filter(|&pending| latest.is_none_or(|landed| pending > landed));
+            if newest_pending.is_some() {
+                state.edit_when_landed = newest_pending;
                 return;
             }
             if latest.is_none() {
@@ -1028,7 +1043,7 @@ impl Lens {
             capture.view_still = None;
             capture.ink.retain(|m| !m.committed);
             capture.unseen_change = None;
-            let in_flight = self.pending_stills.0.lock().unwrap().contains(&capture.id);
+            let in_flight = self.still_pending(capture.id);
             state.tile = match closing {
                 Closing::Sent => Some(Tile {
                     capture,
@@ -1136,7 +1151,7 @@ impl Lens {
             state.next_still += 1;
             // Counted before the state is released, so a send never sees the
             // still neither kept nor on the way.
-            self.pending_stills.0.lock().unwrap().push(id);
+            self.pending_stills.0.lock().unwrap().push((id, still_id));
             (id, area, still_id)
         };
         let lens = self.clone();
@@ -1194,7 +1209,7 @@ impl Lens {
             }
             {
                 let mut pending = lens.pending_stills.0.lock().unwrap();
-                let index = pending.iter().position(|&c| c == id).unwrap();
+                let index = pending.iter().position(|&p| p == (id, still_id)).unwrap();
                 pending.swap_remove(index);
             }
             lens.pending_stills.1.notify_all();
@@ -1344,7 +1359,7 @@ impl Lens {
             }
             // None kept and none on the way, as when × dropped every one.
             let id = capture.id;
-            let in_flight = self.pending_stills.0.lock().unwrap().contains(&id);
+            let in_flight = self.still_pending(id);
             let needs_still =
                 (capture.stills.is_empty() && !in_flight) || capture.unseen_change.is_some();
             let (voice, handle, after_voice) = match std::mem::take(&mut capture.voice) {
@@ -1387,7 +1402,7 @@ impl Lens {
             finished
         });
         let mut pending = self.pending_stills.0.lock().unwrap();
-        while pending.contains(&id) {
+        while pending.iter().any(|&(capture, _)| capture == id) {
             pending = self.pending_stills.1.wait(pending).unwrap();
         }
         drop(pending);

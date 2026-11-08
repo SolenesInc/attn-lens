@@ -350,7 +350,8 @@ impl Editor {
     /// A running operation is waited for, so its result lands on the still.
     pub fn leave_for_key(&mut self, send: bool, tx: &mut rune::Tx) {
         if self.is_busy() {
-            self.leaving = Some(self.leaving.unwrap_or(false) || send);
+            // The last request wins, so a Back from a closing capture cancels a queued Send.
+            self.leaving = Some(send);
             return;
         }
         let action = if send {

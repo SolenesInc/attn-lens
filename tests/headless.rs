@@ -1039,3 +1039,16 @@ fn an_edit_returning_from_a_closed_capture_leaves_the_new_one_alone() {
     let frame = image::open(run.path("frame-01.png")).unwrap();
     assert!(frame.width() > frame.height(), "the old rotate landed here");
 }
+
+#[test]
+fn edit_opens_the_newest_still_when_an_older_one_is_on_its_way() {
+    let run = Run::new("roundtrip-edit-newest-landed.json", ONE_SESSION);
+    assert!(state(&run, "editing")["editing"].is_number());
+}
+
+#[test]
+fn a_closing_capture_cancels_a_send_queued_in_the_editor() {
+    let run = Run::new("roundtrip-close-cancels-send.json", ONE_SESSION);
+    assert_eq!(state(&run, "done")["send"]["state"], "idle");
+    assert!(!run.path("args").exists(), "a frame was sent");
+}
