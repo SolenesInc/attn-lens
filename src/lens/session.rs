@@ -125,7 +125,6 @@ pub struct Capture {
     pub ink: Vec<InkMark>,
     /// The still that strokes on the current view join (D7 on the plan).
     pub view_still: Option<u64>,
-    pub next_still: u64,
     /// When the screen last changed, while no still that landed has seen it. A send
     /// then takes one more.
     pub unseen_change: Option<HostTime>,

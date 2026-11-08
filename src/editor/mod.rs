@@ -221,6 +221,8 @@ pub struct Editor {
     parked: Option<Document>,
     /// Back or Send waiting for the running operation; true means Send.
     leaving: Option<bool>,
+    /// A still to open once the running operation finishes.
+    opening: Option<(u64, Document)>,
 }
 
 impl Editor {
@@ -277,6 +279,7 @@ impl Editor {
             still: None,
             parked: None,
             leaving: None,
+            opening: None,
         }
     }
 
@@ -297,6 +300,11 @@ impl Editor {
 
     /// Shows a capture's still, undo and all, in place of whatever image was open.
     pub fn open_still(&mut self, still: u64, document: Document, tx: &mut rune::Tx) {
+        // A running operation lands on the image it started on, which is parked next.
+        if self.is_busy() {
+            self.opening = Some((still, document));
+            return;
+        }
         if self.still.is_none() {
             self.commit_text(tx);
             self.parked = self.doc.take();

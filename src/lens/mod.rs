@@ -175,6 +175,8 @@ struct State {
     /// A failure with no capture to hold it, such as a refused still.
     error: Option<String>,
     next_capture: u64,
+    /// Never reset, so an edit coming back for a closed capture's still matches nothing.
+    next_still: u64,
     watch_generation: u64,
     /// Counts voice starts; see `CaptureVoice::Running`.
     voice_run: u64,
@@ -315,7 +317,7 @@ impl Lens {
             };
             let in_flight = self.pending_stills.0.lock().unwrap().contains(&capture.id);
             let latest = capture.stills.last().map(|s| s.id);
-            let next = capture.next_still;
+            let next = state.next_still;
             if in_flight {
                 state.edit_when_landed = next.checked_sub(1);
                 return;
@@ -648,7 +650,6 @@ impl Lens {
                 stills: vec![],
                 ink: vec![],
                 view_still: None,
-                next_still: 0,
                 unseen_change: None,
                 send_still_error: None,
                 segments: vec![],
@@ -1113,16 +1114,15 @@ impl Lens {
         let at = self.port.now();
         let (id, area, still_id) = {
             let mut state = self.state.lock().unwrap();
+            let next_still = state.next_still;
             let capture = state.capture.as_mut()?;
-            let (id, area, still_id) = (capture.id, capture.area, capture.next_still);
+            let (id, area, still_id) = (capture.id, capture.area, next_still);
             if cause != Cause::Send && state.sending == Some(id) {
                 drop(state);
                 self.fail("Attn Lens is sending this capture, so no still was taken.".into());
                 return None;
             }
-            if let Some(capture) = state.capture.as_mut() {
-                capture.next_still += 1;
-            }
+            state.next_still += 1;
             // Counted before the state is released, so a send never sees the
             // still neither kept nor on the way.
             self.pending_stills.0.lock().unwrap().push(id);

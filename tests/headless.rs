@@ -999,3 +999,11 @@ fn send_from_the_editor_adds_no_fresh_still() {
     let args = std::fs::read_to_string(run.path("args")).unwrap();
     assert_eq!(args.matches(".png").count(), 1, "{args}");
 }
+
+#[test]
+fn an_edit_returning_from_a_closed_capture_leaves_the_new_one_alone() {
+    let run = Run::new("roundtrip-old-edit.json", ONE_SESSION);
+    assert_eq!(state(&run, "sent")["send"]["state"], "sent");
+    let frame = image::open(run.path("frame-01.png")).unwrap();
+    assert!(frame.width() > frame.height(), "the old rotate landed here");
+}
