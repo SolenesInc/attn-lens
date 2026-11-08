@@ -428,6 +428,16 @@ fn an_event_from_a_stopped_watch_leaves_the_new_capture_alone() {
 }
 
 #[test]
+fn a_failed_click_still_leaves_the_change_for_send_to_capture() {
+    let run = Run::new("click-still-fails.json", ONE_SESSION);
+    run.tree("bar", "sent");
+    assert!(
+        run.path("frame-02.png").exists(),
+        "the click's change was not sent"
+    );
+}
+
+#[test]
 fn stills_come_with_their_causes_and_ink_fades_only_once_its_still_exists() {
     let run = Run::new("stills.json", ONE_SESSION);
 

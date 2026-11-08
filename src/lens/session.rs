@@ -104,8 +104,9 @@ pub struct Capture {
     /// The still that strokes on the current view join (D7 on the plan).
     pub view_still: Option<u64>,
     pub next_still: u64,
-    /// The screen changed after the last still, so a send takes one more.
-    pub unseen_change: bool,
+    /// When the screen last changed, while no still that landed has seen it. A send
+    /// then takes one more.
+    pub unseen_change: Option<HostTime>,
     /// Why the still a running send was waiting for failed; that send fails too.
     pub send_still_error: Option<String>,
     pub segments: Vec<Segment>,

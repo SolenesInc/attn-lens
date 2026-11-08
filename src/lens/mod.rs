@@ -377,7 +377,7 @@ impl Lens {
                 ink: vec![],
                 view_still: None,
                 next_still: 0,
-                unseen_change: false,
+                unseen_change: None,
                 send_still_error: None,
                 segments: vec![],
                 target,
@@ -753,13 +753,13 @@ impl Lens {
             let cause = cause.filter(|_| state.sending != Some(capture.id));
             let news = cause.is_some()
                 || capture.view_still.is_some()
-                || !capture.unseen_change
+                || capture.unseen_change.is_none()
                 || capture.ink.iter().any(|m| !m.stale);
+            capture.unseen_change = Some(self.port.now());
             if !news {
                 return;
             }
             capture.view_still = None;
-            capture.unseen_change = cause.is_none();
             for mark in &mut capture.ink {
                 mark.stale = true;
             }
@@ -776,7 +776,7 @@ impl Lens {
     /// Returns the id the still will have.
     pub fn take_still(self: &Arc<Self>, cause: Cause) -> Option<u64> {
         let at = self.port.now();
-        let (id, area, still_id, covers_change) = {
+        let (id, area, still_id) = {
             let mut state = self.state.lock().unwrap();
             let capture = state.capture.as_mut()?;
             let (id, area, still_id) = (capture.id, capture.area, capture.next_still);
@@ -785,16 +785,13 @@ impl Lens {
                 self.fail("Attn Lens is sending this capture, so no still was taken.".into());
                 return None;
             }
-            let covers_change =
-                cause == Cause::Send || state.capture.as_ref().is_some_and(|c| c.unseen_change);
             if let Some(capture) = state.capture.as_mut() {
                 capture.next_still += 1;
-                capture.unseen_change = false;
             }
             // Counted before the state is released, so a send never sees the
             // still neither kept nor on the way.
             self.pending_stills.0.lock().unwrap().push(id);
-            (id, area, still_id, covers_change)
+            (id, area, still_id)
         };
         let lens = self.clone();
         self.port.run(Box::new(move || {
@@ -819,19 +816,17 @@ impl Lens {
                             };
                             let index = capture.stills.partition_point(|s| s.at <= at);
                             capture.stills.insert(index, still);
+                            if capture.unseen_change.is_some_and(|change| change <= at) {
+                                capture.unseen_change = None;
+                            }
                             join_finished_ink(capture);
                         }
                     }
                     Err(error) => {
                         // Ink with no frame under it cannot be sent; the next press retries.
-                        let sending = state.sending == Some(id);
                         if let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) {
-                            // The change is still unseen, and a send must not go without it.
-                            if covers_change {
-                                capture.unseen_change = true;
-                                if sending {
-                                    capture.send_still_error = Some(error.clone());
-                                }
+                            if cause == Cause::Send {
+                                capture.send_still_error = Some(error.clone());
                             }
                             capture.ink.retain(|m| m.still != still_id);
                             if capture.view_still == Some(still_id) {
@@ -906,7 +901,8 @@ impl Lens {
             // None kept and none on the way, as when × dropped every one.
             let id = capture.id;
             let in_flight = self.pending_stills.0.lock().unwrap().contains(&id);
-            let needs_still = (capture.stills.is_empty() && !in_flight) || capture.unseen_change;
+            let needs_still =
+                (capture.stills.is_empty() && !in_flight) || capture.unseen_change.is_some();
             state.send = SendStatus::Sending;
             state.sending = Some(id);
             (id, needs_still, state.voice.take())
