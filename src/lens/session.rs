@@ -15,6 +15,9 @@ impl HostTime {
     pub fn from_secs(seconds: f64) -> Self {
         Self((seconds * 1e9) as u64)
     }
+    pub fn after(self, wait: std::time::Duration) -> Self {
+        Self(self.0 + wait.as_nanos() as u64)
+    }
     pub fn since(self, earlier: HostTime) -> std::time::Duration {
         std::time::Duration::from_nanos(self.0.saturating_sub(earlier.0))
     }
@@ -70,8 +73,6 @@ pub struct Still {
     pub area: Area,
     pub thumb: rune::Pixels,
     pub doc: Document,
-    /// One span per mark, by index. A mark added in the editor has none.
-    pub times: Vec<(HostTime, HostTime)>,
 }
 
 /// One phrase of transcript, from its first speech frame to its last.
@@ -111,7 +112,11 @@ pub enum CaptureVoice {
     },
     /// Waiting for the sentence in progress. `send_after`: Send came meanwhile, and
     /// starts, or fails, once this finish returns, so it carries the last sentence.
-    Finishing { send_after: bool },
+    Finishing {
+        /// The run being finished; see `Running`.
+        run: u64,
+        send_after: bool,
+    },
 }
 
 /// One live session from ⌘⌥X to Send or Esc, over one area.
@@ -124,7 +129,6 @@ pub struct Capture {
     pub ink: Vec<InkMark>,
     /// The still that strokes on the current view join (D7 on the plan).
     pub view_still: Option<u64>,
-    pub next_still: u64,
     /// When the screen last changed, while no still that landed has seen it. A send
     /// then takes one more.
     pub unseen_change: Option<HostTime>,

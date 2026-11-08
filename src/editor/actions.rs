@@ -98,6 +98,10 @@ pub enum Action {
     },
     Export(AnimationFormat),
     CancelExport,
+    /// Back to the live capture this still came from, keeping the edit.
+    BackToCapture,
+    /// Sends the capture this still came from.
+    SendCapture,
     Cancel,
     Help,
     Quit,

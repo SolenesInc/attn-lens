@@ -262,6 +262,7 @@ impl DocumentAction {
                     color: [0; 4],
                     width: 1.,
                     text: String::new(),
+                    drawn: None,
                 });
                 outcome.reset_view = true;
                 outcome.selection = Selection::Clear;
@@ -357,6 +358,7 @@ mod tests {
             color: [255, 0, 0, 255],
             width: 5.,
             text: String::new(),
+            drawn: None,
         };
         assert_eq!(
             validate_mark(&mark).unwrap_err(),
@@ -376,6 +378,7 @@ mod tests {
                 tool: Tool::Rectangle,
                 points: vec![(20., 20.), (180., 180.)],
                 curve: None,
+                drawn: None,
                 width: 32.,
                 color: [255; 4],
                 text: String::new(),
@@ -484,6 +487,7 @@ mod tests {
             text: String::new(),
             curve: None,
             style: Default::default(),
+            drawn: None,
         };
         document.commit(mark.clone());
         document.commit(mark.clone());
@@ -540,6 +544,7 @@ mod tests {
             color: [255; 4],
             width: 3.,
             text: String::new(),
+            drawn: None,
         };
         DocumentAction::AddAnnotation { mark: mark.clone() }
             .apply(&mut document)

@@ -54,6 +54,7 @@ fn mark(tool: Tool, points: Vec<(f32, f32)>, width: f32, text: String) -> Mark {
         color: INK,
         width,
         text,
+        drawn: None,
     }
 }
 
@@ -348,12 +349,24 @@ fn mark_element(index: usize, mark: &Mark, origin: (f32, f32)) -> El {
     }
 }
 
+fn capture_state(s: &Ink) -> El {
+    el().key("capture-state")
+        .label(s.lens.state_json().to_string())
+        .absolute(0., 0.)
+        .size(1., 1.)
+}
+
 pub fn ink_view(s: &Ink, _: &mut Cx<Ink>) -> El {
     let area = s
         .lens
         .read(|summary| summary.capture.as_ref().map(|c| c.area));
     let Some(area) = area else {
-        return el().key("ink").w_full().h_full();
+        // A closed capture's tile is still state a script reads.
+        return el()
+            .key("ink")
+            .w_full()
+            .h_full()
+            .children(s.lens.port().exposes_state().then(|| capture_state(s)));
     };
     let origin = (area.rect[0] as f32, area.rect[1] as f32);
     let (width, height) = (area.rect[2] as f32, area.rect[3] as f32);
@@ -384,12 +397,7 @@ pub fn ink_view(s: &Ink, _: &mut Cx<Ink>) -> El {
         root = root.child(mark_element(index, mark, origin));
     }
     if s.lens.port().exposes_state() {
-        root = root.child(
-            el().key("capture-state")
-                .label(s.lens.state_json().to_string())
-                .absolute(0., 0.)
-                .size(1., 1.),
-        );
+        root = root.child(capture_state(s));
     }
     if let Some(mark) = &draft {
         root = root.child(

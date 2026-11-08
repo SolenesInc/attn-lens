@@ -50,6 +50,10 @@ pub struct Mark {
     pub color: [u8; 4],
     pub width: f32,
     pub text: String,
+    /// When this mark was drawn on a live capture, as host-clock nanoseconds from
+    /// its first to its last point. Editor marks have none, so no timeline row.
+    #[serde(skip)]
+    pub drawn: Option<(u64, u64)>,
 }
 #[derive(Clone)]
 struct Snapshot {
@@ -490,6 +494,7 @@ pub fn demo() -> RgbaImage {
                 color,
                 width: size / 7.,
                 text: text.into(),
+                drawn: None,
             },
         );
     };
@@ -595,6 +600,7 @@ mod tests {
                     color,
                     width: 6.,
                     text: text.into(),
+                    drawn: None,
                 });
                 for image in [doc.render(None), doc.export()] {
                     let label_pixels = image
@@ -634,6 +640,7 @@ mod tests {
                 color: [255; 4],
                 width: em / 7.,
                 text: text.into(),
+                drawn: None,
             };
             let mut actual = RgbaImage::new(160, 100);
             paint(&mut actual, &mark);
@@ -661,6 +668,7 @@ mod tests {
             color: [255, 0, 0, 255],
             width: 2.,
             text: String::new(),
+            drawn: None,
         }
     }
     #[test]

@@ -175,9 +175,10 @@ pub trait PlatformPort: Send + Sync {
     fn tick(&self, _now: f64) -> Option<Duration> {
         None
     }
-    /// What pressing `window`'s close button does. On the Mac the window has a real
-    /// one, so this does nothing; the fake presses it on a `close:WINDOW` mark.
-    fn close_button(&self, _window: &'static str, _press: Sink<()>) {}
+    /// A control a script cannot tap because it is outside the window being driven:
+    /// a window's close button, or the bar's controls. On the Mac these are real, so
+    /// this does nothing; the fake presses one on a `close:NAME` or `press:NAME` mark.
+    fn script_button(&self, _name: &'static str, _press: Sink<()>) {}
 }
 
 type Job = Box<dyn FnOnce() + Send>;

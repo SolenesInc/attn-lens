@@ -29,7 +29,6 @@ pub struct Frame {
     pub at: HostTime,
     pub cause: Cause,
     pub doc: Document,
-    pub times: Vec<(HostTime, HostTime)>,
 }
 
 pub struct Source {
@@ -135,11 +134,21 @@ fn header(source: &Source, sheets: usize) -> String {
 }
 
 /// The time of the capture's last event.
+/// When a mark was drawn on the live capture.
+fn span(mark: &Mark) -> Option<(HostTime, HostTime)> {
+    mark.drawn
+        .map(|(start, end)| (HostTime(start), HostTime(end)))
+}
+
+fn spans(frame: &Frame) -> impl Iterator<Item = (HostTime, HostTime)> + '_ {
+    frame.doc.marks.iter().filter_map(span)
+}
+
 fn longest(source: &Source) -> HostTime {
     let frames = source
         .frames
         .iter()
-        .flat_map(|frame| std::iter::once(frame.at).chain(frame.times.iter().map(|&(_, end)| end)));
+        .flat_map(|frame| std::iter::once(frame.at).chain(spans(frame).map(|(_, end)| end)));
     let words = source.segments.iter().map(|segment| segment.end);
     frames.chain(words).max().unwrap_or(source.started)
 }
@@ -155,7 +164,10 @@ fn rows(source: &Source) -> Vec<String> {
         let cause = cause_name(frame.cause);
         rows.push((at, 0, format!("{} still {still} ({cause})", since(at))));
         // A mark added in the editor has no span, so it has no row.
-        for (mark, &(start, end)) in frame.doc.marks.iter().zip(&frame.times) {
+        for mark in &frame.doc.marks {
+            let Some((start, end)) = span(mark) else {
+                continue;
+            };
             let (from, to) = (since(start), since(end));
             let span = if from == to {
                 from
@@ -430,6 +442,7 @@ mod tests {
 
     fn mark(tool: Tool, text: &str) -> Mark {
         Mark {
+            drawn: None,
             style: Default::default(),
             tool,
             curve: None,
@@ -446,6 +459,13 @@ mod tests {
             doc.commit(mark);
         }
         doc
+    }
+
+    fn drawn(mark: Mark, start: f64, end: f64) -> Mark {
+        Mark {
+            drawn: Some((at(start).0, at(end).0)),
+            ..mark
+        }
     }
 
     fn word(start: f64, end: f64, text: &str) -> Segment {
@@ -465,20 +485,17 @@ mod tests {
                 Frame {
                     at: at(0.2),
                     cause: Cause::Hotkey,
-                    doc: doc(COLORS[0], vec![mark(Tool::Arrow, "")]),
-                    times: vec![(at(5.1), at(7.4))],
+                    doc: doc(COLORS[0], vec![drawn(mark(Tool::Arrow, ""), 5.1, 7.4)]),
                 },
                 Frame {
                     at: at(9.),
                     cause: Cause::Click,
-                    doc: doc(COLORS[1], vec![mark(Tool::Rectangle, "")]),
-                    times: vec![(at(12.), at(15.))],
+                    doc: doc(COLORS[1], vec![drawn(mark(Tool::Rectangle, ""), 12., 15.)]),
                 },
                 Frame {
                     at: at(40.),
                     cause: Cause::Send,
                     doc: doc(COLORS[2], vec![]),
-                    times: vec![],
                 },
             ],
             segments: vec![
@@ -597,7 +614,6 @@ mod tests {
             at: at(index as f64),
             cause: Cause::Click,
             doc: doc(COLORS[index % 3], vec![]),
-            times: vec![],
         };
         let source = Source {
             started: at(0.),

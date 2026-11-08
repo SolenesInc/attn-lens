@@ -1,44 +1,81 @@
-# Send to an attn session
+# Capture and send to an attn session
 
-Attn Lens sends a marked-up screenshot to an agent running in
-[attn](https://github.com/victorarias/attn), on this Mac or on an outpost. The
-agent gets your message plus an `attn agent attachment … --out <path>` command
-that saves the PNG where the agent runs, so a session on another machine works
-the same as a local one.
+Attn Lens captures part of your live screen, lets you mark it up in place, and
+sends it to an agent running in [attn](https://github.com/victorarias/attn), on
+this Mac or on an outpost. The screen stays live for the whole capture: clicks,
+scrolls and typing keep reaching your apps.
 
 ## Capture and send
 
-1. Press **⌘⌥2** anywhere. The display under the pointer freezes, outlined in
-   orange, with a bar at the bottom.
-2. Mark it up:
-   - **drag**: arrow
-   - **⇧ drag**: box
-   - **⌥T**, then click: a label; type it and press **↩** (**Esc** cancels)
-   - **⌘Z**: undo the last mark
-3. Type your message. Typing always goes to the message field.
-4. Press **↩**. The capture goes to the session on the chip at the left of the
-   bar, which starts on the session you last focused in attn.
+1. Press **⌘⌥X**. Drag for an area, click for the whole display, press **↩** for
+   the last area, or **Esc** to cancel. The area stays outlined; drag a corner to
+   adjust it.
+2. Hold **fn** and drag to draw. A straight drag is an arrow, any other stays
+   freehand, and **⇧** makes a box. The bar's Highlight, Label and Counter buttons
+   set the next stroke.
+3. Type your message in the bar. Click the page to give it the keyboard; **⌘⌥C**
+   takes it back.
+4. Press **⌘⌥S** to talk: what you say is transcribed on this Mac, phrase by
+   phrase. **⌘⌥S** again stops.
+5. Press **↩** in the bar, or **⌘⌥↩** from anywhere. The capture goes to the
+   session on the chip at the left of the bar.
 
-The overlay closes, focus returns to the app you were in, and the capture
-shrinks into a tile in the corner. Click the tile to reopen it with its marks,
-message and target, for example to send it to a second session. **Esc** closes
-a capture without sending and keeps it in the tile too. A send already on its
-way still arrives, and the tile then says where it went.
+Lens takes stills as you go: when you start drawing on a new view, on **⌘⌥X**, on
+each click in the area, on a window switch, and at Send if the screen moved after
+the last one. Ink fades once its still is saved and the screen changes. Each
+thumbnail in the bar has an **×** to drop that still.
 
-If attn refuses a send, the overlay stays open with your marks and message and
-shows attn's error text as it printed it. Fix the cause, or press **Tab** to
-pick another session, and press **↩** again. If Lens cannot list attn's
-sessions, for example because attn is not running, the bar shows attn's error
-instead; once attn is back, **↩** or **Tab** lists them again.
+## Edit a still
 
-## Other keys
+The bar's **Edit** opens the newest still in the editor; a thumbnail opens that
+still. Use any tool, for example **Pixelate** on a secret. See
+[the editor's guide](usage.md).
+
+- **‹ Back** (or closing the window, or **⌘⌥X**) returns to the same live capture.
+  The still keeps its marks and undo history, so you can open it again and go on.
+- **Send ↩** in the editor's toolbar, or **⌘⌥↩**, sends the capture from there,
+  with the stills you have. It adds no fresh still of the screen.
+
+While a still is open the capture waits: its outline and bar hide, and no stills
+are taken. Voice keeps running. Lens never sends a raw copy of an edited still, but
+each still is its own image: a secret visible in two stills needs pixelating in
+both, or **×** on one of them.
+
+## After Send: the tile
+
+The capture shrinks to a tile in the corner of the display. It leaves after 5
+seconds, and stays while the pointer is on it. Click it to reopen the capture as
+it was, for example to send it to a second session.
+
+**Esc** closes a capture without sending. If it holds a still, it keeps a tile
+that stays until you click it, press its **×**, or start another capture, which
+takes the tile's place.
+
+If attn refuses a send, the capture stays open with your stills and message and
+shows attn's error as it printed it. Fix the cause, or press **Tab** to pick
+another session, and send again. If Lens cannot list attn's sessions, the bar shows
+attn's error instead; once attn is back, **↩** or **Tab** lists them again.
+
+## What the agent receives
+
+One `attn send`: your message and the stills as full-resolution PNGs, each rendered
+from its edited document. The agent gets a command that saves each PNG where it
+runs, so a session on another machine works like a local one.
+
+## Keys
 
 | Key | Does |
 | --- | --- |
-| **Tab** | Opens the palette: your message on top, the chosen session first, other sessions grouped by machine, then Copy image, Save PNG and Edit. **↑ ↓** move, **↩** chooses, **Esc** goes back. |
-| **⌘C** | Copies the marked-up image (when no message text is selected). |
-| **⌘S** | Saves a PNG. |
-| **⌘E** | Opens the capture in the editor for crop, pixelate, backdrops and GIF/MP4 export. In the editor, **⌘↩** (or **Send to attn** in the toolbar) brings the edited image back to the Send bar. |
+| **⌘⌥X** | Starts a capture. During one, takes a still; in the editor, goes Back. |
+| **fn** held | Drags draw. |
+| **⌘⌥S** | Starts or stops voice, during a capture. |
+| **⌘⌥C** | Gives the keyboard back to the message. |
+| **⌘⌥↩** | Sends, from anywhere, including the editor. |
+| **Tab** | Opens the palette of sessions. |
+| **Esc** | Closes the capture, keeping its tile if it holds a still. |
+
+Lens is a Dock app: **⌘Q** quits, and a Dock click opens the editor, empty and
+ready for an image.
 
 ## Pairing
 
@@ -73,18 +110,10 @@ and reopen Lens afterwards.
 
 ## Automation
 
-Launched with `--automation`, Lens serves the same actions the keys and pointer
-use, for tests and scripted proofs:
+Launched with `--automation`, Lens serves a development socket for scripted checks:
 
 ```sh
-AttnLens lens capture                         # same as ⌘⌥2
-AttnLens lens reopen                          # same as clicking the corner tile
-AttnLens lens state                           # open capture, status, sessions
-AttnLens lens overlay '{"type":"add_mark","tool":"arrow","points":[[900,300],[700,200]]}'
-AttnLens lens overlay '{"type":"set_message","text":"This button does nothing"}'
-AttnLens lens overlay '{"type":"choose_session","id":"<session id>"}'
-AttnLens lens overlay '{"type":"send"}'
+AttnLens lens '{"cmd":"state"}'
 ```
 
-Other actions: `undo`, `toggle_palette`, `pair`, `copy`, `save`, `edit`,
-`close`. Mark points are image pixels; a `text` mark takes `"text"`.
+The header of `src/lens/automation.rs` lists the requests.

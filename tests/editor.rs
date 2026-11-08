@@ -12,7 +12,10 @@ use std::{
 const SCRIPTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/headless/editor");
 
 /// Scripts for behaviour the docs describe in prose, not in a table.
-const PROSE: [&str; 16] = [
+const PROSE: [&str; 19] = [
+    "open-still-cancelled",
+    "open-still-while-busy",
+    "text-draft-before-still",
     "backdrop-motion",
     "recolour-keeps-opacity",
     "lens-follows-drag",

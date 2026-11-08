@@ -6,6 +6,10 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
+- A capture's stills open in the editor from Edit or a thumbnail. Back returns to
+  the same live capture with the edit kept and undoable, and Send works from the
+  editor. After Send the capture shrinks to a corner tile that leaves after 5 s,
+  stays while hovered and reopens on click; after Esc its tile stays.
 - Attn Lens's Send now delivers one message with a timeline of stills, marks and
   spoken words in time order, a numbered contact sheet per six stills, and every
   still as a full-resolution PNG. One still with no speech sends one PNG and a

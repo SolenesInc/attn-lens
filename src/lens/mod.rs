@@ -11,6 +11,7 @@ pub mod deliver;
 pub mod ink;
 pub mod select;
 pub mod session;
+pub mod tile;
 pub mod voice;
 #[cfg(target_os = "macos")]
 pub mod watch;
@@ -41,6 +42,36 @@ const CHANGE_FRACTION: f32 = 0.6;
 
 /// How long ink takes to fade: a feel choice, judged in the user's session (C15).
 const FADE: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// How long the tile of a sent capture stays (D13 on the plan).
+const TILE_STAYS: Duration = Duration::from_secs(5);
+
+/// What Lens asks of the editor window, which owns a still while it is open.
+pub enum EditorCall {
+    Open {
+        still: u64,
+        document: Box<Document>,
+    },
+    /// Back to the capture, then Send if `send`.
+    Leave {
+        send: bool,
+    },
+}
+
+/// How a capture closed, which decides what is left of it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Closing {
+    Esc,
+    Sent,
+}
+
+/// A closed capture, kept in the corner until it leaves or the user acts on it.
+struct Tile {
+    capture: Capture,
+    sent: bool,
+    /// When it leaves. None while hovered, and always for an unsent capture.
+    leaves: Option<HostTime>,
+}
 
 /// Whether the ink layer takes the pointer: `All` while the draw key is down.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -120,6 +151,11 @@ struct State {
     picking: Option<Vec<DisplayFrame>>,
     last_area: Option<Area>,
     capture: Option<Capture>,
+    tile: Option<Tile>,
+    /// The still the editor holds. The live surfaces stay hidden and the watch off.
+    editing: Option<u64>,
+    /// Open this still in the editor as soon as its frame lands.
+    edit_when_landed: Option<u64>,
     keys: KeyOwner,
     /// Counts requests to hand the keyboard to the bar.
     bar_key_requests: u64,
@@ -142,6 +178,8 @@ struct State {
     /// A failure with no capture to hold it, such as a refused still.
     error: Option<String>,
     next_capture: u64,
+    /// Never reset, so an edit coming back for a closed capture's still matches nothing.
+    next_still: u64,
     watch_generation: u64,
     /// Counts voice starts; see `CaptureVoice::Running`.
     voice_run: u64,
@@ -157,10 +195,12 @@ pub struct Lens {
     state: Mutex<State>,
     /// The capture of each still being taken. A send waits for its capture's
     /// stills so none is left out; another capture's stills are not its concern.
-    pending_stills: (Mutex<Vec<u64>>, Condvar),
+    /// Stills on their way, as (capture id, still id).
+    pending_stills: (Mutex<Vec<(u64, u64)>>, Condvar),
     /// Counts changes; the condvar wakes whoever waits for the next one.
     generation: (Mutex<u64>, Condvar),
     wakers: Mutex<Vec<Box<dyn Fn() + Send>>>,
+    editor: Mutex<Option<Sink<EditorCall>>>,
     /// Each window's name and how to ask whether it shows, for automation.
     windows: Mutex<Vec<(&'static str, WindowVisible)>>,
 }
@@ -173,6 +213,7 @@ impl Lens {
             pending_stills: Default::default(),
             generation: Default::default(),
             wakers: Default::default(),
+            editor: Default::default(),
             windows: Default::default(),
         })
     }
@@ -184,6 +225,18 @@ impl Lens {
     /// Calls `wake` after every change.
     pub fn on_change(&self, wake: impl Fn() + Send + 'static) {
         self.wakers.lock().unwrap().push(Box::new(wake));
+    }
+
+    /// Where Lens reaches the editor window.
+    pub fn set_editor(&self, editor: Sink<EditorCall>) {
+        *self.editor.lock().unwrap() = Some(editor);
+    }
+
+    fn call_editor(&self, call: EditorCall) {
+        let editor = self.editor.lock().unwrap().clone();
+        if let Some(editor) = editor {
+            editor(call);
+        }
     }
 
     /// Reports `window` in the automation state.
@@ -230,7 +283,9 @@ impl Lens {
             KeyEvent::DrawDown => self.set_input(Input::All),
             KeyEvent::DrawUp => self.set_input(Input::None),
             KeyEvent::Pressed(Chord::Capture) => {
-                if self.is_open() {
+                if self.is_editing() {
+                    self.leave_editor(false);
+                } else if self.is_open() {
                     // The asked-for still begins a new view, so the next stroke takes its own.
                     if let Some(capture) = self.state.lock().unwrap().capture.as_mut() {
                         capture.view_still = None;
@@ -247,13 +302,205 @@ impl Lens {
         }
     }
 
+    fn is_editing(&self) -> bool {
+        self.state.lock().unwrap().editing.is_some()
+    }
+
+    /// Asks the editor to give its still back, committing what it holds.
+    pub fn leave_editor(&self, send: bool) {
+        self.call_editor(EditorCall::Leave { send });
+    }
+
+    fn still_pending(&self, capture: u64) -> bool {
+        let pending = self.pending_stills.0.lock().unwrap();
+        pending.iter().any(|&(of, _)| of == capture)
+    }
+
+    /// The bar's Edit: the newest still, which may be still on its way. With none
+    /// taken yet, takes one to edit.
+    pub fn edit_latest(self: &Arc<Self>) {
+        let latest = {
+            let mut state = self.state.lock().unwrap();
+            let Some(capture) = state.capture.as_ref() else {
+                return;
+            };
+            let latest = capture.stills.last().map(|s| s.id);
+            let next = state.next_still;
+            let newest_pending = self
+                .pending_stills
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|&&(of, _)| of == capture.id)
+                .map(|&(_, still)| still)
+                .max()
+                .filter(|&pending| latest.is_none_or(|landed| pending > landed));
+            if newest_pending.is_some() {
+                state.edit_when_landed = newest_pending;
+                return;
+            }
+            if latest.is_none() {
+                state.edit_when_landed = Some(next);
+            }
+            latest
+        };
+        match latest {
+            Some(still) => self.edit_still(still),
+            None => {
+                self.take_still(Cause::Hotkey);
+            }
+        }
+    }
+
+    /// Hands a still to the editor. The capture waits behind it: its surfaces hide
+    /// and the watch stops, since the editor window itself would count as the page
+    /// changing. The ink left on screen goes, as the editor may change those marks.
+    pub fn edit_still(self: &Arc<Self>, id: u64) {
+        let document = {
+            let mut guard = self.state.lock().unwrap();
+            let state = &mut *guard;
+            let Some(capture) = state.capture.as_mut() else {
+                return;
+            };
+            if state.editing.is_some() || state.sending == Some(capture.id) {
+                return;
+            }
+            let Some(still) = capture.stills.iter().find(|s| s.id == id) else {
+                return;
+            };
+            let document = still.doc.clone();
+            capture.view_still = None;
+            for mark in &mut capture.ink {
+                mark.stale = true;
+            }
+            state.editing = Some(id);
+            state.input = Input::None;
+            state.palette = None;
+            state.watch = None;
+            state.watch_generation += 1;
+            document
+        };
+        self.changed();
+        self.call_editor(EditorCall::Open {
+            still: id,
+            document: Box::new(document),
+        });
+    }
+
+    /// The editor's latest version of a still.
+    pub fn still_edited(&self, id: u64, document: Document) {
+        let mut guard = self.state.lock().unwrap();
+        let state = &mut *guard;
+        let open = state.capture.iter_mut();
+        let closed = state.tile.iter_mut().map(|t| &mut t.capture);
+        // The capture can close behind the editor; the edit goes with it.
+        if let Some(still) = open
+            .chain(closed)
+            .flat_map(|c| c.stills.iter_mut())
+            .find(|s| s.id == id)
+        {
+            still.doc = document;
+        }
+    }
+
+    /// The editor gave its still back: the capture shows again, with the keyboard
+    /// on its message and the strip showing the edit.
+    pub fn finish_editing(self: &Arc<Self>, id: u64) {
+        let (area, edited) = {
+            let mut state = self.state.lock().unwrap();
+            if state.editing != Some(id) {
+                return;
+            }
+            state.editing = None;
+            state.keys = KeyOwner::Bar;
+            state.bar_key_requests += 1;
+            let Some(capture) = state.capture.as_ref() else {
+                return;
+            };
+            let edited = capture.stills.iter().find(|s| s.id == id);
+            (
+                capture.area,
+                edited.map(|s| (s.doc.clone(), s.thumb.clone())),
+            )
+        };
+        self.rewatch(area);
+        self.changed();
+        if let Some((document, thumb)) = edited {
+            let lens = self.clone();
+            self.port.run(Box::new(move || {
+                bar::draw_thumbnail(&thumb, &document.export());
+                lens.changed();
+            }));
+        }
+    }
+
+    /// The tile leaves when its time is up. Returns how long until it next needs a look.
+    pub fn advance_tile(&self) -> Option<Duration> {
+        let now = self.port.now();
+        let mut state = self.state.lock().unwrap();
+        let leaves = state.tile.as_ref()?.leaves?;
+        if now < leaves {
+            return Some(leaves.since(now));
+        }
+        state.tile = None;
+        drop(state);
+        self.changed();
+        None
+    }
+
+    /// The pointer entered or left the tile: a sent tile waits while it is there.
+    pub fn hover_tile(&self, inside: bool) {
+        let now = self.port.now();
+        let mut state = self.state.lock().unwrap();
+        if let Some(tile) = state.tile.as_mut().filter(|t| t.sent) {
+            tile.leaves = (!inside).then(|| now.after(TILE_STAYS));
+        }
+        drop(state);
+        self.changed();
+    }
+
+    pub fn discard_tile(&self) {
+        self.state.lock().unwrap().tile = None;
+        self.changed();
+    }
+
+    /// Opens the tile's capture again, as it was, on the live screen.
+    pub fn reopen_tile(self: &Arc<Self>) {
+        let area = {
+            let mut guard = self.state.lock().unwrap();
+            let state = &mut *guard;
+            if state.capture.is_some() {
+                return;
+            }
+            let Some(tile) = state.tile.take() else {
+                return;
+            };
+            let area = tile.capture.area;
+            state.capture = Some(tile.capture);
+            state.last_area = Some(area);
+            state.keys = KeyOwner::Bar;
+            state.bar_key_requests += 1;
+            state.tool = InkTool::default();
+            state.error = None;
+            if state.send != SendStatus::Sending {
+                state.send = SendStatus::Idle;
+            }
+            area
+        };
+        self.rewatch(area);
+        self.port.capture_keys(true);
+        self.changed();
+        self.load_sessions();
+    }
+
     fn is_open(&self) -> bool {
         self.state.lock().unwrap().capture.is_some()
     }
 
     fn give_keys_to_bar(&self) {
         let mut state = self.state.lock().unwrap();
-        if state.capture.is_some() {
+        if state.capture.is_some() && state.editing.is_none() {
             state.keys = KeyOwner::Bar;
             state.bar_key_requests += 1;
             drop(state);
@@ -274,7 +521,7 @@ impl Lens {
     fn set_input(&self, input: Input) {
         let mut state = self.state.lock().unwrap();
         // The ink layer exists only during a capture.
-        let input = if state.capture.is_some() {
+        let input = if state.capture.is_some() && state.editing.is_none() {
             input
         } else {
             Input::None
@@ -402,13 +649,15 @@ impl Lens {
         // Automation can pick while a capture is open.
         let state = self.state.lock().unwrap();
         if state.capture.is_some() {
-            self.close_capture(state);
+            self.close_capture(state, Closing::Esc);
         } else {
             drop(state);
         }
         let watch = self.watch_area(area);
         {
             let mut state = self.state.lock().unwrap();
+            // One corner, so a new capture takes the place of the old tile.
+            state.tile = None;
             state.next_capture += 1;
             let target = attn::default_session(&state.sessions)
                 .map(|index| state.sessions[index].id.clone());
@@ -420,7 +669,6 @@ impl Lens {
                 stills: vec![],
                 ink: vec![],
                 view_still: None,
-                next_still: 0,
                 unseen_change: None,
                 send_still_error: None,
                 segments: vec![],
@@ -528,6 +776,9 @@ impl Lens {
 
     /// ↩ and ⌘⌥↩: sends, or does what must happen before a send can.
     pub fn send_or_recover(self: &Arc<Self>) {
+        if self.is_editing() {
+            return self.leave_editor(true);
+        }
         let attn = self.state.lock().unwrap().attn.clone();
         match attn {
             AttnStatus::Unpaired(_) => self.pair(),
@@ -539,6 +790,15 @@ impl Lens {
                 }
             }
         }
+    }
+
+    /// Send from the editor. The user chose what to send, so a screen change from
+    /// before the edit adds no fresh still they have not seen.
+    pub fn send_edited(self: &Arc<Self>) {
+        if let Some(capture) = self.state.lock().unwrap().capture.as_mut() {
+            capture.unseen_change = None;
+        }
+        self.send_or_recover();
     }
 
     /// Sets the message the next send carries.
@@ -708,6 +968,9 @@ impl Lens {
     /// Drops a still and the ink drawn on it: a secret can repeat across stills.
     pub fn drop_still(&self, id: u64) {
         let mut state = self.state.lock().unwrap();
+        if state.editing == Some(id) {
+            return;
+        }
         if let Some(capture) = state.capture.as_mut() {
             capture.stills.retain(|s| s.id != id);
             capture.ink.retain(|m| m.still != id);
@@ -768,20 +1031,65 @@ impl Lens {
 
     /// Closes the open capture and lets go of everything it held.
     pub fn end_capture(self: &Arc<Self>) {
-        self.close_capture(self.state.lock().unwrap());
+        self.close_capture(self.state.lock().unwrap(), Closing::Esc);
     }
 
     /// Esc and a successful send both close the capture here, voice included.
-    fn close_capture(self: &Arc<Self>, mut state: MutexGuard<'_, State>) {
-        let voice = state.capture.take().map(|capture| capture.voice);
+    fn close_capture(self: &Arc<Self>, mut state: MutexGuard<'_, State>, closing: Closing) {
+        let mut capture = state.capture.take();
+        let closing_id = capture.as_ref().map(|c| c.id);
+        let voice = capture.as_mut().map(|c| std::mem::take(&mut c.voice));
+        let was_editing = state.editing.take().is_some();
+        state.edit_when_landed = None;
+        if let Some(mut capture) = capture {
+            capture.view_still = None;
+            capture.ink.retain(|m| !m.committed);
+            capture.unseen_change = None;
+            let in_flight = self.still_pending(capture.id);
+            state.tile = match closing {
+                Closing::Sent => Some(Tile {
+                    capture,
+                    sent: true,
+                    leaves: Some(self.port.now().after(TILE_STAYS)),
+                }),
+                // Esc on a capture with nothing in it is a plain cancel.
+                Closing::Esc if capture.stills.is_empty() && !in_flight => None,
+                Closing::Esc => Some(Tile {
+                    capture,
+                    sent: false,
+                    leaves: None,
+                }),
+            };
+        }
         state.input = Input::None;
         state.resizing = false;
         state.watch = None;
         state.label = None;
         state.palette = None;
+        // A tile keeps the voice as finishing, so its last sentence lands in the
+        // capture and a reopened capture's Send waits for it.
+        let run = match &voice {
+            Some(CaptureVoice::Running { run, .. } | CaptureVoice::Finishing { run, .. }) => {
+                Some(*run)
+            }
+            _ => None,
+        };
+        if let Some(run) = run
+            && let Some(tile) = state
+                .tile
+                .as_mut()
+                .filter(|t| Some(t.capture.id) == closing_id)
+        {
+            tile.capture.voice = CaptureVoice::Finishing {
+                run,
+                send_after: false,
+            };
+        }
         let handle = match voice {
             Some(CaptureVoice::Running { handle, .. }) => Some(handle),
-            Some(CaptureVoice::Finishing { send_after: true }) => {
+            Some(CaptureVoice::Finishing {
+                send_after: true, ..
+            }) => {
                 state.sending = None;
                 state.send = SendStatus::Failed(CLOSED_BEFORE_SENT.into());
                 None
@@ -791,15 +1099,18 @@ impl Lens {
         drop(state);
         self.port.capture_keys(false);
         self.changed();
+        if was_editing {
+            self.leave_editor(false);
+        }
         // A stopping voice keeps its helper to itself, and the next capture gets
         // its own: a helper records one voice at a time.
         self.port.end_voice();
-        let Some(handle) = handle else { return };
+        let (Some(handle), Some(id), Some(run)) = (handle, closing_id, run) else {
+            return;
+        };
+        let lens = self.clone();
         self.port.run(Box::new(move || {
-            // The capture is gone and nobody waits on this, so the bar is not told.
-            if let Err(error) = handle.finish() {
-                eprintln!("Attn Lens: {error}");
-            }
+            lens.voice_stopped(id, run, handle.finish())
         }));
     }
 
@@ -852,33 +1163,37 @@ impl Lens {
         let at = self.port.now();
         let (id, area, still_id) = {
             let mut state = self.state.lock().unwrap();
+            let next_still = state.next_still;
             let capture = state.capture.as_mut()?;
-            let (id, area, still_id) = (capture.id, capture.area, capture.next_still);
+            let (id, area, still_id) = (capture.id, capture.area, next_still);
             if cause != Cause::Send && state.sending == Some(id) {
                 drop(state);
                 self.fail("Attn Lens is sending this capture, so no still was taken.".into());
                 return None;
             }
-            if let Some(capture) = state.capture.as_mut() {
-                capture.next_still += 1;
-            }
+            state.next_still += 1;
             // Counted before the state is released, so a send never sees the
             // still neither kept nor on the way.
-            self.pending_stills.0.lock().unwrap().push(id);
+            self.pending_stills.0.lock().unwrap().push((id, still_id));
             (id, area, still_id)
         };
         let lens = self.clone();
         self.port.run(Box::new(move || {
+            let mut open_landed = false;
             let frame = lens.port.still(area).map(|frame| {
                 let thumb = bar::thumbnail(&frame);
                 (frame, thumb)
             });
             {
-                let mut state = lens.state.lock().unwrap();
+                let mut guard = lens.state.lock().unwrap();
+                let state = &mut *guard;
                 match frame {
                     Ok((frame, thumb)) => {
-                        // A capture closed while its frame was on the way drops the frame.
-                        if let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) {
+                        // A capture closed while its frame was on the way drops the
+                        // frame, unless its tile can still reopen it.
+                        let open = state.capture.iter_mut();
+                        let closed = state.tile.iter_mut().map(|t| &mut t.capture);
+                        if let Some(capture) = open.chain(closed).find(|c| c.id == id) {
                             let still = Still {
                                 id: still_id,
                                 at,
@@ -886,7 +1201,6 @@ impl Lens {
                                 area,
                                 thumb,
                                 doc: Document::new(frame),
-                                times: vec![],
                             };
                             let index = capture.stills.partition_point(|s| s.at <= at);
                             capture.stills.insert(index, still);
@@ -895,8 +1209,15 @@ impl Lens {
                             }
                             join_finished_ink(capture);
                         }
+                        if state.edit_when_landed == Some(still_id) {
+                            state.edit_when_landed = None;
+                            open_landed = true;
+                        }
                     }
                     Err(error) => {
+                        if state.edit_when_landed == Some(still_id) {
+                            state.edit_when_landed = None;
+                        }
                         // Ink with no frame under it cannot be sent; the next press retries.
                         if let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) {
                             if cause == Cause::Send {
@@ -913,11 +1234,14 @@ impl Lens {
             }
             {
                 let mut pending = lens.pending_stills.0.lock().unwrap();
-                let index = pending.iter().position(|&c| c == id).unwrap();
+                let index = pending.iter().position(|&p| p == (id, still_id)).unwrap();
                 pending.swap_remove(index);
             }
             lens.pending_stills.1.notify_all();
             lens.changed();
+            if open_landed {
+                lens.edit_still(still_id);
+            }
         }));
         Some(still_id)
     }
@@ -935,13 +1259,17 @@ impl Lens {
         };
         let id = capture.id;
         match std::mem::take(&mut capture.voice) {
-            CaptureVoice::Running { handle, .. } => {
-                capture.voice = CaptureVoice::Finishing { send_after: false };
+            CaptureVoice::Running { run, handle, .. } => {
+                capture.voice = CaptureVoice::Finishing {
+                    run,
+                    send_after: false,
+                };
                 drop(state);
                 self.changed();
                 let lens = self.clone();
-                self.port
-                    .run(Box::new(move || lens.voice_stopped(id, handle.finish())));
+                self.port.run(Box::new(move || {
+                    lens.voice_stopped(id, run, handle.finish())
+                }));
                 return;
             }
             // A voice still finishing holds the speech helper's one recording.
@@ -979,8 +1307,9 @@ impl Lens {
     fn voice_sink(self: &Arc<Self>, id: u64, run: u64) -> Sink<VoiceEvent> {
         let lens = self.clone();
         Arc::new(move |event| {
-            let mut state = lens.state.lock().unwrap();
-            let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) else {
+            let mut guard = lens.state.lock().unwrap();
+            let state = &mut *guard;
+            let Some(capture) = capture_by_id(&mut state.capture, &mut state.tile, id) else {
                 return;
             };
             let current = matches!(capture.voice, CaptureVoice::Running { run: r, .. } if r == run);
@@ -999,19 +1328,30 @@ impl Lens {
                     state.error = Some(error);
                 }
             }
-            drop(state);
+            drop(guard);
             lens.changed();
         })
     }
 
     /// The finish ⌘⌥S asked for returned. It starts the send that waited for it, or
     /// fails it, as the send would lose the last sentence.
-    fn voice_stopped(self: &Arc<Self>, id: u64, finished: Result<(), String>) {
-        let mut state = self.state.lock().unwrap();
-        let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) else {
+    fn voice_stopped(self: &Arc<Self>, id: u64, run: u64, finished: Result<(), String>) {
+        let mut guard = self.state.lock().unwrap();
+        let state = &mut *guard;
+        let Some(capture) = capture_by_id(&mut state.capture, &mut state.tile, id) else {
             return;
         };
-        let send_after = matches!(capture.voice, CaptureVoice::Finishing { send_after: true });
+        // A reopened capture keeps its id, and may be on a newer voice by now.
+        let CaptureVoice::Finishing {
+            run: finishing,
+            send_after,
+        } = capture.voice
+        else {
+            return;
+        };
+        if finishing != run {
+            return;
+        }
         capture.voice = CaptureVoice::Off;
         match finished {
             Ok(()) => {}
@@ -1022,7 +1362,7 @@ impl Lens {
             Err(error) => state.error = Some(error),
         }
         let send = send_after && matches!(state.send, SendStatus::Sending);
-        drop(state);
+        drop(guard);
         self.changed();
         if send {
             let lens = self.clone();
@@ -1042,6 +1382,9 @@ impl Lens {
             if state.send == SendStatus::Sending {
                 return Err("A send is already running.".into());
             }
+            if state.editing.is_some() {
+                return Err("The editor has a still of this capture open. Go Back first.".into());
+            }
             let capture = state
                 .capture
                 .as_mut()
@@ -1057,19 +1400,27 @@ impl Lens {
             }
             // None kept and none on the way, as when × dropped every one.
             let id = capture.id;
-            let in_flight = self.pending_stills.0.lock().unwrap().contains(&id);
+            let in_flight = self.still_pending(id);
             let needs_still =
                 (capture.stills.is_empty() && !in_flight) || capture.unseen_change.is_some();
             let (voice, handle, after_voice) = match std::mem::take(&mut capture.voice) {
                 CaptureVoice::Off => (CaptureVoice::Off, None, false),
-                CaptureVoice::Running { handle, .. } => (
-                    CaptureVoice::Finishing { send_after: false },
+                CaptureVoice::Running { run, handle, .. } => (
+                    CaptureVoice::Finishing {
+                        run,
+                        send_after: false,
+                    },
                     Some(handle),
                     false,
                 ),
-                CaptureVoice::Finishing { .. } => {
-                    (CaptureVoice::Finishing { send_after: true }, None, true)
-                }
+                CaptureVoice::Finishing { run, .. } => (
+                    CaptureVoice::Finishing {
+                        run,
+                        send_after: true,
+                    },
+                    None,
+                    true,
+                ),
             };
             capture.voice = voice;
             state.send = SendStatus::Sending;
@@ -1093,14 +1444,17 @@ impl Lens {
     fn finish_send(self: &Arc<Self>, id: u64, voice: Option<Voice>) {
         let voice = voice.map_or(Ok(()), |voice| {
             let finished = voice.finish();
-            let mut state = self.state.lock().unwrap();
-            if let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) {
+            let mut guard = self.state.lock().unwrap();
+            let state = &mut *guard;
+            if let Some(capture) = capture_by_id(&mut state.capture, &mut state.tile, id)
+                .filter(|c| matches!(c.voice, CaptureVoice::Finishing { .. }))
+            {
                 capture.voice = CaptureVoice::Off;
             }
             finished
         });
         let mut pending = self.pending_stills.0.lock().unwrap();
-        while pending.contains(&id) {
+        while pending.iter().any(|&(capture, _)| capture == id) {
             pending = self.pending_stills.1.wait(pending).unwrap();
         }
         drop(pending);
@@ -1130,7 +1484,15 @@ impl Lens {
         };
         // The user may have closed it, or opened another, while it was sent.
         if sent && state.capture.as_ref().is_some_and(|c| c.id == id) {
-            return self.close_capture(state);
+            return self.close_capture(state, Closing::Sent);
+        }
+        // Esc closed it during the send: its tile must not say it was never sent.
+        if sent {
+            let leaves = self.port.now().after(TILE_STAYS);
+            if let Some(tile) = state.tile.as_mut().filter(|t| t.capture.id == id) {
+                tile.sent = true;
+                tile.leaves = Some(leaves);
+            }
         }
         drop(state);
         self.changed();
@@ -1156,7 +1518,6 @@ impl Lens {
                     at: s.at,
                     cause: s.cause,
                     doc: s.doc.clone(),
-                    times: s.times.clone(),
                 })
                 .collect();
             let source = deliver::Source {
@@ -1213,7 +1574,13 @@ impl Lens {
                         at: s.at,
                         cause: s.cause,
                         marks: s.doc.marks.len(),
-                        times: s.times.clone(),
+                        times: s
+                            .doc
+                            .marks
+                            .iter()
+                            .filter_map(|m| m.drawn)
+                            .map(|(from, to)| (HostTime(from), HostTime(to)))
+                            .collect(),
                         thumb: s.thumb.clone(),
                         width: s.doc.base.width(),
                         height: s.doc.base.height(),
@@ -1253,6 +1620,14 @@ impl Lens {
                     CaptureVoice::Finishing { .. } => VoiceState::Finishing,
                 }),
             resizing: state.resizing,
+            editing: state.editing,
+            tile: state.tile.as_ref().map(|t| TileSummary {
+                sent: t.sent,
+                leaving: t.leaves.is_some(),
+                thumb: t.capture.stills.last().map(|s| s.thumb.clone()),
+                stills: t.capture.stills.len(),
+                display: t.capture.display,
+            }),
             send: state.send.clone(),
             error: state.error.clone(),
         }
@@ -1283,6 +1658,12 @@ impl Lens {
             "attn": format!("{:?}", summary.attn),
             "palette": summary.palette,
             "input": format!("{:?}", summary.input),
+            "editing": summary.editing,
+            "tile": summary.tile.as_ref().map(|t| json!({
+                "sent": t.sent,
+                "leaving": t.leaving,
+                "stills": t.stills,
+            })),
             "voice": match summary.voice {
                 VoiceState::Off => json!({"state": "off"}),
                 VoiceState::Starting => json!({"state": "starting"}),
@@ -1322,16 +1703,25 @@ fn failure_text(failure: attn::Failure) -> String {
     }
 }
 
+/// The capture with this id, open or kept in the tile.
+fn capture_by_id<'a>(
+    open: &'a mut Option<Capture>,
+    tile: &'a mut Option<Tile>,
+    id: u64,
+) -> Option<&'a mut Capture> {
+    let closed = tile.iter_mut().map(|t| &mut t.capture);
+    open.iter_mut().chain(closed).find(|c| c.id == id)
+}
+
 /// Puts finished ink on the stills whose frames have arrived, so a stroke and its
 /// frame may finish in either order and the frame always exists first.
 fn join_finished_ink(capture: &mut Capture) {
     for ink in capture.ink.iter_mut().filter(|m| !m.committed) {
         if let Some(still) = capture.stills.iter_mut().find(|s| s.id == ink.still) {
             let scale = still.doc.base.width() as f32 / still.area.rect[2] as f32;
-            still
-                .doc
-                .commit(ink::on_still(&ink.mark, still.area, scale));
-            still.times.push(ink.times);
+            let mut mark = ink::on_still(&ink.mark, still.area, scale);
+            mark.drawn = Some((ink.times.0.0, ink.times.1.0));
+            still.doc.commit(mark);
             ink.committed = true;
         }
     }
@@ -1365,6 +1755,14 @@ pub struct CaptureSummary {
     pub message: String,
 }
 
+pub struct TileSummary {
+    pub sent: bool,
+    pub leaving: bool,
+    pub thumb: Option<rune::Pixels>,
+    pub stills: usize,
+    pub display: DisplayFrame,
+}
+
 pub struct Summary {
     pub picking: Option<Vec<DisplayFrame>>,
     pub last_area: Option<Area>,
@@ -1377,6 +1775,8 @@ pub struct Summary {
     pub palette: Option<usize>,
     pub input: Input,
     pub resizing: bool,
+    pub editing: Option<u64>,
+    pub tile: Option<TileSummary>,
     pub capture: Option<CaptureSummary>,
     pub voice: VoiceState,
     pub send: SendStatus,

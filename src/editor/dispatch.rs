@@ -25,6 +25,14 @@ impl Editor {
 
     pub(crate) fn dispatch(&mut self, action: Action, tx: &mut Tx) -> Result<(), String> {
         validate(&action)?;
+        if self.still.is_some()
+            && matches!(
+                action,
+                Action::OpenImage | Action::OpenPath(_) | Action::PasteImage
+            )
+        {
+            return Err("This window is editing a still. Go Back to the capture first.".into());
+        }
         let needs_image = !matches!(
             action,
             Action::OpenImage
@@ -180,6 +188,7 @@ impl Editor {
                     .map(|index| {
                         let mut mark = self.doc().marks[index].clone();
                         mark.translate(10., 10.);
+                        mark.drawn = None;
                         mark
                     })
                     .collect();
@@ -529,6 +538,14 @@ impl Editor {
                 }
             }
             Action::Quit => tx.quit(),
+            Action::BackToCapture | Action::SendCapture => {
+                if self.still.is_none() {
+                    return Err("No capture is being edited.".into());
+                }
+                self.commit_text(tx);
+                self.cancel_gesture();
+                self.leave_still(action == Action::SendCapture);
+            }
         }
         Ok(())
     }
@@ -843,6 +860,18 @@ impl Editor {
 
     /// Takes in what a worker finished.
     pub(crate) fn receive(&mut self, message: Message, tx: &mut Tx) {
+        self.take_in(message, tx);
+        if self.is_busy() {
+            return;
+        }
+        match self.deferred.take() {
+            Some(super::Deferred::Open(still, document)) => self.open_still(still, *document, tx),
+            Some(super::Deferred::Leave { send }) => self.leave_for_key(send, tx),
+            None => {}
+        }
+    }
+
+    fn take_in(&mut self, message: Message, tx: &mut Tx) {
         let id = match &message {
             Message::Preview(_)
             | Message::Frame(_)

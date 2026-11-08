@@ -238,6 +238,7 @@ impl Editor {
                     color: settings.color,
                     width: settings.width,
                     text: String::new(),
+                    drawn: None,
                 };
                 panel = panel.child(number(
                     self,

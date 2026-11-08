@@ -28,6 +28,7 @@ fn document_commit_benchmark() {
         color: [255, 0, 0, 255],
         width: 5.,
         text: String::new(),
+        drawn: None,
     };
     let commit = samples(
         || {

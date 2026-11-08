@@ -31,6 +31,9 @@ This file's Glance rules still apply to the code that remains.
   `app.rs` hosts the picker, the ink layer and the four corner handles as `Surface`s.
   The ink layer takes the pointer only while the draw key is held; the handles are
   small windows of their own, below the menu bar, that hold still during a resize.
+- `src/lens/tile.rs`: the corner tile a closed capture shrinks to. While the editor
+  holds a still (`State::editing`), the live surfaces hide and the watch stops;
+  `EditorCall` is how Lens reaches the editor, and `Editor::leave_still` gives it back.
 - `src/lens/attn.rs`: the only contract with attn: `attn send sessions`, `attn
   send pair` and `attn send <session>` JSON, plus the Keychain token. Its tests
   use a stand-in `attn`; attn's `cmd/attn/send_stack_test.go` pins the real JSON.
@@ -55,6 +58,7 @@ This file's Glance rules still apply to the code that remains.
   and `live OUT` to run `scripts/lens-live.sh`, both against the stand-in `tools/vm/attn`,
   `editor OUT` to run `scripts/lens-editor-check.sh` (menus, Copy as OCR, Pick from screen,
   scroll and zoom, light and dark, read through `tools/driver/ax.swift`),
+  `tile OUT` to run `scripts/lens-tile.sh` (tile hover and click, and Back not counted as a change),
   and `stop` when done: it holds 8 GB. `tools/vm/`
   grants the VM's permissions without a click. Nothing of this Mac's goes in: no shared
   folders, Keychain, tokens or signing identity. Speed budgets and the feel of drawing

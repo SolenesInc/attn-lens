@@ -870,3 +870,218 @@ fn send_right_after_voice_stops_waits_for_its_last_sentence() {
         Some("Voice stopped: transcription failed")
     );
 }
+
+/// Whether a run of identical pixels shows, which the fake's gradient never has.
+fn is_pixelated(path: &Path) -> bool {
+    let frame = image::open(path).unwrap().to_rgba8();
+    frame.rows().any(|row| {
+        row.collect::<Vec<_>>()
+            .windows(6)
+            .any(|run| run.iter().all(|p| *p == run[0]))
+    })
+}
+
+fn state(run: &Run, mark: &str) -> Value {
+    let tree = run.tree("ink", mark);
+    serde_json::from_str(label(&tree, "capture-state").expect("no capture-state element")).unwrap()
+}
+
+#[test]
+fn an_edited_still_round_trips_and_is_what_is_sent() {
+    let run = Run::new("roundtrip.json", ONE_SESSION);
+    let drawn = capture_state(&run, "drawn");
+    assert_eq!(drawn["stills"][0]["marks"], 1);
+
+    // The still opens in the editor; the live surfaces wait.
+    let editing = run.tree("editor", "editing");
+    assert!(visible(&editing, "editor"));
+    assert!(!visible(&editing, "bar"));
+    assert!(!visible(&editing, "ink"));
+    assert_eq!(state(&run, "editing")["editing"], 0);
+
+    // Back returns to the same capture, with the edit kept and editable.
+    let back = state(&run, "back");
+    assert_eq!(back["editing"], Value::Null);
+    assert_eq!(back["capture"]["id"], drawn["id"]);
+    assert_eq!(back["capture"]["stills"][0]["marks"], 2);
+    // The ink mark keeps its time; the editor's has none.
+    assert_eq!(
+        back["capture"]["stills"][0]["times"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let returned = run.tree("bar", "back");
+    assert!(visible(&returned, "bar"));
+    assert!(!visible(&returned, "editor"));
+
+    // Reopening brings back the marks and the undo history.
+    assert!(visible(&run.tree("editor", "reopened"), "editor"));
+    assert_eq!(state(&run, "undone")["capture"]["stills"][0]["marks"], 1);
+    assert_eq!(
+        state(&run, "back-again")["capture"]["stills"][0]["marks"],
+        2
+    );
+
+    // Send delivers the edited document.
+    assert_eq!(state(&run, "sent")["tile"]["sent"], true);
+    assert!(
+        is_pixelated(&run.path("frame-01.png")),
+        "the sent frame is raw"
+    );
+
+    // The tile holds for 5 s after Send, then leaves.
+    assert!(visible(&run.tree("tile", "tile-holds"), "tile"));
+    let left = run.tree("tile", "tile-left");
+    assert!(!visible(&left, "tile"));
+    assert_eq!(state(&run, "tile-left")["tile"], Value::Null);
+}
+
+#[test]
+fn a_dropped_still_is_not_sent_and_the_other_is_pixelated() {
+    let run = Run::new("roundtrip-secret.json", ONE_SESSION);
+    assert_eq!(
+        capture_state(&run, "two-stills")["stills"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        capture_state(&run, "dropped")["stills"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    run.tree("bar", "sent");
+    assert!(
+        is_pixelated(&run.path("frame-01.png")),
+        "the kept still is raw"
+    );
+    assert!(
+        !run.path("frame-02.png").exists(),
+        "the dropped still was sent"
+    );
+    let args = std::fs::read_to_string(run.path("args")).unwrap();
+    assert_eq!(args.matches(".png").count(), 1, "{args}");
+}
+
+#[test]
+fn send_works_from_inside_the_editor() {
+    let run = Run::new("roundtrip-send.json", ONE_SESSION);
+    assert!(visible(&run.tree("editor", "pixelated"), "editor"));
+    let sent = run.tree("editor", "sent");
+    assert!(!visible(&sent, "editor"));
+    assert_eq!(state(&run, "sent")["send"]["state"], "sent");
+    assert!(
+        is_pixelated(&run.path("frame-01.png")),
+        "the sent frame is raw"
+    );
+}
+
+#[test]
+fn an_escaped_capture_keeps_its_tile_and_reopens() {
+    let run = Run::new("roundtrip-esc.json", ONE_SESSION);
+    let escaped = state(&run, "escaped");
+    assert_eq!(escaped["capture"], Value::Null);
+    assert_eq!(escaped["tile"]["sent"], false);
+    assert_eq!(escaped["tile"]["leaving"], false);
+    assert!(visible(&run.tree("tile", "still-there"), "tile"));
+    let reopened = state(&run, "reopened");
+    assert_eq!(reopened["tile"], Value::Null);
+    assert_eq!(reopened["capture"]["stills"].as_array().unwrap().len(), 2);
+    assert!(visible(&run.tree("bar", "reopened"), "bar"));
+}
+
+#[test]
+fn closing_the_editor_during_an_operation_keeps_the_result() {
+    let run = Run::new("roundtrip-close-busy.json", ONE_SESSION);
+    // Waits for the rotate instead of racing it.
+    assert!(state(&run, "closed")["editing"].is_number());
+    assert_eq!(state(&run, "done")["editing"], Value::Null);
+    assert!(visible(&run.tree("bar", "done"), "bar"));
+    assert_eq!(state(&run, "sent")["send"]["state"], "sent");
+    let frame = image::open(run.path("frame-01.png")).unwrap();
+    assert!(
+        frame.height() > frame.width(),
+        "the sent frame lost the rotate"
+    );
+    // A Dock click afterwards shows no capture's frame.
+    let dock = run.tree("editor", "dock");
+    assert!(visible(&dock, "editor"));
+    assert!(
+        dock.to_string().contains("editor-empty"),
+        "the editor still holds the frame"
+    );
+}
+
+#[test]
+fn closing_the_editor_while_a_still_loads_gives_the_capture_back() {
+    let run = Run::new("roundtrip-close-load.json", ONE_SESSION);
+    assert_eq!(state(&run, "done")["editing"], Value::Null);
+    assert!(visible(&run.tree("bar", "done"), "bar"));
+}
+
+#[test]
+fn send_from_the_editor_adds_no_fresh_still() {
+    let run = Run::new("roundtrip-send-no-fresh.json", ONE_SESSION);
+    assert_eq!(state(&run, "sent")["send"]["state"], "sent");
+    let args = std::fs::read_to_string(run.path("args")).unwrap();
+    assert_eq!(args.matches(".png").count(), 1, "{args}");
+}
+
+#[test]
+fn an_edit_returning_from_a_closed_capture_leaves_the_new_one_alone() {
+    let run = Run::new("roundtrip-old-edit.json", ONE_SESSION);
+    assert_eq!(state(&run, "sent")["send"]["state"], "sent");
+    let frame = image::open(run.path("frame-01.png")).unwrap();
+    assert!(frame.width() > frame.height(), "the old rotate landed here");
+}
+
+#[test]
+fn edit_opens_the_newest_still_when_an_older_one_is_on_its_way() {
+    let run = Run::new("roundtrip-edit-newest-landed.json", ONE_SESSION);
+    assert!(state(&run, "editing")["editing"].is_number());
+}
+
+#[test]
+fn a_closing_capture_cancels_a_send_queued_in_the_editor() {
+    let run = Run::new("roundtrip-close-cancels-send.json", ONE_SESSION);
+    assert_eq!(state(&run, "done")["send"]["state"], "idle");
+    assert!(!run.path("args").exists(), "a frame was sent");
+}
+
+#[test]
+fn an_earlier_voice_finishing_leaves_a_reopened_captures_new_voice() {
+    let run = Run::new("roundtrip-voice-reopen.json", ONE_SESSION);
+    // The earlier voice holds the helper until it finishes; ⌘⌥S waits for it.
+    assert_eq!(
+        state(&run, "still-finishing")["voice"]["state"],
+        "finishing"
+    );
+    assert_eq!(state(&run, "done")["voice"]["state"], "listening");
+}
+
+#[test]
+fn a_tile_keeps_the_last_sentence_of_a_voice_closed_by_esc() {
+    let run = Run::new("roundtrip-voice-esc.json", ONE_SESSION);
+    // Reopened before the helper finished: Send would wait for it.
+    assert_eq!(state(&run, "reopened")["voice"]["state"], "finishing");
+    let done = state(&run, "done");
+    assert_eq!(done["voice"]["state"], "off");
+    assert_eq!(done["capture"]["segments"][0]["text"], "final words");
+}
+
+#[test]
+fn an_older_still_failing_leaves_a_waiting_edit_alone() {
+    let run = Run::new("roundtrip-edit-older-fails.json", ONE_SESSION);
+    assert!(state(&run, "editing")["editing"].is_number());
+}
+
+#[test]
+fn esc_during_a_send_that_finishes_voice_leaves_no_stuck_voice() {
+    let run = Run::new("roundtrip-send-esc-voice.json", ONE_SESSION);
+    assert_eq!(state(&run, "reopened")["voice"]["state"], "off");
+}

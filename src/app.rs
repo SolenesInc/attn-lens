@@ -3,11 +3,12 @@
 use crate::{
     editor::{self, Editor},
     lens::{
-        Input, KeyOwner, Lens, Summary, automation,
+        EditorCall, Input, KeyOwner, Lens, Summary, automation,
         bar::{self, Bar},
         ink::{Corner, Handle, Ink, handle_view, ink_view},
         select::{self, PICKER_SLOTS, Picker},
         session::{Area, DisplayFrame},
+        tile::{self, Tile},
     },
     platform_port,
 };
@@ -138,11 +139,16 @@ struct Shown {
     resizing: bool,
     bar_rect: Option<[f32; 4]>,
     bar_key_requests: u64,
+    tile: Option<(u32, [f32; 4])>,
 }
 
 impl Shown {
     fn of(summary: &Summary) -> Self {
-        let capture = summary.capture.as_ref();
+        // The editor stands in for the live surfaces while it holds a still.
+        let capture = summary
+            .capture
+            .as_ref()
+            .filter(|_| summary.editing.is_none());
         Self {
             picking: summary.picking.clone(),
             area: capture.map(|c| c.area),
@@ -153,6 +159,10 @@ impl Shown {
             resizing: summary.resizing,
             bar_rect: capture.map(|c| bar::placement(c.area.rect, c.display, bar::height(summary))),
             bar_key_requests: summary.bar_key_requests,
+            tile: summary
+                .tile
+                .as_ref()
+                .map(|t| (t.display.id, tile::placement(t.display))),
         }
     }
 }
@@ -162,6 +172,7 @@ struct Surfaces {
     ink: Surface<Ink>,
     handles: Vec<Surface<Handle>>,
     bar: AppHandle<Bar>,
+    tile: Surface<Tile>,
 }
 
 impl Surfaces {
@@ -247,6 +258,23 @@ impl Surfaces {
                 },
             );
         }
+        if was.tile != now.tile {
+            match now.tile {
+                Some((display, [x, y, width, height])) => {
+                    self.tile.place(
+                        display,
+                        OverlayPlacement::Rect {
+                            x,
+                            y,
+                            width,
+                            height,
+                        },
+                    );
+                    self.tile.show();
+                }
+                None => self.tile.hide(),
+            }
+        }
         if now.area.is_none() && was.area.is_some() {
             self.bar.hide();
         }
@@ -260,6 +288,7 @@ impl Surfaces {
             picker.refresh();
         }
         self.ink.refresh();
+        self.tile.refresh();
         for handle in &self.handles {
             handle.refresh();
         }
@@ -303,17 +332,35 @@ pub fn run() -> Result<(), String> {
         let me = editor.handle();
         let visible = me.clone();
         lens.report_window("editor", move || visible.is_visible());
-        let opener = me.clone();
+        let opening = me.clone();
         let port = lens.port().clone();
         let closing = me.clone();
-        port.close_button(
+        port.script_button(
             "editor",
-            Arc::new(move |()| closing.update(|s: &mut Editor, _| s.on_window_close())),
+            Arc::new(move |()| closing.update(|s: &mut Editor, tx| s.on_window_close(tx))),
         );
+        let editing = lens.clone();
+        port.script_button("bar-edit", Arc::new(move |()| editing.edit_latest()));
+        let picking = lens.clone();
+        port.script_button(
+            "pick",
+            Arc::new(move |()| {
+                let _ = picking.pick_pointer_display();
+            }),
+        );
+        let for_editor = lens.clone();
+        lens.set_editor(Arc::new(move |call| match call {
+            EditorCall::Open { still, document } => {
+                opening.update(move |s: &mut Editor, tx| s.open_still(still, *document, tx))
+            }
+            EditorCall::Leave { send } => {
+                opening.update(move |s: &mut Editor, tx| s.leave_for_key(send, tx))
+            }
+        }));
         let editor = editor::menus::install(editor)
-            .init(move || Editor::new(me, port))
+            .init(move || Editor::new(me, port, for_editor))
             .on_focus(|s, focused, _| s.on_window_focus(focused))
-            .on_close(|s, _| s.on_window_close())
+            .on_close(|s, tx| s.on_window_close(tx))
             .on_reopen(|s, _, _| {
                 s.open_window();
                 true
@@ -327,6 +374,9 @@ pub fn run() -> Result<(), String> {
                 }
                 if lens.advance_fades() {
                     tx.wake_after(FADE_FRAME);
+                }
+                if let Some(next) = lens.advance_tile() {
+                    tx.wake_after(next);
                 }
                 let generation = lens.generation();
                 let changed = generation != s.seen;
@@ -405,11 +455,26 @@ pub fn run() -> Result<(), String> {
             })
             .collect();
 
+        let tile = host(
+            &mut bar,
+            &mut windows,
+            "tile".into(),
+            tile::tile_view,
+            None,
+            OverlayOptions {
+                exclude_from_capture: true,
+                input: OverlayInput::Regions,
+                ..Default::default()
+            },
+            Tile { lens: lens.clone() },
+        );
+
         let surfaces = Surfaces {
             pickers,
             ink,
             handles,
             bar: handle.clone(),
+            tile,
         };
         let shown = Mutex::new(Shown::default());
         let reader = lens.clone();
@@ -422,9 +487,8 @@ pub fn run() -> Result<(), String> {
         });
 
         let state = lens.clone();
-        let open_editor: Arc<dyn Fn() + Send + Sync> = Arc::new(move || opener.open());
         let bar = bar
-            .init(move || Bar::new(state, open_editor))
+            .init(move || Bar::new(state))
             .on_focus(move |s, focused, _| {
                 s.lens.set_key_owner(if focused {
                     KeyOwner::Bar

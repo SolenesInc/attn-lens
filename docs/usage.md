@@ -8,6 +8,12 @@ The editor follows the system's light or dark appearance and updates when it
 changes while the app is running. Image content, annotation colors, backdrops, and
 exported media keep their colors.
 
+## Edit a capture's still
+
+From a capture's bar, **Edit** or a thumbnail opens a still here. The toolbar then
+has **‹ Back** and **Send ↩**, and opening, dropping or pasting another image is
+refused until you go Back. See [Capture and send](send.md#edit-a-still).
+
 ## Open an image
 
 A click on the Dock icon opens the editor. **⌘Q** quits; edits last for the current

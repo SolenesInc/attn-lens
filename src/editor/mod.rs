@@ -20,6 +20,7 @@ mod view;
 
 use crate::{
     document::{Document, Mark, Tool},
+    lens::Lens,
     navigation::Layout,
     platform_port::PlatformPort,
     style::Style,
@@ -159,6 +160,12 @@ impl Mailbox {
     }
 }
 
+/// A request that arrived during an operation.
+enum Deferred {
+    Open(u64, Box<Document>),
+    Leave { send: bool },
+}
+
 pub struct Editor {
     me: AppHandle<Editor>,
     port: Arc<dyn PlatformPort>,
@@ -213,10 +220,17 @@ pub struct Editor {
     export: Option<export::Export>,
     /// Between a Dock click opening the window and its close button.
     open: bool,
+    capture: Arc<Lens>,
+    /// The capture still this window is editing, if it is one.
+    pub(crate) still: Option<u64>,
+    /// The image that was open when a still replaced it, back when the still is done.
+    parked: Option<Document>,
+    /// What to do once the running operation ends. The last request wins.
+    deferred: Option<Deferred>,
 }
 
 impl Editor {
-    pub fn new(me: AppHandle<Editor>, port: Arc<dyn PlatformPort>) -> Self {
+    pub fn new(me: AppHandle<Editor>, port: Arc<dyn PlatformPort>, capture: Arc<Lens>) -> Self {
         let mailbox = Mailbox {
             messages: Default::default(),
             window: me.clone(),
@@ -265,6 +279,10 @@ impl Editor {
             playback: stage::Playback::default(),
             export: None,
             open: false,
+            capture,
+            still: None,
+            parked: None,
+            deferred: None,
         }
     }
 
@@ -275,9 +293,95 @@ impl Editor {
     }
 
     /// The window closed; Lens keeps running, so the editor only hides. Preview
-    /// playback stops until it opens again.
-    pub fn on_window_close(&mut self) {
+    /// playback stops until it opens again. Closing it on a still is Back.
+    pub fn on_window_close(&mut self, tx: &mut rune::Tx) {
         self.open = false;
+        if self.still.is_some() {
+            self.leave_for_key(false, tx);
+        }
+    }
+
+    /// Shows a capture's still, undo and all, in place of whatever image was open.
+    pub fn open_still(&mut self, still: u64, document: Document, tx: &mut rune::Tx) {
+        // A running operation lands on the image it started on, which is parked next.
+        if self.is_busy() {
+            self.deferred = Some(Deferred::Open(still, Box::new(document)));
+            return;
+        }
+        // A still left open goes back first, so its edits are kept.
+        if self.still.is_some() {
+            self.commit_text(tx);
+            self.cancel_gesture();
+            self.leave_still(false);
+            if self.is_busy() {
+                self.deferred = Some(Deferred::Open(still, Box::new(document)));
+                return;
+            }
+        }
+        if self.still.is_none() {
+            self.commit_text(tx);
+            self.parked = self.doc.take();
+        }
+        self.still = Some(still);
+        self.doc = None;
+        self.show_document(document);
+        self.open_window();
+    }
+
+    /// Hands the still back with its edits and returns to what was open before.
+    pub(crate) fn leave_still(&mut self, send: bool) {
+        if self.still.is_none() || self.doc.is_none() {
+            return;
+        }
+        let (Some(still), Some(document)) = (self.still.take(), self.doc.take()) else {
+            return;
+        };
+        self.capture.still_edited(still, document);
+        if let Some(parked) = self.parked.take() {
+            self.show_document(parked);
+        }
+        self.open = false;
+        self.me.hide();
+        self.capture.finish_editing(still);
+        if send {
+            self.capture.send_edited();
+        }
+    }
+
+    /// Renders `document` off the UI thread and installs it with its raster.
+    fn show_document(&mut self, document: Document) {
+        let id = self.start(Operation::Load);
+        let mailbox = self.mailbox.clone();
+        self.port.run(Box::new(move || {
+            let rendered = preview::render(&document);
+            let result = Ok((Box::new(document), rendered));
+            mailbox.post(Message::Replaced { id, result });
+        }));
+    }
+
+    /// Back or Send from outside the toolbar: a key, Lens, or the window closing.
+    /// A running operation is waited for, so its result lands on the still.
+    pub fn leave_for_key(&mut self, send: bool, tx: &mut rune::Tx) {
+        if self.is_busy() {
+            // A queued open never happened: only the capture has to come back.
+            if let Some(Deferred::Open(queued, _)) = self.deferred.take() {
+                self.capture.finish_editing(queued);
+                if self.still.is_none() {
+                    if send {
+                        self.capture.send_edited();
+                    }
+                    return;
+                }
+            }
+            self.deferred = Some(Deferred::Leave { send });
+            return;
+        }
+        let action = if send {
+            actions::Action::SendCapture
+        } else {
+            actions::Action::BackToCapture
+        };
+        self.dispatch_ui(action, tx);
     }
 
     pub(crate) fn doc(&self) -> &Document {
