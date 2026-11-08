@@ -2,8 +2,6 @@
 
 [Send to an attn session](send.md) · [Tool options](../TOOL_OPTIONS.md)
 
-Shortcuts below use macOS notation. On Linux, use **Ctrl** in place of **⌘**.
-
 The editor follows the system's light or dark appearance and updates when it
 changes while the app is running. Image content, annotation colors, backdrops, and
 exported media keep their colors.
@@ -29,20 +27,20 @@ copies, saves and edits at full size.
 
 | Tool | Key | How to use it |
 | --- | --- | --- |
-| Pen | P | Drag to draw |
+| Draw | P | Drag to draw |
 | Arrow | A | Drag between endpoints; use the middle handle to bend it |
-| Rectangle | R | Drag a box |
+| Box | R | Drag a box |
 | Text | T | Click and type; Enter or clicking outside finishes, Escape cancels |
 | Highlight | H | Drag over an area |
 | Pixelate | B | Drag a region; block size is adjustable |
-| Numbered callout | N | Click to place the next number |
+| Step | N | Click to place the next numbered callout |
 | Spotlight | S | Drag a focus rectangle; the surrounding image dims |
 | Magnifier | M | Drag from the source detail to the enlarged lens position |
 | Crop | X | Drag to crop; undo restores the image |
 
 Text labels are single-line; pasted line breaks become spaces. Text selection,
 copy/paste, undo/redo, and native input methods work while editing.
-Numbered callouts stay visible without selecting them. Text and numbers use an
+Steps stay visible without selecting them. Text and numbers use an
 embedded offline fallback if the system annotation font is unavailable.
 Spotlights have corner handles; magnifiers have separate source and lens handles.
 The magnifier enlarges the annotated foreground and keeps details bright within a spotlight.
@@ -59,7 +57,7 @@ Drag any selected mark to move the group. **Delete**, **⌘D** (duplicate), and
 Color, width, and appearance edits apply to the group. Each group edit or drag
 is one undo step; held nudge repeats are grouped. **⌘Z / ⌘⇧Z** undo/redo.
 
-Hold **Shift** while drawing to snap arrows to 45° or make rectangles, highlights,
+Hold **Shift** while drawing to snap arrows to 45° or make boxes, highlights,
 pixelation regions, and crops square. Shift-moving locks to the dominant axis.
 Crop endpoints snap near image edges.
 
@@ -101,10 +99,9 @@ and backdrops and does not change image pixels or image undo history.
 Recognition preserves detected line breaks but does not reconstruct tables or
 code indentation. Review the pasted text for recognition errors.
 
-macOS uses the bundled Apple Vision helper. Linux uses optional `tesseract` with
-its English language data.
-Local OCR needs no account, subscription, or upload. Work runs in the background,
-with a 45-second timeout and a 64 KiB text limit; use a smaller crop if a limit is reached.
+Recognition uses the bundled Apple Vision helper and uploads nothing. Work runs in
+the background, with a 45-second timeout and a 64 KiB text limit; use a smaller crop
+if a limit is reached.
 
 ## Frame the image
 
@@ -117,9 +114,9 @@ Open **Backdrop** and choose **Solid**, **Gradient**, or **Motion**.
 - **Image corners** and **Shadow** style the screenshot.
 
 Choose a palette or click a swatch for custom colors. Solid uses one color;
-Gradient and Motion use two. **Pick from screen** opens the macOS eyedropper;
-Omarchy requires `hyprpicker`. Colors are opaque sRGB. Custom colors survive effect
-changes; choosing a palette resets them. Slider/color gestures are one undo step.
+Gradient and Motion use two. **Pick from screen** opens the macOS eyedropper.
+Colors are opaque sRGB. Custom colors survive effect changes; choosing a palette
+resets them. Slider/color gestures are one undo step.
 
 **Done** closes the panel. **Enable backdrop** toggles framing while retaining its settings.
 
@@ -147,8 +144,8 @@ Timing changes are undoable; replay and seeking leave history unchanged.
 With Animation open, PNG/copy capture the inspected frame; during normal editing
 they capture the fully revealed image over the backdrop frame on the canvas.
 
-Use **Export → GIF… / MP4…** in the toolbar, or **File → Export GIF… / Export MP4…**,
-for an animated backdrop or image entrance. If nothing moves yet, export adds a Flow
+Use the toolbar's **Export** menu, or **File → Export GIF… / Export MP4…**, for an
+animated backdrop or image entrance. If nothing moves yet, export adds a Flow
 backdrop and opens **Backdrop** instead; export again to save it.
 Exports begin at time zero and preserve aspect ratio:
 
@@ -168,7 +165,7 @@ Use the matching `.png`, `.gif`, or `.mp4` extension. The editor preserves the
 confirmed filename. If you omit an extension and the appended filename already
 exists, choose the full filename in the dialog to confirm replacement.
 
-## macOS accessibility
+## Accessibility
 
 Toolbar and inspector controls, numeric values, color hex fields, sliders, and
 Format/Export menus are exposed to accessibility. Exact-value edits use the same

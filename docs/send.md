@@ -16,7 +16,8 @@ scrolls and typing keep reaching your apps.
 3. Type your message in the bar. Click the page to give it the keyboard; **⌘⌥C**
    takes it back.
 4. Press **⌘⌥S** to talk: what you say is transcribed on this Mac, phrase by
-   phrase. **⌘⌥S** again stops.
+   phrase. **⌘⌥S** again stops. The first use downloads a 731 MB speech model, and
+   macOS asks for Microphone access.
 5. Press **↩** in the bar, or **⌘⌥↩** from anywhere. The capture goes to the
    session on the chip at the left of the bar.
 
@@ -58,9 +59,18 @@ attn's error instead; once attn is back, **↩** or **Tab** lists them again.
 
 ## What the agent receives
 
-One `attn send`: your message and the stills as full-resolution PNGs, each rendered
-from its edited document. The agent gets a command that saves each PNG where it
-runs, so a session on another machine works like a local one.
+One `attn send`, holding:
+
+- **A message.** What you typed comes first. A timeline follows, in time order, of
+  the stills, your marks and each spoken phrase. A capture with one still and no
+  voice has no timeline.
+- **Contact sheets.** With two or more stills, one numbered sheet per six stills
+  shows their order and layout.
+- **Every still** as a full-resolution PNG, `frame-NN.png`, rendered from its edited
+  document.
+
+The agent gets a command that saves each PNG where it runs, so a session on another
+machine works like a local one.
 
 ## Keys
 
