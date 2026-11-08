@@ -27,7 +27,11 @@ open "$APP" --args --automation
 until state >/dev/null 2>&1; do sleep 0.1; done
 trap 'osascript -e "tell application id \"dev.attn.lens\" to quit" || true' EXIT
 
+# The driver posts keys only while a Lens window is in front, so the editor opens first.
 cat >"$OUT/open.txt" <<SCRIPT
+dock Attn Lens
+expect "editor":true
+wait 500
 watch-window Attn Lens
 chord cmd+opt x
 await-window
