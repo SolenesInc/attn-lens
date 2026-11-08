@@ -44,17 +44,34 @@ chord cmd+opt s
 SCRIPT
 "$OUT/driver" --front "Attn Lens" "$OUT/open.txt" | tee "$OUT/driver.log"
 
-# The model downloads and loads before audio starts; note each state the bar showed.
+# The model downloads and loads before audio starts. Each change to Lens's state
+# wakes the wait; note each voice state the bar showed until it listens.
 : >"$OUT/voice-states.txt"
 deadline=$((SECONDS + READY_LIMIT_SECONDS))
+generation=0
+began=
 last=
-until state | grep -q '"voice":{"state":"listening"}'; do
-    now="$(state | /usr/bin/python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["state"]["voice"]))')"
-    if [ "$now" != "$last" ]; then printf '%s %s\n' "$SECONDS" "$now" >>"$OUT/voice-states.txt"; last="$now"; fi
-    # ⌘⌥S may take a moment to arrive; off after that means voice failed.
-    case "$now" in *'"off"'*) [ -n "$last" ] && [ "$last" != "$now" ] && { echo "voice stopped: $(state)" >&2; exit 1; } ;; esac
-    [ "$SECONDS" -lt "$deadline" ] || { echo "voice not listening after ${READY_LIMIT_SECONDS}s" >&2; exit 1; }
-    sleep 0.5
+while :; do
+    left=$((deadline - SECONDS))
+    [ "$left" -gt 0 ] || { echo "voice not listening after ${READY_LIMIT_SECONDS}s" >&2; exit 1; }
+    reply="$("$LENS" lens "{\"cmd\":\"wait\",\"since\":$generation,\"timeout_ms\":$((left * 1000))}")"
+    read -r generation failed now <<<"$(/usr/bin/python3 -c '
+import json, sys
+reply = json.loads(sys.argv[1])
+if not reply["ok"]:
+    sys.exit(reply["error"])
+state = reply["state"]
+print(reply["generation"], int(state["error"] is not None),
+      json.dumps(state["voice"], separators=(",", ":")))' "$reply")"
+    [ "$now" = "$last" ] || printf '%s %s\n' "$SECONDS" "$now" >>"$OUT/voice-states.txt"
+    last="$now"
+    case "$now" in
+    *'"listening"'*) break ;;
+    # ⌘⌥S may take a moment to arrive; off once voice has begun, or with an
+    # error, means it failed.
+    *'"off"'*) [ -z "$began" ] && [ "$failed" = 0 ] || { echo "voice stopped: $reply" >&2; exit 1; } ;;
+    *) began=1 ;;
+    esac
 done
 printf '%s listening\n' "$SECONDS" >>"$OUT/voice-states.txt"
 

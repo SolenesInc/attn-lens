@@ -646,3 +646,32 @@ fn the_bar_shows_how_far_voice_has_got_and_waits_for_the_last_sentence() {
     assert_eq!(text(&after, "voice"), Some("Starting voice…"));
     assert_eq!(text(&after, "error"), None);
 }
+
+#[test]
+fn send_right_after_voice_stops_waits_for_its_last_sentence() {
+    let run = Run::new("voice-send.json", ONE_SESSION);
+
+    // ⌘⌥S stopped voice and Send came while it finished: the send's still is
+    // taken, but nothing goes to attn until the last sentence is in.
+    let waiting = run.tree("bar", "still-while-finishing");
+    assert_eq!(text(&waiting, "voice"), Some("Finishing…"));
+    assert_eq!(text(&waiting, "segment-0"), None);
+    assert!(!run.path("args").exists(), "sent before voice finished");
+
+    let finished = run.tree("bar", "voice-finished");
+    assert_eq!(text(&finished, "segment-0"), Some("and then it crashes"));
+    assert_eq!(text(&finished, "voice"), Some("⌘⌥S voice"));
+    assert!(!run.path("args").exists(), "the send runs after the finish");
+
+    assert!(!visible(&run.tree("bar", "sent"), "bar"));
+    let args = std::fs::read_to_string(run.path("args")).unwrap();
+    assert!(args.starts_with("send s1 "), "{args}");
+
+    // A finish that fails stops the send, which would lose the sentence, and says why.
+    let failed = run.tree("bar", "send-failed");
+    assert!(visible(&failed, "bar"));
+    assert_eq!(
+        text(&failed, "status"),
+        Some("Voice stopped: transcription failed")
+    );
+}

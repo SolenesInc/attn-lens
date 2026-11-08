@@ -24,10 +24,8 @@ use serde_json::{Value, json};
 use session::{Area, Capture, Cause, DisplayFrame, HostTime, InkMark, Segment, Still};
 use std::{
     path::PathBuf,
-    sync::{
-        Arc, Condvar, Mutex, MutexGuard,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{Arc, Condvar, Mutex, MutexGuard},
+    time::Duration,
 };
 
 /// Whether the ink layer takes the pointer: `All` while the draw key is down.
@@ -132,6 +130,9 @@ struct State {
     voice_run: u64,
     /// Set by automation: the next ⌘⌥S plays this WAV instead of the microphone.
     voice_wav: Option<PathBuf>,
+    /// A send of this capture waits for the voice ⌘⌥S stopped to finish, so it
+    /// carries the last sentence; it starts, or fails, once that finish returns.
+    send_after_voice: Option<u64>,
     watch: Option<Watch>,
 }
 
@@ -143,10 +144,8 @@ pub struct Lens {
     /// The capture of each still being taken. A send waits for its capture's
     /// stills so none is left out; another capture's stills are not its concern.
     pending_stills: (Mutex<Vec<u64>>, Condvar),
-    /// Signalled with every change to `state`, so a send can wait for a voice
-    /// that ⌘⌥S stopped and is still finishing.
-    state_changed: Condvar,
-    generation: AtomicU64,
+    /// Counts changes; the condvar wakes whoever waits for the next one.
+    generation: (Mutex<u64>, Condvar),
     wakers: Mutex<Vec<Box<dyn Fn() + Send>>>,
     /// Each window's name and how to ask whether it shows, for automation.
     windows: Mutex<Vec<(&'static str, WindowVisible)>>,
@@ -158,8 +157,7 @@ impl Lens {
             port,
             state: Default::default(),
             pending_stills: Default::default(),
-            state_changed: Condvar::new(),
-            generation: AtomicU64::new(0),
+            generation: Default::default(),
             wakers: Default::default(),
             windows: Default::default(),
         })
@@ -184,12 +182,23 @@ impl Lens {
 
     /// Changes each time the state does; a window redraws when it differs from what it saw.
     pub fn generation(&self) -> u64 {
-        self.generation.load(Ordering::SeqCst)
+        *self.generation.0.lock().unwrap()
+    }
+
+    /// Blocks until the generation differs from `since` or `timeout` passes, and
+    /// returns the generation. Read the state after this: a change that lands
+    /// later moves the generation past the one returned.
+    pub fn wait_change(&self, since: u64, timeout: Duration) -> u64 {
+        let (generation, moved) = &self.generation;
+        let (generation, _) = moved
+            .wait_timeout_while(generation.lock().unwrap(), timeout, |now| *now == since)
+            .unwrap();
+        *generation
     }
 
     fn changed(&self) {
-        self.generation.fetch_add(1, Ordering::SeqCst);
-        self.state_changed.notify_all();
+        *self.generation.0.lock().unwrap() += 1;
+        self.generation.1.notify_all();
         for wake in self.wakers.lock().unwrap().iter() {
             wake();
         }
@@ -791,11 +800,28 @@ impl Lens {
                     if state.voice_run == run && state.voice_state == VoiceState::Finishing {
                         state.voice_state = VoiceState::Off;
                     }
-                    if let Err(error) = finished {
-                        state.error = Some(error);
-                    }
+                    let waiting = state.send_after_voice.take();
+                    let send = match (waiting, finished) {
+                        (Some(id), Ok(())) => Some(id),
+                        // The send would lose the last sentence, so it stops and says why.
+                        (Some(_), Err(error)) => {
+                            state.sending = None;
+                            state.send = SendStatus::Failed(error);
+                            None
+                        }
+                        (None, Err(error)) => {
+                            state.error = Some(error);
+                            None
+                        }
+                        (None, Ok(())) => None,
+                    };
                     drop(state);
                     lens.changed();
+                    if let Some(id) = send {
+                        let sender = lens.clone();
+                        lens.port
+                            .run(Box::new(move || sender.finish_send(id, None)));
+                    }
                 }));
                 return;
             }
@@ -871,7 +897,7 @@ impl Lens {
         target: Option<String>,
         message: Option<String>,
     ) -> Result<(), String> {
-        let (id, needs_still, voice) = {
+        let (id, needs_still, voice, after_voice) = {
             let mut state = self.state.lock().unwrap();
             if state.send == SendStatus::Sending {
                 return Err("A send is already running.".into());
@@ -896,17 +922,28 @@ impl Lens {
             state.send = SendStatus::Sending;
             state.sending = Some(id);
             let voice = state.voice.take();
+            let after_voice = voice.is_none() && state.voice_state == VoiceState::Finishing;
             if voice.is_some() {
                 state.voice_state = VoiceState::Finishing;
             }
-            (id, needs_still, voice.map(|voice| (voice, state.voice_run)))
+            if after_voice {
+                state.send_after_voice = Some(id);
+            }
+            (
+                id,
+                needs_still,
+                voice.map(|voice| (voice, state.voice_run)),
+                after_voice,
+            )
         };
         self.changed();
         if needs_still {
             self.take_still(Cause::Send);
         }
-        let lens = self.clone();
-        self.port.run(Box::new(move || lens.finish_send(id, voice)));
+        if !after_voice {
+            let lens = self.clone();
+            self.port.run(Box::new(move || lens.finish_send(id, voice)));
+        }
         Ok(())
     }
 
@@ -921,14 +958,6 @@ impl Lens {
             }
             finished
         });
-        // ⌘⌥S just before Send leaves that voice finishing on another thread; its
-        // last sentence belongs to this send.
-        {
-            let mut state = self.state.lock().unwrap();
-            while state.voice_state == VoiceState::Finishing {
-                state = self.state_changed.wait(state).unwrap();
-            }
-        }
         let mut pending = self.pending_stills.0.lock().unwrap();
         while pending.contains(&id) {
             pending = self.pending_stills.1.wait(pending).unwrap();

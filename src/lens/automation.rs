@@ -6,6 +6,8 @@
 //!
 //! ```text
 //! {"cmd":"state"}
+//! {"cmd":"wait","since":0,"timeout_ms":1000}          blocks until the state changes after generation
+//!                                                   `since`, or the timeout; replies with `generation` and `state`
 //! {"cmd":"key","key":"capture"|"voice"|"keyboard"|"send"|"draw-down"|"draw-up"}
 //! {"cmd":"pick"}                                    the whole display under the pointer
 //! {"cmd":"pick","display":1,"rect":[x,y,w,h]}       rect is optional: the whole display
@@ -30,6 +32,7 @@ use std::{
     },
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 /// The socket lives in a directory only this user can enter.
@@ -97,6 +100,16 @@ fn handle(lens: &Arc<Lens>, request: &Value) -> Result<Value, String> {
     let text = |name: &str| request[name].as_str();
     match text("cmd").ok_or("The request needs a \"cmd\".")? {
         "state" => Ok(json!({"state": lens.state_json()})),
+        "wait" => {
+            let number = |key: &str| {
+                request[key]
+                    .as_u64()
+                    .ok_or_else(|| format!("wait needs a whole number \"{key}\""))
+            };
+            let timeout = Duration::from_millis(number("timeout_ms")?);
+            let generation = lens.wait_change(number("since")?, timeout);
+            Ok(json!({"generation": generation, "state": lens.state_json()}))
+        }
         "key" => {
             lens.key(parse_key(text("key").ok_or("key needs a \"key\".")?)?);
             Ok(json!({}))

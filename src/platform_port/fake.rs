@@ -8,6 +8,8 @@
 //! voice:downloading:3:10  voice:loading  voice:warming  voice:listening
 //!                            voice's progress, while it runs
 //! voice:fail:the reason      voice stops on its own
+//! voice:last:0.5:1.2:words   the sentence in progress, which finishing voice delivers
+//! voice:finish-fails:reason  finishing voice fails with this instead
 //! clipboard:PATH             the system clipboard now holds the image at PATH
 //! ocr:the words              text recognition finds these words from now on
 //! pick:#RRGGBB  pick:cancel  answers a Pick from screen that is waiting
@@ -65,6 +67,9 @@ pub struct FakePort {
     token: Mutex<Option<String>>,
     displays: Mutex<Vec<DisplayFrame>>,
     shift: AtomicBool,
+    /// The sentence a finishing voice delivers before it returns.
+    last_words: Arc<Mutex<Option<Segment>>>,
+    finish_error: Arc<Mutex<Option<String>>>,
 }
 
 impl FakePort {
@@ -82,6 +87,8 @@ impl FakePort {
                 menu_bar: MENU_BAR,
             }]),
             shift: AtomicBool::new(false),
+            last_words: Arc::default(),
+            finish_error: Arc::default(),
         }
     }
 
@@ -104,6 +111,10 @@ impl FakePort {
             if let Some(sink) = sink {
                 sink(event);
             }
+        } else if let Some(reason) = mark.strip_prefix("voice:finish-fails:") {
+            *self.finish_error.lock().unwrap() = Some(reason.into());
+        } else if let Some(words) = mark.strip_prefix("voice:last:") {
+            *self.last_words.lock().unwrap() = segment(&format!("say:{words}"));
         } else if let Some(event) = voice_event(mark) {
             let mut sinks = self.sinks.lock().unwrap();
             // Voice that fails has stopped.
@@ -267,9 +278,19 @@ impl PlatformPort for FakePort {
         }
         sinks.1 = Some(sink);
         drop(sinks);
-        let sinks = self.sinks.clone();
+        let (sinks, last_words, finish_error) = (
+            self.sinks.clone(),
+            self.last_words.clone(),
+            self.finish_error.clone(),
+        );
         Ok(Voice(Box::new(move || {
-            sinks.lock().unwrap().1 = None;
+            let sink = sinks.lock().unwrap().1.take();
+            if let Some(error) = finish_error.lock().unwrap().take() {
+                return Err(error);
+            }
+            if let (Some(sink), Some(words)) = (sink, last_words.lock().unwrap().take()) {
+                sink(VoiceEvent::Segment(words));
+            }
             Ok(())
         })))
     }

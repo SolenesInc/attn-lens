@@ -187,6 +187,39 @@ fn a_live_socket_is_kept_and_a_stale_one_is_replaced() {
 }
 
 #[test]
+fn wait_returns_when_the_state_changes_and_reports_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let harness = Arc::new(Harness::new(dir.path(), None));
+    let at_rest = harness.ask(r#"{"cmd":"wait","since":999,"timeout_ms":0}"#)["generation"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(
+        harness.ask(&format!(
+            r#"{{"cmd":"wait","since":{at_rest},"timeout_ms":0}}"#
+        ))["generation"],
+        at_rest,
+        "nothing changed, so the timeout returns the same generation"
+    );
+
+    let waiter = {
+        let harness = harness.clone();
+        std::thread::spawn(move || {
+            harness.ask(&format!(
+                r#"{{"cmd":"wait","since":{at_rest},"timeout_ms":600000}}"#
+            ))
+        })
+    };
+    harness.ask(r#"{"cmd":"key","key":"capture"}"#);
+    let reply = waiter.join().unwrap();
+    assert!(reply["generation"].as_u64().unwrap() > at_rest);
+    assert!(reply["state"]["picking"].is_array(), "{reply}");
+    assert_eq!(
+        harness.ask(r#"{"cmd":"wait","since":0}"#)["error"],
+        "wait needs a whole number \"timeout_ms\""
+    );
+}
+
+#[test]
 fn voice_wav_takes_only_a_regular_file_by_its_absolute_path() {
     let dir = tempfile::tempdir().unwrap();
     let dir = dir.path();
