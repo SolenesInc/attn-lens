@@ -153,3 +153,39 @@ fn finish_while_the_source_is_still_opening_returns_and_stops() {
     assert!(late.is_empty(), "{late:?}");
     speech.release();
 }
+
+#[test]
+#[ignore = "needs Metal, the speech helper and the models in ATTN_LENS_SPEECH_CACHE"]
+fn finish_reports_a_source_that_fails_to_open() {
+    assert!(std::env::var_os("ATTN_LENS_SPEECH_CACHE").is_some());
+    let dir = tempfile::tempdir().unwrap();
+    let fifo = dir.path().join("voice.wav");
+    let made = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .unwrap();
+    assert!(made.success());
+    let origin = Instant::now();
+    let (events, received) = mpsc::channel();
+    let events = Mutex::new(events);
+    let speech = Arc::new(Speech::default());
+    let voice = speech.start(
+        VoiceSource::Wav(fifo.clone()),
+        Arc::new(move || HostTime(origin.elapsed().as_nanos() as u64)),
+        Arc::new(move |event| events.lock().unwrap().send(event).unwrap()),
+    );
+    loop {
+        match received.recv_timeout(Duration::from_secs(120)).unwrap() {
+            VoiceEvent::Status(VoiceStatus::WarmingUp) => break,
+            VoiceEvent::Failed(error) => panic!("{error}"),
+            _ => {}
+        }
+    }
+    let finishing = std::thread::spawn(move || voice.finish());
+    // The source is still opening, as the microphone is while its prompt shows;
+    // bytes that are no WAV make it fail, as a denied prompt does.
+    std::fs::write(&fifo, b"not a wav file").unwrap();
+    let outcome = finishing.join().unwrap();
+    assert!(outcome.is_err(), "{outcome:?}");
+    speech.release();
+}

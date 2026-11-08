@@ -63,12 +63,13 @@ impl Speech {
         let speech = self.clone();
         let thread_run = run.clone();
         std::thread::spawn(move || {
-            if let Err(error) = speech.listen(&thread_run, &source, &clock, &sink)
+            let outcome = speech.listen(&thread_run, &source, &clock, &sink);
+            if let Err(error) = &outcome
                 && !thread_run.stopped()
             {
-                sink(VoiceEvent::Failed(error));
+                sink(VoiceEvent::Failed(error.clone()));
             }
-            thread_run.set(Phase::Done);
+            thread_run.end(outcome);
         });
         Voice(Box::new(move || run.finish()))
     }
@@ -160,7 +161,6 @@ impl Speech {
         helper.unroute(id);
         // Stopped by an error rather than by finish: the source is still open.
         run.stop_source();
-        run.done(result.clone());
         result
     }
 }
@@ -300,8 +300,11 @@ impl Run {
         }
     }
 
-    fn done(&self, outcome: Result<(), String>) {
-        self.state.lock().unwrap().outcome = Some(outcome);
+    /// The voice is over. A `finish` waiting on it, or one that comes later, gets `outcome`.
+    fn end(&self, outcome: Result<(), String>) {
+        let mut state = self.state.lock().unwrap();
+        state.outcome = Some(outcome);
+        state.phase = Phase::Done;
         self.changed.notify_all();
     }
 
@@ -340,8 +343,9 @@ impl Run {
                     state = self.changed.wait(state).unwrap();
                 }
             }
-            // Voice failed on its own and reported it already.
-            Phase::Opening | Phase::Stopped | Phase::Done => Ok(()),
+            // A send waiting here must not deliver past a voice that failed.
+            Phase::Done => state.outcome.take().unwrap_or(Ok(())),
+            Phase::Opening | Phase::Stopped => Ok(()),
         }
     }
 }
