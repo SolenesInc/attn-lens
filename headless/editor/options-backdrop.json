@@ -323,66 +323,102 @@
   {
    "t": 9.41,
    "type": "tap",
+   "key": "palette-ocean"
+  },
+  {
+   "t": 9.56,
+   "type": "mark",
+   "name": "picker-palette"
+  },
+  {
+   "t": 9.68,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 9.83,
+   "type": "mark",
+   "name": "picker-undone"
+  },
+  {
+   "t": 9.95,
+   "type": "tap",
+   "key": "background-solid"
+  },
+  {
+   "t": 10.1,
+   "type": "mark",
+   "name": "picker-solid"
+  },
+  {
+   "t": 10.22,
+   "type": "tap",
+   "key": "background-gradient"
+  },
+  {
+   "t": 10.34,
+   "type": "tap",
    "key": "backdrop-color-1"
   },
   {
-   "t": 9.71,
+   "t": 10.64,
    "type": "tap",
    "key": "pick-screen"
   },
   {
-   "t": 10.01,
+   "t": 10.94,
    "type": "mark",
    "name": "pick:#405060"
   },
   {
-   "t": 10.16,
+   "t": 11.09,
    "type": "mark",
    "name": "picked"
   },
   {
-   "t": 10.28,
+   "t": 11.21,
    "type": "tap",
    "key": "backdrop-color-1"
   },
   {
-   "t": 10.4,
+   "t": 11.33,
    "type": "tap",
    "key": "backdrop-enabled"
   },
   {
-   "t": 10.55,
+   "t": 11.48,
    "type": "mark",
    "name": "off"
   },
   {
-   "t": 10.67,
+   "t": 11.6,
    "type": "tap",
    "key": "backdrop-enabled"
   },
   {
-   "t": 10.82,
+   "t": 11.75,
    "type": "mark",
    "name": "on"
   },
   {
-   "t": 10.94,
+   "t": 11.87,
    "type": "key",
    "name": "c",
    "cmd": true
   },
   {
-   "t": 11.34,
+   "t": 12.27,
    "type": "mark",
    "name": "copied"
   },
   {
-   "t": 11.46,
+   "t": 12.39,
    "type": "tap",
    "key": "backdrop-done"
   },
   {
-   "t": 11.61,
+   "t": 12.54,
    "type": "mark",
    "name": "done"
   }
@@ -716,6 +752,48 @@
    "value": {
     "backdrop-color-2": "#102030"
    }
+  },
+  {
+   "at": "picker-palette",
+   "state": {
+    "backdrop": {
+     "colors": null
+    }
+   },
+   "value": {
+    "backdrop-color-2": "#344AC7",
+    "hex-field": "#344AC7"
+   }
+  },
+  {
+   "at": "picker-undone",
+   "state": {
+    "backdrop": {
+     "colors": [
+      [
+       99,
+       185,
+       255
+      ],
+      [
+       16,
+       32,
+       48
+      ]
+     ]
+    }
+   },
+   "value": {
+    "hex-field": "#102030"
+   }
+  },
+  {
+   "at": "picker-solid",
+   "absent": [
+    "color-wheel",
+    "hex-field",
+    "backdrop-color-2"
+   ]
   },
   {
    "at": "picked",

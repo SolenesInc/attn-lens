@@ -210,7 +210,7 @@ impl Editor {
             );
         }
         panel = panel.child(controls::field(cx, "Palette", palettes));
-        let stops = if b.gradient || moving { 2 } else { 1 };
+        let stops = b.stops();
         let mut colors = row().key("backdrop-colors").gap(6.);
         for (stop, hex) in b.colors().into_iter().enumerate().take(stops) {
             let [r, g, bl] = [(hex >> 16) as u8, (hex >> 8) as u8, hex as u8];

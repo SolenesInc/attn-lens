@@ -19,6 +19,7 @@ impl Editor {
         if let Err(error) = self.dispatch(action, tx) {
             self.status = error;
         }
+        self.follow_backdrop_picker();
         self.request_frame();
     }
 

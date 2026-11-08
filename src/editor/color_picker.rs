@@ -115,6 +115,25 @@ impl ColorPicker {
 }
 
 impl Editor {
+    /// An open backdrop picker shows its colour as it is after any action, such as a
+    /// palette or undo. It closes when the background stops showing that colour.
+    pub(crate) fn follow_backdrop_picker(&mut self) {
+        let Some(stop) = self.picker.stop.filter(|_| self.picker.open) else {
+            return;
+        };
+        let b = self.current_backdrop();
+        if stop >= b.stops() {
+            self.picker.open = false;
+            return;
+        }
+        let color = b.colors()[stop];
+        let rgb = [(color >> 16) as u8, (color >> 8) as u8, color as u8];
+        // The wheel's own drags already match; leave the hex field being typed alone.
+        if from_hsv(self.picker.hsv) != rgb {
+            self.picker.sync(rgb);
+        }
+    }
+
     fn apply_picked(&mut self, drag: &Drag, tx: &mut Tx) {
         let rgb = from_hsv(self.picker.hsv);
         if matches!(drag.phase, Phase::Down) {
