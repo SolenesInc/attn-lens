@@ -94,14 +94,14 @@ fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
             "backdrop-button",
             "Backdrop",
             &icons::SQUARE,
-            s.panel == super::Panel::Backdrop,
+            Some(s.panel == super::Panel::Backdrop),
             Action::ToggleBackdrop,
         ))
         .child(button(
             "animation-button",
             "Animation",
             &icons::PLAY,
-            s.panel == super::Panel::Animation,
+            Some(s.panel == super::Panel::Animation),
             Action::ToggleAnimationPanel,
         ))
         .child(button(
