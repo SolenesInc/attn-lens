@@ -9,7 +9,7 @@ use std::sync::Arc;
 /// each picker's hint.
 pub const PICKER_SLOTS: usize = 8;
 /// The three 12 pt grab zones a side needs, so a small area keeps its handles apart.
-const MIN_AREA: f64 = 36.;
+pub const MIN_AREA: f64 = 36.;
 /// A press that travels no further is a click.
 const CLICK_TRAVEL: f32 = 8.;
 

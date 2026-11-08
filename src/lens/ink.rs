@@ -4,6 +4,7 @@
 //! small windows of their own, so the ink layer takes no pointer while the key is up.
 use super::{
     Lens, StrokeStart,
+    select::MIN_AREA,
     session::{Area, DisplayFrame},
 };
 use crate::{
@@ -199,17 +200,41 @@ impl Corner {
         [area.rect[0] as f32 + x, top, HANDLE_ZONE, HANDLE_ZONE]
     }
 
-    /// `rect` with this corner moved to the point `(x, y)`; the opposite corner stays.
-    fn moved(self, rect: [f64; 4], x: f64, y: f64) -> [f64; 4] {
+    /// The corner opposite this one on `rect`: the point a drag of this corner keeps.
+    fn anchor(self, rect: [f64; 4]) -> (f64, f64) {
         let [left, top, width, height] = rect;
         let (right, bottom) = (left + width, top + height);
-        let (x0, y0, x1, y1) = match self {
-            Corner::TopLeft => (x, y, right, bottom),
-            Corner::TopRight => (left, y, x, bottom),
-            Corner::BottomLeft => (x, top, right, y),
-            Corner::BottomRight => (left, top, x, y),
+        match self {
+            Corner::TopLeft => (right, bottom),
+            Corner::TopRight => (left, bottom),
+            Corner::BottomLeft => (right, top),
+            Corner::BottomRight => (left, top),
+        }
+    }
+
+    /// The area this corner spans to the point `(x, y)` from `anchor`, which stays.
+    /// The corner stays on the display and on its own side of the anchor, at least
+    /// the minimum away: dragged past the anchor, the area holds at its minimum.
+    fn resized(self, anchor: (f64, f64), x: f64, y: f64, display: DisplayFrame) -> [f64; 4] {
+        let (width, height) = (display.frame[2], display.frame[3]);
+        let left = matches!(self, Corner::TopLeft | Corner::BottomLeft);
+        let top = matches!(self, Corner::TopLeft | Corner::TopRight);
+        let x = if left {
+            x.clamp(0., (anchor.0 - MIN_AREA).max(0.))
+        } else {
+            x.clamp((anchor.0 + MIN_AREA).min(width), width)
         };
-        [x0.min(x1), y0.min(y1), (x1 - x0).abs(), (y1 - y0).abs()]
+        let y = if top {
+            y.clamp(0., (anchor.1 - MIN_AREA).max(0.))
+        } else {
+            y.clamp((anchor.1 + MIN_AREA).min(height), height)
+        };
+        [
+            x.min(anchor.0),
+            y.min(anchor.1),
+            (x - anchor.0).abs(),
+            (y - anchor.1).abs(),
+        ]
     }
 }
 
@@ -408,11 +433,13 @@ pub struct Handle {
     grab: Option<Grab>,
 }
 
-/// Where the handle's window sat when pressed, and how far the press sat from
-/// the corner, so the corner moves by the pointer's travel and does not jump.
+/// Where the handle's window sat when pressed, how far the press sat from the
+/// corner, so the corner moves by the pointer's travel and does not jump, and the
+/// opposite corner, which the whole drag keeps.
 struct Grab {
     window: (f32, f32),
     offset: (f32, f32),
+    anchor: (f64, f64),
 }
 
 impl Handle {
@@ -462,6 +489,7 @@ pub fn handle_view(s: &Handle, _: &mut Cx<Handle>) -> El {
                         area.rect[0] as f32 + corner.0 - press.0,
                         area.rect[1] as f32 + corner.1 - press.1,
                     ),
+                    anchor: s.corner.anchor(area.rect),
                 });
                 s.lens.set_resizing(true);
             }
@@ -469,8 +497,9 @@ pub fn handle_view(s: &Handle, _: &mut Cx<Handle>) -> El {
                 if let Some(grab) = &s.grab {
                     let x = grab.window.0 + d.x + grab.offset.0;
                     let y = grab.window.1 + d.y + grab.offset.1;
+                    let (x, y) = (f64::from(x), f64::from(y));
                     s.lens
-                        .set_area(s.corner.moved(area.rect, f64::from(x), f64::from(y)));
+                        .set_area(s.corner.resized(grab.anchor, x, y, display));
                 }
             }
             Phase::Up => {

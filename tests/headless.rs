@@ -379,6 +379,34 @@ fn a_still_left_from_a_closed_capture_does_not_stop_the_next_from_sending() {
 }
 
 #[test]
+fn a_corner_drag_keeps_the_opposite_corner_where_it_was() {
+    // The area spans 100–200 across. The top-left corner, dragged past the
+    // minimum and back, moves only its own edges; so does the bottom-right
+    // corner dragged off the display and back.
+    let run = Run::new("corners.json", TWO_SESSIONS);
+    assert_eq!(
+        frame(&run.tree("bar", "picked"), "ink"),
+        [100., 100., 100., 200.]
+    );
+    assert_eq!(
+        frame(&run.tree("bar", "past-anchor"), "ink"),
+        [164., 100., 36., 200.]
+    );
+    assert_eq!(
+        frame(&run.tree("bar", "back-from-anchor"), "ink"),
+        [150., 100., 50., 200.]
+    );
+    assert_eq!(
+        frame(&run.tree("bar", "off-display"), "ink"),
+        [150., 100., 1130., 700.]
+    );
+    assert_eq!(
+        frame(&run.tree("bar", "back-on-display"), "ink"),
+        [150., 100., 150., 300.]
+    );
+}
+
+#[test]
 fn the_bar_arms_tools_and_owns_the_keyboard() {
     let run = Run::new("bar.json", TWO_SESSIONS);
 
