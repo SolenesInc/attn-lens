@@ -160,6 +160,12 @@ impl Mailbox {
     }
 }
 
+/// A request that arrived during an operation.
+enum Deferred {
+    Open(u64, Box<Document>),
+    Leave { send: bool },
+}
+
 pub struct Editor {
     me: AppHandle<Editor>,
     port: Arc<dyn PlatformPort>,
@@ -219,10 +225,8 @@ pub struct Editor {
     pub(crate) still: Option<u64>,
     /// The image that was open when a still replaced it, back when the still is done.
     parked: Option<Document>,
-    /// Back or Send waiting for the running operation; true means Send.
-    leaving: Option<bool>,
-    /// A still to open once the running operation finishes.
-    opening: Option<(u64, Document)>,
+    /// What to do once the running operation ends. The last request wins.
+    deferred: Option<Deferred>,
 }
 
 impl Editor {
@@ -278,8 +282,7 @@ impl Editor {
             capture,
             still: None,
             parked: None,
-            leaving: None,
-            opening: None,
+            deferred: None,
         }
     }
 
@@ -302,8 +305,18 @@ impl Editor {
     pub fn open_still(&mut self, still: u64, document: Document, tx: &mut rune::Tx) {
         // A running operation lands on the image it started on, which is parked next.
         if self.is_busy() {
-            self.opening = Some((still, document));
+            self.deferred = Some(Deferred::Open(still, Box::new(document)));
             return;
+        }
+        // A still left open goes back first, so its edits are kept.
+        if self.still.is_some() {
+            self.commit_text(tx);
+            self.cancel_gesture();
+            self.leave_still(false);
+            if self.is_busy() {
+                self.deferred = Some(Deferred::Open(still, Box::new(document)));
+                return;
+            }
         }
         if self.still.is_none() {
             self.commit_text(tx);
@@ -329,7 +342,7 @@ impl Editor {
         }
         self.open = false;
         self.me.hide();
-        self.capture.finish_editing();
+        self.capture.finish_editing(still);
         if send {
             self.capture.send_edited();
         }
@@ -350,8 +363,17 @@ impl Editor {
     /// A running operation is waited for, so its result lands on the still.
     pub fn leave_for_key(&mut self, send: bool, tx: &mut rune::Tx) {
         if self.is_busy() {
-            // The last request wins, so a Back from a closing capture cancels a queued Send.
-            self.leaving = Some(send);
+            // A queued open never happened: only the capture has to come back.
+            if let Some(Deferred::Open(queued, _)) = self.deferred.take() {
+                self.capture.finish_editing(queued);
+                if self.still.is_none() {
+                    if send {
+                        self.capture.send_edited();
+                    }
+                    return;
+                }
+            }
+            self.deferred = Some(Deferred::Leave { send });
             return;
         }
         let action = if send {

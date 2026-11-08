@@ -864,13 +864,10 @@ impl Editor {
         if self.is_busy() {
             return;
         }
-        if let Some(send) = self.leaving.take() {
-            self.leave_for_key(send, tx);
-        }
-        if !self.is_busy()
-            && let Some((still, document)) = self.opening.take()
-        {
-            self.open_still(still, document, tx);
+        match self.deferred.take() {
+            Some(super::Deferred::Open(still, document)) => self.open_still(still, *document, tx),
+            Some(super::Deferred::Leave { send }) => self.leave_for_key(send, tx),
+            None => {}
         }
     }
 

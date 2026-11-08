@@ -406,12 +406,13 @@ impl Lens {
 
     /// The editor gave its still back: the capture shows again, with the keyboard
     /// on its message and the strip showing the edit.
-    pub fn finish_editing(self: &Arc<Self>) {
+    pub fn finish_editing(self: &Arc<Self>, id: u64) {
         let (area, edited) = {
             let mut state = self.state.lock().unwrap();
-            let Some(id) = state.editing.take() else {
+            if state.editing != Some(id) {
                 return;
-            };
+            }
+            state.editing = None;
             state.keys = KeyOwner::Bar;
             state.bar_key_requests += 1;
             let Some(capture) = state.capture.as_ref() else {
