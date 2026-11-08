@@ -35,6 +35,8 @@ This file's Glance rules still apply to the code that remains.
   send pair` and `attn send <session>` JSON, plus the Keychain token. Its tests
   use a stand-in `attn`; attn's `cmd/attn/send_stack_test.go` pins the real JSON.
 - `src/lens/capture.rs`: stills through Hex's capture-core (ScreenCaptureKit).
+- `src/lens/watch.rs`: macOS's `PlatformPort::watch`. `LENS_WATCH_LOG=1` prints each
+  event, and `--ink-in-capture` lets a recording of a driven check show the ink.
 - `src/lens/voice.rs`: voice. It runs `speech/` (attn's speech helper, protocol 3)
   as a child, feeds it the microphone (`voice/mic.rs`) or, through the socket's
   `voice-wav`, a WAV, and puts each phrase on the capture clock. `speech/` is its

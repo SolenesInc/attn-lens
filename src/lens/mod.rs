@@ -11,6 +11,8 @@ pub mod ink;
 pub mod select;
 pub mod session;
 pub mod voice;
+#[cfg(target_os = "macos")]
+pub mod watch;
 
 use crate::{
     document::Document,
@@ -29,6 +31,15 @@ use std::{
     sync::{Arc, Condvar, Mutex, MutexGuard},
     time::Duration,
 };
+
+/// The fraction of the area that counts as a new screen (D8 on the plan), past the
+/// largest change that is not one. Measured on Safari pages (C5 on s-dqjzpt): 250 ms
+/// apart, a big scroll changes up to 0.50, a tab between similar articles 0.35,
+/// playing video 0.39, a blinking cursor 0.0004. Video cuts reach 0.96 and do count.
+const CHANGE_FRACTION: f32 = 0.6;
+
+/// How long ink takes to fade: a feel choice, judged in the user's session (C15).
+const FADE: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// Whether the ink layer takes the pointer: `All` while the draw key is down.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -128,6 +139,7 @@ struct State {
     /// A failure with no capture to hold it, such as a refused still.
     error: Option<String>,
     next_capture: u64,
+    watch_generation: u64,
     /// Counts voice starts; see `CaptureVoice::Running`.
     voice_run: u64,
     /// Set by automation: the next ⌘⌥S plays this WAV instead of the microphone.
@@ -332,13 +344,40 @@ impl Lens {
     }
 
     /// A corner handle's drag begins or ends.
-    pub fn set_resizing(&self, resizing: bool) {
+    pub fn set_resizing(self: &Arc<Self>, resizing: bool) {
         let mut state = self.state.lock().unwrap();
         let resizing = resizing && state.capture.is_some();
         if state.resizing != resizing {
             state.resizing = resizing;
+            let area = state.capture.as_ref().filter(|_| !resizing).map(|c| c.area);
             drop(state);
+            if let Some(area) = area {
+                self.rewatch(area);
+            }
             self.changed();
+        }
+    }
+
+    /// Starts a watch whose events count only until the next one starts: a frame
+    /// or event in flight when a watch stops can still arrive.
+    fn watch_area(self: &Arc<Self>, area: Area) -> Watch {
+        let generation = {
+            let mut state = self.state.lock().unwrap();
+            state.watch_generation += 1;
+            state.watch_generation
+        };
+        let lens = self.clone();
+        let sink: Sink<WatchEvent> = Arc::new(move |event| lens.watched(generation, event));
+        self.port.watch(area, sink)
+    }
+
+    /// Watches `area` from now on, in place of what was watched before.
+    fn rewatch(self: &Arc<Self>, area: Area) {
+        self.state.lock().unwrap().watch = None;
+        let watch = self.watch_area(area);
+        let mut state = self.state.lock().unwrap();
+        if state.capture.is_some() {
+            state.watch = Some(watch);
         }
     }
 
@@ -364,9 +403,7 @@ impl Lens {
         } else {
             drop(state);
         }
-        let lens = self.clone();
-        let sink: Sink<WatchEvent> = Arc::new(move |event| lens.watched(event));
-        let watch = self.port.watch(area, sink);
+        let watch = self.watch_area(area);
         {
             let mut state = self.state.lock().unwrap();
             state.next_capture += 1;
@@ -381,6 +418,8 @@ impl Lens {
                 ink: vec![],
                 view_still: None,
                 next_still: 0,
+                unseen_change: None,
+                send_still_error: None,
                 segments: vec![],
                 target,
                 message: String::new(),
@@ -568,17 +607,23 @@ impl Lens {
             }
             (capture.view_still, state.tool)
         };
-        let at = self.port.now();
         let still = match open {
             Some(still) => still,
             None => {
                 let still = self.take_still(Cause::Draw)?;
-                if let Some(capture) = self.state.lock().unwrap().capture.as_mut() {
+                let mut state = self.state.lock().unwrap();
+                if let Some(capture) = state.capture.as_mut() {
                     capture.view_still = Some(still);
+                }
+                // A change from before this still is on it, so only a later one counts.
+                if let Some(watch) = &state.watch {
+                    watch.rebase();
                 }
                 still
             }
         };
+        // Read after the still's own time, so a frame is never later than its marks.
+        let at = self.port.now();
         Some(StrokeStart {
             still,
             at,
@@ -609,11 +654,14 @@ impl Lens {
                 .filter(|m| m.still == start.still && m.mark.tool == crate::document::Tool::Counter)
                 .count();
             if let Some(mark) = ink::mark_from_stroke(&start, &points, counter) {
+                let stale = capture.view_still != Some(start.still);
                 capture.ink.push(InkMark {
                     still: start.still,
                     mark,
                     times: (start.at, end),
                     committed: false,
+                    stale,
+                    fade_from: None,
                 });
                 state.tool = InkTool::default();
                 join_finished_ink(capture);
@@ -631,11 +679,14 @@ impl Lens {
         if let (Some(draft), Some(capture)) = (draft, state.capture.as_mut())
             && !text.trim().is_empty()
         {
+            let stale = capture.view_still != Some(draft.start.still);
             capture.ink.push(InkMark {
                 still: draft.start.still,
                 mark: ink::label_mark(draft.at, text.trim()),
                 times: (draft.start.at, draft.end),
                 committed: false,
+                stale,
+                fade_from: None,
             });
             join_finished_ink(capture);
         }
@@ -657,14 +708,51 @@ impl Lens {
         self.changed();
     }
 
-    /// The marks on the ink layer, in points on the capture's display.
+    /// The marks on the ink layer, in points on the capture's display, each as
+    /// transparent as its fade has made it.
     pub fn ink_marks(&self) -> Vec<crate::document::Mark> {
+        let now = self.port.now();
         let state = self.state.lock().unwrap();
         let ink = state.capture.as_ref().map(|c| c.ink.as_slice());
         ink.unwrap_or_default()
             .iter()
-            .map(|m| m.mark.clone())
+            .map(|m| {
+                let mut mark = m.mark.clone();
+                if let Some(from) = m.fade_from {
+                    let left = 1. - now.since(from).as_secs_f32() / FADE.as_secs_f32();
+                    mark.color[3] = (f32::from(mark.color[3]) * left.max(0.)) as u8;
+                }
+                mark
+            })
             .collect()
+    }
+
+    /// Starts the fades that are due and removes the ink that has finished. Each
+    /// mark begins only once its still exists. Returns true while any is fading.
+    pub fn advance_fades(&self) -> bool {
+        let now = self.port.now();
+        let mut state = self.state.lock().unwrap();
+        let Some(capture) = state.capture.as_mut() else {
+            return false;
+        };
+        let due = capture
+            .ink
+            .iter_mut()
+            .filter(|m| m.stale && m.committed && m.fade_from.is_none());
+        for mark in due {
+            mark.fade_from = Some(now);
+        }
+        let before = capture.ink.len();
+        capture
+            .ink
+            .retain(|m| m.fade_from.is_none_or(|from| now.since(from) < FADE));
+        let removed = capture.ink.len() != before;
+        let fading = capture.ink.iter().any(|m| m.fade_from.is_some());
+        drop(state);
+        if fading || removed {
+            self.changed();
+        }
+        fading
     }
 
     /// Closes the open capture and lets go of everything it held.
@@ -704,21 +792,46 @@ impl Lens {
         }));
     }
 
-    fn watched(self: &Arc<Self>, event: WatchEvent) {
-        match event {
-            WatchEvent::Click | WatchEvent::WindowSwitch => {
-                // The screen may have changed, so the next stroke starts a new still.
-                if let Some(capture) = self.state.lock().unwrap().capture.as_mut() {
-                    capture.view_still = None;
-                }
-                self.take_still(if event == WatchEvent::Click {
-                    Cause::Click
-                } else {
-                    Cause::WindowSwitch
-                });
+    /// The screen moved under the capture: ends the view, stales its ink, and
+    /// takes the still D7 asks for.
+    fn watched(self: &Arc<Self>, generation: u64, event: WatchEvent) {
+        let cause = match event {
+            WatchEvent::Click => Some(Cause::Click),
+            WatchEvent::WindowSwitch => Some(Cause::WindowSwitch),
+            WatchEvent::Scroll => None,
+            WatchEvent::Change(fraction) if fraction >= CHANGE_FRACTION => None,
+            WatchEvent::Change(_) => return,
+        };
+        let cause = {
+            let mut guard = self.state.lock().unwrap();
+            let state = &mut *guard;
+            let Some(capture) = state
+                .capture
+                .as_mut()
+                .filter(|_| state.watch_generation == generation)
+            else {
+                return;
+            };
+            // A running send has its stills; the page may still be clicked.
+            let cause = cause.filter(|_| state.sending != Some(capture.id));
+            let news = cause.is_some()
+                || capture.view_still.is_some()
+                || capture.unseen_change.is_none()
+                || capture.ink.iter().any(|m| !m.stale);
+            capture.unseen_change = Some(self.port.now());
+            if !news {
+                return;
             }
-            WatchEvent::Scroll | WatchEvent::Change(_) => {}
+            capture.view_still = None;
+            for mark in &mut capture.ink {
+                mark.stale = true;
+            }
+            cause
+        };
+        if let Some(cause) = cause {
+            self.take_still(cause);
         }
+        self.changed();
     }
 
     /// Takes a still of the open capture's area off the UI thread. Its time is now,
@@ -766,12 +879,18 @@ impl Lens {
                             };
                             let index = capture.stills.partition_point(|s| s.at <= at);
                             capture.stills.insert(index, still);
+                            if capture.unseen_change.is_some_and(|change| change <= at) {
+                                capture.unseen_change = None;
+                            }
                             join_finished_ink(capture);
                         }
                     }
                     Err(error) => {
                         // Ink with no frame under it cannot be sent; the next press retries.
                         if let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) {
+                            if cause == Cause::Send {
+                                capture.send_still_error = Some(error.clone());
+                            }
                             capture.ink.retain(|m| m.still != still_id);
                             if capture.view_still == Some(still_id) {
                                 capture.view_still = None;
@@ -928,7 +1047,8 @@ impl Lens {
             // None kept and none on the way, as when × dropped every one.
             let id = capture.id;
             let in_flight = self.pending_stills.0.lock().unwrap().contains(&id);
-            let needs_still = capture.stills.is_empty() && !in_flight;
+            let needs_still =
+                (capture.stills.is_empty() && !in_flight) || capture.unseen_change.is_some();
             let (voice, handle, after_voice) = match std::mem::take(&mut capture.voice) {
                 CaptureVoice::Off => (CaptureVoice::Off, None, false),
                 CaptureVoice::Running { handle, .. } => (
@@ -973,7 +1093,16 @@ impl Lens {
             pending = self.pending_stills.1.wait(pending).unwrap();
         }
         drop(pending);
+        let still_error = self
+            .state
+            .lock()
+            .unwrap()
+            .capture
+            .as_mut()
+            .filter(|c| c.id == id)
+            .and_then(|c| c.send_still_error.take());
         let delivered = voice
+            .and_then(|()| still_error.map_or(Ok(()), Err))
             .map_err(attn::Failure::Error)
             .and_then(|()| self.deliver(id));
         let mut state = self.state.lock().unwrap();
@@ -1074,9 +1203,18 @@ impl Lens {
                         at: s.at,
                         cause: s.cause,
                         marks: s.doc.marks.len(),
+                        times: s.times.clone(),
                         thumb: s.thumb.clone(),
                         width: s.doc.base.width(),
                         height: s.doc.base.height(),
+                    })
+                    .collect(),
+                ink: c
+                    .ink
+                    .iter()
+                    .map(|m| InkSummary {
+                        still: m.still,
+                        fading: m.fade_from.is_some(),
                     })
                     .collect(),
                 segments: c.segments.clone(),
@@ -1152,8 +1290,13 @@ impl Lens {
                     "at": s.at,
                     "cause": s.cause,
                     "marks": s.marks,
+                    "times": s.times,
                     "width": s.width,
                     "height": s.height,
+                })).collect::<Vec<_>>(),
+                "ink": c.ink.iter().map(|m| json!({
+                    "still": m.still,
+                    "fading": m.fading,
                 })).collect::<Vec<_>>(),
                 "segments": c.segments,
                 "target": c.target,
@@ -1189,9 +1332,15 @@ pub struct StillSummary {
     pub at: session::HostTime,
     pub cause: Cause,
     pub marks: usize,
+    pub times: Vec<(HostTime, HostTime)>,
     pub thumb: rune::Pixels,
     pub width: u32,
     pub height: u32,
+}
+
+pub struct InkSummary {
+    pub still: u64,
+    pub fading: bool,
 }
 
 pub struct CaptureSummary {
@@ -1200,6 +1349,7 @@ pub struct CaptureSummary {
     pub display: DisplayFrame,
     pub started: session::HostTime,
     pub stills: Vec<StillSummary>,
+    pub ink: Vec<InkSummary>,
     pub segments: Vec<Segment>,
     pub target: Option<String>,
     pub message: String,

@@ -1,0 +1,84 @@
+{
+ "displays": [
+  {
+   "id": 1,
+   "frame": [
+    0,
+    0,
+    1280,
+    800
+   ],
+   "scale": 2,
+   "primary": true
+  }
+ ],
+ "pointer": [
+  400,
+  300
+ ],
+ "events": [
+  {
+   "t": 0.1,
+   "type": "mark",
+   "name": "launched"
+  },
+  {
+   "t": 0.2,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 0.3,
+   "type": "drag",
+   "x": 100,
+   "y": 80,
+   "dx": 400,
+   "dy": 300,
+   "dur": 0.1
+  },
+  {
+   "t": 0.5,
+   "type": "mark",
+   "name": "picked"
+  },
+  {
+   "t": 0.6,
+   "type": "mark",
+   "name": "screen:0.9"
+  },
+  {
+   "t": 0.7,
+   "type": "mark",
+   "name": "key:draw-down"
+  },
+  {
+   "t": 0.7999999999999999,
+   "type": "drag",
+   "x": 150,
+   "y": 120,
+   "dx": 100,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 1.0,
+   "type": "mark",
+   "name": "key:draw-up"
+  },
+  {
+   "t": 1.1,
+   "type": "mark",
+   "name": "watch:sample"
+  },
+  {
+   "t": 1.6,
+   "type": "mark",
+   "name": "sampled"
+  },
+  {
+   "t": 1.7,
+   "type": "mark",
+   "name": "end"
+  }
+ ]
+}

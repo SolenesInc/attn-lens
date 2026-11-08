@@ -101,8 +101,23 @@ pub fn displays() -> Vec<DisplayFrame> {
         .collect()
 }
 
+/// `area` in global top-left points: `[left, top, right, bottom]`.
+pub fn global_bounds(area: Area) -> [f64; 4] {
+    // SAFETY: as in `display_size`.
+    let display = unsafe { CGDisplayBounds(area.display) };
+    let left = display.origin[0] + area.rect[0];
+    let top = display.origin[1] + area.rect[1];
+    [left, top, left + area.rect[2], top + area.rect[3]]
+}
+
 /// One still of `area` at its native pixels, leaving out Lens's own windows.
 pub fn screenshot(area: Area) -> Result<RgbaImage, String> {
+    frame(area, None)
+}
+
+/// A frame of `area` with its long edge at most `long_edge` pixels, leaving out
+/// Lens's own windows.
+pub fn frame(area: Area, long_edge: Option<u32>) -> Result<RgbaImage, String> {
     let exclude = capture_core::Exclusions {
         windows: vec![],
         apps: vec![std::process::id() as i32],
@@ -116,7 +131,7 @@ pub fn screenshot(area: Area) -> Result<RgbaImage, String> {
             height: area.rect[3],
         },
     };
-    let shot = capture_core::screenshot(&source, &exclude, None)
+    let shot = capture_core::screenshot(&source, &exclude, long_edge)
         .map_err(|e| format!("Screen capture failed: {e}"))?;
     RgbaImage::from_raw(shot.width, shot.height, shot.rgba)
         .ok_or_else(|| "Screen capture returned a buffer that does not match its size".into())
