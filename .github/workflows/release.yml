@@ -42,6 +42,8 @@ jobs:
         env:
           GLANCE_CODESIGN_IDENTITY: "-"
         run: ./scripts/bundle.sh release
+      - name: Test video encode and frame decode
+        run: cargo test --locked native_video_roundtrip -- --ignored
       - name: Verify bundle and archive
         run: |
           codesign --verify --deep --strict target/Glance.app

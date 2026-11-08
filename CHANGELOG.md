@@ -11,6 +11,9 @@ Notable user-visible changes are recorded here.
   inline text with input methods, native menus and accessibility. Images past 8192
   pixels view downscaled and still save at full size. Pan with Space-drag or the
   middle button; right-drag no longer pans.
+- The editor's Backdrop and Animation panels are back on Rune: formats, padding,
+  corners, shadow, solid, gradient and moving backgrounds, entrance effects with
+  Hold or Exit, playback, and GIF and MP4 export with progress and Cancel.
 - **Attn Lens**: ⌘⌥X opens a crosshair over the live screen: drag for an area,
   click for the whole display, ↩ for the last area, Esc to cancel. The area stays
   outlined for the whole capture, its corners adjust it, and the page under it

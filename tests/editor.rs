@@ -11,16 +11,10 @@ use std::{
 
 const SCRIPTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/headless/editor");
 
-/// Rows covered once Backdrop, Animation and video export come back, in their own change.
-const LATER: [&str; 4] = [
-    "options-backdrop",
-    "options-animation",
-    "export-gif",
-    "export-mp4",
-];
-
 /// Scripts for behaviour the docs describe in prose, not in a table.
-const PROSE: [&str; 14] = [
+const PROSE: [&str; 16] = [
+    "backdrop-motion",
+    "recolour-keeps-opacity",
     "lens-follows-drag",
     "lens-tile-held",
     "raster-follows",
@@ -82,12 +76,8 @@ fn every_row_has_a_script() {
     let names = documented();
     assert_eq!(names.len(), 27, "{names:?}");
     for name in &names {
-        let later = LATER.contains(&name.as_str());
         let exists = Path::new(SCRIPTS).join(format!("{name}.json")).exists();
-        assert!(
-            later != exists,
-            "row {name}: script exists={exists}, later={later}"
-        );
+        assert!(exists, "row {name} has no script");
     }
 }
 
@@ -128,11 +118,23 @@ fn nodes(node: &Value, out: &mut Vec<Value>) {
     }
 }
 
-/// True when every field in `expected` matches `actual`; numbers within 0.01.
+/// True when every field in `expected` matches `actual`; numbers within 0.01, or
+/// within `{"min": a, "max": b}`.
 fn subset(expected: &Value, actual: &Value) -> bool {
     match (expected, actual) {
         (Value::Number(a), Value::Number(b)) => {
             (a.as_f64().unwrap() - b.as_f64().unwrap()).abs() < 0.01
+        }
+        (Value::Object(range), Value::Number(b))
+            if range.keys().all(|key| key == "min" || key == "max") =>
+        {
+            let b = b.as_f64().unwrap();
+            range
+                .get("min")
+                .is_none_or(|min| b >= min.as_f64().unwrap())
+                && range
+                    .get("max")
+                    .is_none_or(|max| b <= max.as_f64().unwrap())
         }
         (Value::Object(a), Value::Object(b)) => a
             .iter()
@@ -184,12 +186,36 @@ fn check_image(
     }
 }
 
+/// A GIF's size, frame count and each frame's delay in hundredths of a second.
+fn gif_facts(path: &Path) -> Result<Value, String> {
+    let mut options = gif::DecodeOptions::new();
+    options.set_color_output(gif::ColorOutput::Indexed);
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut decoder = options.read_info(file).map_err(|e| e.to_string())?;
+    let size = [decoder.width(), decoder.height()];
+    let mut delays = BTreeSet::new();
+    let mut frames = 0;
+    while let Some(frame) = decoder.read_next_frame().map_err(|e| e.to_string())? {
+        delays.insert(frame.delay);
+        frames += 1;
+    }
+    let delay = match delays.len() {
+        1 => serde_json::json!(delays.first()),
+        _ => serde_json::json!(delays),
+    };
+    Ok(serde_json::json!({"size": size, "frames": frames, "delay": delay}))
+}
+
 /// Runs the script up to one mark and checks what it asserts there.
 fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Value) -> Vec<String> {
     let at = expected["at"].as_str().unwrap();
     let tree_path = dir.join(format!("{name}-{at}.json"));
     let run = Command::new(env!("CARGO_BIN_EXE_attn-lens"))
         .env("ATTN_LENS_FAKE_CLIPBOARD", clipboard)
+        .env(
+            "ATTN_LENS_FAKE_VIDEO_ENCODER",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/video-encoder"),
+        )
         .args(["--script"])
         .arg(script)
         .args(["--window", "editor", "--scale", "1", "--at"])
@@ -241,10 +267,23 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
             fail.push(format!("{key} should be unchecked"));
         }
     }
+    // An action button has no checked state, so a screen reader does not call it a checkbox.
+    for key in expected["stateless"].as_array().into_iter().flatten() {
+        let key = key.as_str().unwrap();
+        if node(key).is_none() || has_state(key, "checked") || has_state(key, "unchecked") {
+            fail.push(format!("{key} should be a plain button: {:?}", node(key)));
+        }
+    }
     for (key, want) in expected["text"].as_object().into_iter().flatten() {
         let found = element(key).and_then(|e| e["text"].as_str());
         if found != want.as_str() && !(want == "" && found.is_none()) {
             fail.push(format!("{key} reads {found:?}, expected {want}"));
+        }
+    }
+    for (key, want) in expected["label"].as_object().into_iter().flatten() {
+        let found = element(key).and_then(|e| e["label"].as_str());
+        if found != want.as_str() {
+            fail.push(format!("{key} is labelled {found:?}, expected {want}"));
         }
     }
     for (key, want) in expected["value"].as_object().into_iter().flatten() {
@@ -330,6 +369,33 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
             Err(error) => fail.push(format!("clipboard image: {error}")),
         }
     }
+    if !expected["gif"].is_null() {
+        let path = expected["gif"]["path"].as_str().unwrap();
+        match gif_facts(Path::new(path)) {
+            Ok(found) => {
+                let want = serde_json::json!({
+                    "size": expected["gif"]["size"],
+                    "frames": expected["gif"]["frames"],
+                    "delay": expected["gif"]["delay"],
+                });
+                if !subset(&want, &found) {
+                    fail.push(format!("{path} is {found}, expected {want}"));
+                }
+            }
+            Err(error) => fail.push(format!("{path}: {error}")),
+        }
+    }
+    for (path, want) in expected["file_text"].as_object().into_iter().flatten() {
+        let found = std::fs::read_to_string(path).unwrap_or_else(|e| e.to_string());
+        if found.trim() != want.as_str().unwrap() {
+            fail.push(format!("{path} reads {found:?}, expected {want}"));
+        }
+    }
+    for path in expected["no_file"].as_array().into_iter().flatten() {
+        if Path::new(path.as_str().unwrap()).exists() {
+            fail.push(format!("{path} should not exist"));
+        }
+    }
     if let Some(want) = expected["clipboard_text"].as_str() {
         let found = std::fs::read_to_string(clipboard.join("text.txt")).unwrap_or_default();
         if found != want {
@@ -341,7 +407,9 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
         .collect()
 }
 
-fn run_script(name: &str) -> Vec<String> {
+/// Runs one script up to its `index`th assertion's mark, in a folder of its own, so
+/// assertions of one script run in parallel without sharing a clipboard.
+fn run_assertion(name: &str, index: usize) -> Vec<String> {
     let dir = tempfile::tempdir().unwrap();
     let dir = dir.path();
     let clipboard = dir.join("clipboard");
@@ -353,31 +421,39 @@ fn run_script(name: &str) -> Vec<String> {
     let parsed: Value = serde_json::from_str(&body).unwrap();
     let script = dir.join("script.json");
     std::fs::write(&script, &body).unwrap();
-    let asserts = parsed["asserts"].as_array().unwrap();
-    assert!(!asserts.is_empty(), "{name} asserts nothing");
-    asserts
-        .iter()
-        .flat_map(|expected| check(name, &script, dir, &clipboard, expected))
-        .collect()
+    check(name, &script, dir, &clipboard, &parsed["asserts"][index])
+}
+
+fn assertions(name: &str) -> usize {
+    let body = std::fs::read_to_string(format!("{SCRIPTS}/{name}.json")).unwrap();
+    let parsed: Value = serde_json::from_str(&body).unwrap();
+    let count = parsed["asserts"].as_array().map_or(0, Vec::len);
+    assert!(count > 0, "{name} asserts nothing");
+    count
 }
 
 #[test]
 fn every_script_holds() {
-    let names: Vec<String> = documented()
+    let runs: Vec<(String, usize)> = documented()
         .into_iter()
-        .filter(|name| !LATER.contains(&name.as_str()))
         .chain(PROSE.iter().map(|name| name.to_string()))
+        // `EDITOR_SCRIPTS=a,b cargo test --test editor` runs only those scripts.
+        .filter(|name| {
+            std::env::var("EDITOR_SCRIPTS")
+                .map_or(true, |only| only.split(',').any(|wanted| wanted == name))
+        })
+        .flat_map(|name| (0..assertions(&name)).map(move |index| (name.clone(), index)))
         .collect();
-    let queue = std::sync::Mutex::new(names);
+    let queue = std::sync::Mutex::new(runs);
     let failures = std::sync::Mutex::new(Vec::new());
     std::thread::scope(|scope| {
         for _ in 0..std::thread::available_parallelism().map_or(2, |n| n.get().min(8)) {
             scope.spawn(|| {
                 loop {
-                    let Some(name) = queue.lock().unwrap().pop() else {
+                    let Some((name, index)) = queue.lock().unwrap().pop() else {
                         return;
                     };
-                    let failed = run_script(&name);
+                    let failed = run_assertion(&name, index);
                     failures.lock().unwrap().extend(failed);
                 }
             });
