@@ -59,11 +59,13 @@ done
 {
     echo "down fn"
     echo "wait 100"
-    for i in $(seq 0 59); do
+    # A drag takes about 3 s in the VM, where the driver checks the front window before
+    # each step: 20 of them is the 60 s capture.
+    for i in $(seq 0 19); do
         y=$((60 + (i * 37) % 560))
         echo "drag 100 $y 900 $((y + 40)) 55 16"
         echo "wait 90"
-        if [ $((i % 5)) = 4 ]; then echo 'lens {"cmd":"still","cause":"hotkey"}'; fi
+        if [ $((i % 2)) = 1 ]; then echo 'lens {"cmd":"still","cause":"hotkey"}'; fi
     done
     echo "up fn"
 } >"$OUT/draw.txt"
@@ -104,6 +106,7 @@ span = int(samples[-1][0]) - int(samples[0][0])
 for name, t, r in (("lens", 1, 2), ("speech helper", 3, 4)):
     used = seconds(samples[-1][t]) - seconds(samples[0][t])
     print(f"{name}: cpu {100 * used / span:.0f}% of a core over {span}s, rss peak {max(int(s[r]) for s in samples) // 1024} MB")
-capture = json.load(open(f"{out}/state.json"))["state"]["capture"]
-print(f"stills={len(capture['stills'])} segments={len(capture['segments'])} voice={capture.get('voice')}")
+state = json.load(open(f"{out}/state.json"))["state"]
+capture = state["capture"]
+print(f"stills={len(capture['stills'])} segments={len(capture['segments'])} voice={state['voice']}")
 PY
