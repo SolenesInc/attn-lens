@@ -143,6 +143,9 @@ pub struct Lens {
     /// The capture of each still being taken. A send waits for its capture's
     /// stills so none is left out; another capture's stills are not its concern.
     pending_stills: (Mutex<Vec<u64>>, Condvar),
+    /// Signalled with every change to `state`, so a send can wait for a voice
+    /// that ⌘⌥S stopped and is still finishing.
+    state_changed: Condvar,
     generation: AtomicU64,
     wakers: Mutex<Vec<Box<dyn Fn() + Send>>>,
     /// Each window's name and how to ask whether it shows, for automation.
@@ -155,6 +158,7 @@ impl Lens {
             port,
             state: Default::default(),
             pending_stills: Default::default(),
+            state_changed: Condvar::new(),
             generation: AtomicU64::new(0),
             wakers: Default::default(),
             windows: Default::default(),
@@ -185,6 +189,7 @@ impl Lens {
 
     fn changed(&self) {
         self.generation.fetch_add(1, Ordering::SeqCst);
+        self.state_changed.notify_all();
         for wake in self.wakers.lock().unwrap().iter() {
             wake();
         }
@@ -916,6 +921,14 @@ impl Lens {
             }
             finished
         });
+        // ⌘⌥S just before Send leaves that voice finishing on another thread; its
+        // last sentence belongs to this send.
+        {
+            let mut state = self.state.lock().unwrap();
+            while state.voice_state == VoiceState::Finishing {
+                state = self.state_changed.wait(state).unwrap();
+            }
+        }
         let mut pending = self.pending_stills.0.lock().unwrap();
         while pending.contains(&id) {
             pending = self.pending_stills.1.wait(pending).unwrap();

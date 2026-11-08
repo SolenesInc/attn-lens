@@ -541,10 +541,22 @@ impl Source for Wav {
     }
 }
 
-/// Reads a 16 kHz mono WAV of 16-bit or float samples.
+/// The longest WAV voice plays: 10 minutes, past any driven check (the fixtures
+/// run 5 to 13 s), at 38 MB of samples.
+const MAX_WAV_SECONDS: u32 = 600;
+
+/// Reads a 16 kHz mono WAV of 16-bit or float samples, up to [`MAX_WAV_SECONDS`].
 fn read_wav(path: &Path) -> Result<Vec<f32>, String> {
     let reader = hound::WavReader::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let spec = reader.spec();
+    let limit = (MAX_WAV_SECONDS * SAMPLE_RATE) as usize;
+    if reader.duration() as usize > limit {
+        return Err(format!(
+            "{} runs {} s; voice plays at most {MAX_WAV_SECONDS} s.",
+            path.display(),
+            reader.duration() / SAMPLE_RATE
+        ));
+    }
     if spec.sample_rate != SAMPLE_RATE || spec.channels != 1 {
         return Err(format!(
             "{} is {} Hz with {} channels; voice plays 16000 Hz mono.",
@@ -556,9 +568,10 @@ fn read_wav(path: &Path) -> Result<Vec<f32>, String> {
     let read: Result<Vec<f32>, _> = match (spec.sample_format, spec.bits_per_sample) {
         (hound::SampleFormat::Int, 16) => reader
             .into_samples::<i16>()
+            .take(limit)
             .map(|s| s.map(|s| f32::from(s) / f32::from(i16::MAX)))
             .collect(),
-        (hound::SampleFormat::Float, 32) => reader.into_samples::<f32>().collect(),
+        (hound::SampleFormat::Float, 32) => reader.into_samples::<f32>().take(limit).collect(),
         (format, bits) => {
             return Err(format!(
                 "{} holds {bits}-bit {format:?} samples; voice plays 16-bit or 32-bit float.",

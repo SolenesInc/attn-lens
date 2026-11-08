@@ -148,13 +148,29 @@ fn handle(lens: &Arc<Lens>, request: &Value) -> Result<Value, String> {
             Ok(json!({}))
         }
         "voice-wav" => {
-            lens.set_voice_wav(text("path").map(PathBuf::from));
+            lens.set_voice_wav(text("path").map(voice_wav).transpose()?);
             Ok(json!({}))
         }
         other => Err(format!(
             "Unknown cmd \"{other}\". Expected state, key, pick, pick-last, cancel, still, sessions, send, end or voice-wav."
         )),
     }
+}
+
+/// A WAV for voice must be a regular local file, named by its absolute path.
+fn voice_wav(path: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(path);
+    if !path.is_absolute() {
+        return Err(format!(
+            "voice-wav needs an absolute path, not {}.",
+            path.display()
+        ));
+    }
+    let meta = std::fs::symlink_metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if !meta.file_type().is_file() {
+        return Err(format!("{} is not a regular file.", path.display()));
+    }
+    Ok(path)
 }
 
 fn parse_key(name: &str) -> Result<KeyEvent, String> {

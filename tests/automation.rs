@@ -185,3 +185,44 @@ fn a_live_socket_is_kept_and_a_stale_one_is_replaced() {
     let reply = automation::request(&path, r#"{"cmd":"state"}"#).unwrap();
     assert!(reply.contains(r#""ok":true"#), "{reply}");
 }
+
+#[test]
+fn voice_wav_takes_only_a_regular_file_by_its_absolute_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let dir = dir.path();
+    let lens = Harness::new(dir, Some("wav"));
+    let fifo = dir.join("voice.wav");
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let refused = lens.ask(&format!(
+        r#"{{"cmd":"voice-wav","path":"{}"}}"#,
+        fifo.display()
+    ));
+    assert_eq!(refused["ok"], false);
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap()
+            .ends_with("is not a regular file."),
+        "{refused}"
+    );
+    let relative = lens.ask(r#"{"cmd":"voice-wav","path":"voice.wav"}"#);
+    assert_eq!(relative["ok"], false, "{relative}");
+    let wav: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "speech/tests/fixtures/short-phrases.wav",
+    ]
+    .iter()
+    .collect();
+    let taken = lens.ask(&format!(
+        r#"{{"cmd":"voice-wav","path":"{}"}}"#,
+        wav.display()
+    ));
+    assert_eq!(taken["ok"], true, "{taken}");
+    assert_eq!(lens.ask(r#"{"cmd":"voice-wav"}"#)["ok"], true);
+}
