@@ -188,7 +188,7 @@ fn launch_dock_and_capture_keys_reach_the_windows() {
     assert_eq!(label(&stills, "still-1"), Some("Click 1280×800"));
     assert_eq!(label(&stills, "still-2"), Some("WindowSwitch 1280×800"));
     assert_eq!(label(&stills, "still-3"), None);
-    assert_eq!(text(&stills, "voice"), Some("voice on"));
+    assert_eq!(text(&stills, "voice"), Some("Listening · ⌘⌥S to stop"));
     assert_eq!(text(&stills, "segment-0"), Some("this button does nothing"));
 
     // ⌘⌥↩ without a session names what is missing and keeps the capture.
@@ -577,4 +577,54 @@ if [ ! -e "{dir}/paired" ]; then echo 'token unknown: run attn send pair' >&2; e
     let paired = run.tree("bar", "paired");
     assert_eq!(label(&paired, "chip"), Some("→ one · this Mac"));
     assert_eq!(text(&paired, "status"), None);
+}
+
+#[test]
+fn the_bar_shows_how_far_voice_has_got_and_waits_for_the_last_sentence() {
+    let run = Run::new("voice.json", ONE_SESSION);
+    let voice = |mark| text(&run.tree("bar", mark), "voice").map(str::to_string);
+
+    assert_eq!(voice("open").as_deref(), Some("⌘⌥S voice"));
+    assert_eq!(voice("starting").as_deref(), Some("Starting voice…"));
+    // The first ⌘⌥S fetches the model, with progress.
+    assert_eq!(
+        voice("downloading").as_deref(),
+        Some("Downloading speech model 25%")
+    );
+    assert_eq!(voice("loading").as_deref(), Some("Loading speech model…"));
+    assert_eq!(voice("warming").as_deref(), Some("Starting microphone…"));
+    assert_eq!(
+        voice("listening").as_deref(),
+        Some("Listening · ⌘⌥S to stop")
+    );
+    assert_eq!(
+        text(&run.tree("bar", "segment"), "segment-0"),
+        Some("open the settings")
+    );
+
+    // Stopping waits for the sentence in progress, and ⌘⌥S then does nothing.
+    assert_eq!(voice("finishing").as_deref(), Some("Finishing…"));
+    assert_eq!(voice("still-finishing").as_deref(), Some("Finishing…"));
+    assert_eq!(voice("stopped").as_deref(), Some("⌘⌥S voice"));
+
+    // Voice that fails on its own says why and leaves the capture open.
+    let failed = run.tree("bar", "failed");
+    assert_eq!(text(&failed, "voice"), Some("⌘⌥S voice"));
+    assert_eq!(
+        text(&failed, "error"),
+        Some("Voice stopped: the speech helper quit.")
+    );
+    assert!(visible(&failed, "bar"));
+
+    // Send waits for voice to finish, and the bar says so.
+    let finishing = run.tree("bar", "send-finishing");
+    assert_eq!(text(&finishing, "voice"), Some("Finishing…"));
+    assert!(visible(&finishing, "bar"));
+    assert!(
+        !run.path("args").exists(),
+        "nothing sent before voice finished"
+    );
+    assert!(!visible(&run.tree("bar", "sent"), "bar"));
+    let args = std::fs::read_to_string(run.path("args")).unwrap();
+    assert!(args.starts_with("send s1 "), "{args}");
 }

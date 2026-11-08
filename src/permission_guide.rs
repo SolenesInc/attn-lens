@@ -14,6 +14,7 @@ unsafe extern "C" {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Permission {
     ScreenRecording,
+    Microphone,
 }
 
 impl Permission {
@@ -21,6 +22,7 @@ impl Permission {
     const fn code(self) -> i32 {
         match self {
             Self::ScreenRecording => 1,
+            Self::Microphone => 2,
         }
     }
 }

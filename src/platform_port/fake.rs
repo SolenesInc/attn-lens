@@ -5,6 +5,9 @@
 //! key:shift-down  key:shift-up
 //! watch:click  watch:scroll  watch:switch  watch:change:0.7
 //! say:0.5:1.2:the words      a segment from 0.5 s to 1.2 s, while voice runs
+//! voice:downloading:3:10  voice:loading  voice:warming  voice:listening
+//!                            voice's progress, while it runs
+//! voice:fail:the reason      voice stops on its own
 //! clipboard:PATH             the system clipboard now holds the image at PATH
 //! ocr:the words              text recognition finds these words from now on
 //! pick:#RRGGBB  pick:cancel  answers a Pick from screen that is waiting
@@ -15,7 +18,10 @@
 //!
 //! When `ATTN_LENS_FAKE_CLIPBOARD` names a folder, what the app copies lands in
 //! it as `image.png` and `text.txt`, so a test can read what a user would paste.
-use super::{Chord, FAKE_TICK, KeyEvent, PlatformPort, Sink, Voice, Watch, WatchEvent};
+use super::{
+    Chord, FAKE_TICK, KeyEvent, PlatformPort, Sink, Voice, VoiceEvent, VoiceSource, VoiceStatus,
+    Watch, WatchEvent,
+};
 use crate::lens::session::{Area, DisplayFrame, HostTime, Segment};
 use image::{Rgba, RgbaImage};
 use std::{
@@ -35,7 +41,7 @@ pub const DISPLAY: Area = Area {
     rect: [0., 0., 640., 400.],
 };
 
-type Sinks = Arc<Mutex<(Option<Sink<WatchEvent>>, Option<Sink<Segment>>)>>;
+type Sinks = Arc<Mutex<(Option<Sink<WatchEvent>>, Option<Sink<VoiceEvent>>)>>;
 
 type PickSink = Sink<Result<Option<[u8; 3]>, String>>;
 
@@ -98,10 +104,10 @@ impl FakePort {
             if let Some(sink) = sink {
                 sink(event);
             }
-        } else if let Some(segment) = segment(mark) {
+        } else if let Some(event) = voice_event(mark) {
             let sink = self.sinks.lock().unwrap().1.clone();
             if let Some(sink) = sink {
-                sink(segment);
+                sink(event);
             }
         } else if let Some(path) = mark.strip_prefix("clipboard:") {
             let image = image::open(path).expect("clipboard: mark names a readable image");
@@ -164,6 +170,28 @@ fn watch_event(mark: &str) -> Option<WatchEvent> {
     })
 }
 
+fn voice_event(mark: &str) -> Option<VoiceEvent> {
+    if let Some(segment) = segment(mark) {
+        return Some(VoiceEvent::Segment(segment));
+    }
+    let event = mark.strip_prefix("voice:")?;
+    if let Some(reason) = event.strip_prefix("fail:") {
+        return Some(VoiceEvent::Failed(reason.into()));
+    }
+    Some(VoiceEvent::Status(match event {
+        "loading" => VoiceStatus::Loading,
+        "warming" => VoiceStatus::WarmingUp,
+        "listening" => VoiceStatus::Listening,
+        _ => {
+            let mut parts = event.strip_prefix("downloading:")?.split(':');
+            VoiceStatus::Downloading {
+                bytes: parts.next()?.parse().ok()?,
+                total: parts.next()?.parse().ok()?,
+            }
+        }
+    }))
+}
+
 fn segment(mark: &str) -> Option<Segment> {
     let mut parts = mark.strip_prefix("say:")?.splitn(3, ':');
     let start = parts.next()?.parse().ok()?;
@@ -224,7 +252,7 @@ impl PlatformPort for FakePort {
         let sinks = self.sinks.clone();
         Watch(Some(Box::new(move || sinks.lock().unwrap().0 = None)))
     }
-    fn voice(&self, sink: Sink<Segment>) -> Result<Voice, String> {
+    fn voice(&self, _source: VoiceSource, sink: Sink<VoiceEvent>) -> Result<Voice, String> {
         self.sinks.lock().unwrap().1 = Some(sink);
         let sinks = self.sinks.clone();
         Ok(Voice(Box::new(move || {

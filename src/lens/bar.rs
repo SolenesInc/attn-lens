@@ -2,8 +2,10 @@
 //! the still strip, Edit and Send, and the Tab palette. It takes keys without
 //! activating Lens, and shows who has them (D6 on the plan).
 use super::{
-    AttnStatus, KeyOwner, Lens, SendStatus, Summary, attn, ink::InkTool, session::DisplayFrame,
+    AttnStatus, KeyOwner, Lens, SendStatus, Summary, VoiceState, attn, ink::InkTool,
+    session::DisplayFrame,
 };
+use crate::platform_port::VoiceStatus;
 use image::RgbaImage;
 use rune::{Color, Cx, El, Key, KeyEvent, TextEdit, Tx, col, el, row, text, text_input, tok};
 use std::sync::Arc;
@@ -316,11 +318,7 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
         .color(t.text)
         .on_input_key(bar_key);
 
-        let voice = if summary.voice {
-            "voice on"
-        } else {
-            "⌘⌥S voice"
-        };
+        let voice = voice_text(summary.voice);
         let segments = summary.capture.as_ref().map_or(&[][..], |c| &c.segments);
         let controls = row()
             .w_full()
@@ -440,4 +438,20 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
         }
         bar
     })
+}
+
+/// Voice in the bar: what ⌘⌥S does now, or how far voice has got.
+fn voice_text(voice: VoiceState) -> String {
+    match voice {
+        VoiceState::Off => "⌘⌥S voice".into(),
+        VoiceState::Starting => "Starting voice…".into(),
+        VoiceState::Running(VoiceStatus::Downloading { bytes, total }) => format!(
+            "Downloading speech model {}%",
+            bytes.saturating_mul(100) / total.max(1)
+        ),
+        VoiceState::Running(VoiceStatus::Loading) => "Loading speech model…".into(),
+        VoiceState::Running(VoiceStatus::WarmingUp) => "Starting microphone…".into(),
+        VoiceState::Running(VoiceStatus::Listening) => "Listening · ⌘⌥S to stop".into(),
+        VoiceState::Finishing => "Finishing…".into(),
+    }
 }

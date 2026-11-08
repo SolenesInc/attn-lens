@@ -10,10 +10,14 @@ pub mod capture;
 pub mod ink;
 pub mod select;
 pub mod session;
+pub mod voice;
 
 use crate::{
     document::Document,
-    platform_port::{Chord, KeyEvent, PlatformPort, Sink, Voice, Watch, WatchEvent},
+    platform_port::{
+        Chord, KeyEvent, PlatformPort, Sink, Voice, VoiceEvent, VoiceSource, VoiceStatus, Watch,
+        WatchEvent,
+    },
 };
 use ink::InkTool;
 use serde_json::{Value, json};
@@ -43,6 +47,18 @@ pub enum SendStatus {
     Sent(String),
     /// attn's error, verbatim. The capture stays whole.
     Failed(String),
+}
+
+/// What the bar shows of voice.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum VoiceState {
+    #[default]
+    Off,
+    /// ⌘⌥S was pressed and the port has not reported progress yet.
+    Starting,
+    Running(VoiceStatus),
+    /// Waiting for the sentence in progress, before voice stops or the send goes.
+    Finishing,
 }
 
 /// Who gets the user's typing during a capture (D6 on the plan).
@@ -111,6 +127,11 @@ struct State {
     error: Option<String>,
     next_capture: u64,
     voice: Option<Voice>,
+    voice_state: VoiceState,
+    /// Counts voice starts, so a stopped voice's late progress is ignored.
+    voice_run: u64,
+    /// Set by automation: the next ⌘⌥S plays this WAV instead of the microphone.
+    voice_wav: Option<PathBuf>,
     watch: Option<Watch>,
 }
 
@@ -626,7 +647,7 @@ impl Lens {
     }
 
     /// Closes the open capture and lets go of everything it held.
-    pub fn end_capture(&self) {
+    pub fn end_capture(self: &Arc<Self>) {
         let voice = {
             let mut state = self.state.lock().unwrap();
             state.capture = None;
@@ -635,15 +656,22 @@ impl Lens {
             state.watch = None;
             state.label = None;
             state.palette = None;
+            state.voice_state = VoiceState::Off;
             state.voice.take()
         };
-        if let Some(voice) = voice
-            && let Err(error) = voice.finish()
-        {
-            self.state.lock().unwrap().error = Some(error);
-        }
         self.port.capture_keys(false);
         self.changed();
+        // The capture is gone, so its last sentence has nowhere to go; stopping
+        // still waits for it, so the speech model is let go only afterwards.
+        let lens = self.clone();
+        self.port.run(Box::new(move || {
+            if let Some(voice) = voice
+                && let Err(error) = voice.finish()
+            {
+                lens.fail(error);
+            }
+            lens.port.end_voice();
+        }));
     }
 
     fn watched(self: &Arc<Self>, event: WatchEvent) {
@@ -734,27 +762,96 @@ impl Lens {
         Some(still_id)
     }
 
+    /// Plays `wav` instead of the microphone from the next ⌘⌥S; `None` goes
+    /// back to the microphone. For driven checks, through automation.
+    pub fn set_voice_wav(&self, wav: Option<PathBuf>) {
+        self.state.lock().unwrap().voice_wav = wav;
+    }
+
     fn toggle_voice(self: &Arc<Self>) {
-        let running = self.state.lock().unwrap().voice.take();
-        if let Some(voice) = running {
-            if let Err(error) = voice.finish() {
-                self.fail(error);
+        let (run, capture, source) = {
+            let mut state = self.state.lock().unwrap();
+            if let Some(voice) = state.voice.take() {
+                state.voice_state = VoiceState::Finishing;
+                let run = state.voice_run;
+                drop(state);
+                self.changed();
+                let lens = self.clone();
+                self.port.run(Box::new(move || {
+                    let finished = voice.finish();
+                    let mut state = lens.state.lock().unwrap();
+                    if state.voice_run == run && state.voice_state == VoiceState::Finishing {
+                        state.voice_state = VoiceState::Off;
+                    }
+                    if let Err(error) = finished {
+                        state.error = Some(error);
+                    }
+                    drop(state);
+                    lens.changed();
+                }));
+                return;
             }
-            return self.changed();
-        }
-        if !self.is_open() {
-            return;
-        }
+            // A voice still finishing holds the speech helper's one recording.
+            if state.voice_state == VoiceState::Finishing {
+                return;
+            }
+            let Some(capture) = state.capture.as_ref().map(|c| c.id) else {
+                return;
+            };
+            state.voice_run += 1;
+            state.voice_state = VoiceState::Starting;
+            let source = state
+                .voice_wav
+                .clone()
+                .map_or(VoiceSource::Microphone, VoiceSource::Wav);
+            (state.voice_run, capture, source)
+        };
         let lens = self.clone();
-        let sink: Sink<Segment> = Arc::new(move |segment| {
-            if let Some(capture) = lens.state.lock().unwrap().capture.as_mut() {
-                capture.segments.push(segment);
+        let sink: Sink<VoiceEvent> = Arc::new(move |event| {
+            let mut state = lens.state.lock().unwrap();
+            let current = state.voice_run == run;
+            match event {
+                // A segment belongs to its capture even after voice stops: stopping waits for it.
+                VoiceEvent::Segment(segment) => {
+                    if let Some(c) = state.capture.as_mut().filter(|c| c.id == capture) {
+                        c.segments.push(segment);
+                    }
+                }
+                VoiceEvent::Status(status) => {
+                    if current
+                        && matches!(
+                            state.voice_state,
+                            VoiceState::Starting | VoiceState::Running(_)
+                        )
+                    {
+                        state.voice_state = VoiceState::Running(status);
+                    }
+                }
+                VoiceEvent::Failed(error) => {
+                    if current {
+                        state.voice = None;
+                        state.voice_state = VoiceState::Off;
+                    }
+                    state.error = Some(error);
+                }
             }
+            drop(state);
             lens.changed();
         });
-        match self.port.voice(sink) {
-            Ok(voice) => self.state.lock().unwrap().voice = Some(voice),
-            Err(error) => self.state.lock().unwrap().error = Some(error),
+        let started = self.port.voice(source, sink);
+        {
+            let mut state = self.state.lock().unwrap();
+            match started {
+                // Voice may have failed already, from another thread.
+                Ok(voice) if state.voice_run == run && state.voice_state != VoiceState::Off => {
+                    state.voice = Some(voice);
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    state.voice_state = VoiceState::Off;
+                    state.error = Some(error);
+                }
+            }
         }
         self.changed();
     }
@@ -790,7 +887,11 @@ impl Lens {
             let needs_still = capture.stills.is_empty() && !in_flight;
             state.send = SendStatus::Sending;
             state.sending = Some(id);
-            (id, needs_still, state.voice.take())
+            let voice = state.voice.take();
+            if voice.is_some() {
+                state.voice_state = VoiceState::Finishing;
+            }
+            (id, needs_still, voice.map(|voice| (voice, state.voice_run)))
         };
         self.changed();
         if needs_still {
@@ -803,8 +904,15 @@ impl Lens {
 
     /// Finishes the send of capture `id`. The user may have closed it and opened
     /// another by now, so only that capture is read or closed.
-    fn finish_send(self: &Arc<Self>, id: u64, voice: Option<Voice>) {
-        let voice = voice.map_or(Ok(()), Voice::finish);
+    fn finish_send(self: &Arc<Self>, id: u64, voice: Option<(Voice, u64)>) {
+        let voice = voice.map_or(Ok(()), |(voice, run)| {
+            let finished = voice.finish();
+            let mut state = self.state.lock().unwrap();
+            if state.voice_run == run && state.voice_state == VoiceState::Finishing {
+                state.voice_state = VoiceState::Off;
+            }
+            finished
+        });
         let mut pending = self.pending_stills.0.lock().unwrap();
         while pending.contains(&id) {
             pending = self.pending_stills.1.wait(pending).unwrap();
@@ -835,6 +943,7 @@ impl Lens {
         }
         if !self.is_open() {
             self.port.capture_keys(false);
+            self.port.end_voice();
         }
         self.changed();
     }
@@ -935,7 +1044,7 @@ impl Lens {
             attn: state.attn.clone(),
             sessions: state.sessions.clone(),
             palette: state.palette,
-            voice: state.voice.is_some(),
+            voice: state.voice_state,
             resizing: state.resizing,
             send: state.send.clone(),
             error: state.error.clone(),
@@ -967,7 +1076,12 @@ impl Lens {
             "attn": format!("{:?}", summary.attn),
             "palette": summary.palette,
             "input": format!("{:?}", summary.input),
-            "voice": summary.voice,
+            "voice": match summary.voice {
+                VoiceState::Off => json!({"state": "off"}),
+                VoiceState::Starting => json!({"state": "starting"}),
+                VoiceState::Running(status) => json!(status),
+                VoiceState::Finishing => json!({"state": "finishing"}),
+            },
             "send": send,
             "error": summary.error,
             "capture": summary.capture.map(|c| json!({
@@ -1045,7 +1159,7 @@ pub struct Summary {
     pub input: Input,
     pub resizing: bool,
     pub capture: Option<CaptureSummary>,
-    pub voice: bool,
+    pub voice: VoiceState,
     pub send: SendStatus,
     pub error: Option<String>,
 }

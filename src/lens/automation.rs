@@ -15,6 +15,8 @@
 //! {"cmd":"sessions"}
 //! {"cmd":"send","target":"<session id>","message":"..."}
 //! {"cmd":"end"}
+//! {"cmd":"voice-wav","path":"/abs/16k-mono.wav"}    the next ⌘⌥S plays it, not the microphone
+//! {"cmd":"voice-wav"}                               back to the microphone
 //! ```
 //! A reply is `{"ok":true,...}` or `{"ok":false,"error":"..."}`.
 use super::{Lens, session::Cause};
@@ -145,8 +147,12 @@ fn handle(lens: &Arc<Lens>, request: &Value) -> Result<Value, String> {
             lens.end_capture();
             Ok(json!({}))
         }
+        "voice-wav" => {
+            lens.set_voice_wav(text("path").map(PathBuf::from));
+            Ok(json!({}))
+        }
         other => Err(format!(
-            "Unknown cmd \"{other}\". Expected state, key, pick, pick-last, cancel, still, sessions, send or end."
+            "Unknown cmd \"{other}\". Expected state, key, pick, pick-last, cancel, still, sessions, send, end or voice-wav."
         )),
     }
 }
