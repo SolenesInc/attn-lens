@@ -364,6 +364,21 @@ fn the_draw_key_gives_an_arrow_a_freehand_stroke_and_a_box() {
 }
 
 #[test]
+fn a_still_left_from_a_closed_capture_does_not_stop_the_next_from_sending() {
+    // Capture A asks for a still and closes before it lands; capture B, with no
+    // still of its own, sends while A's is still on the way.
+    let run = Run::new("stale-still.json", TWO_SESSIONS);
+    let closed = run.tree("bar", "a-closed");
+    assert!(!visible(&closed, "bar"), "capture A stayed open");
+    let sent = run.tree("bar", "b-sent");
+    assert!(!visible(&sent, "bar"), "capture B stayed open");
+    let args = std::fs::read_to_string(run.path("args")).unwrap();
+    assert!(args.starts_with("send s1 "), "{args}");
+    let frame = image::open(run.path("frame-01.png")).unwrap().to_rgba8();
+    assert_eq!((frame.width(), frame.height()), (400, 300), "not B's area");
+}
+
+#[test]
 fn the_bar_arms_tools_and_owns_the_keyboard() {
     let run = Run::new("bar.json", TWO_SESSIONS);
 

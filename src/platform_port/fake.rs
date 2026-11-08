@@ -48,8 +48,8 @@ struct Script {
     clipboard: Option<RgbaImage>,
     ocr: String,
     pick: Option<PickSink>,
-    /// After a `jobs:hold` mark, jobs wait here until a `jobs:next` mark runs the oldest
-    /// or a `jobs:drain` mark runs every one waiting.
+    /// After a `jobs:hold` mark, jobs wait here until a `jobs:next` mark runs the oldest,
+    /// a `jobs:last` mark the newest, or a `jobs:drain` mark every one waiting.
     held: Option<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
 }
 
@@ -110,14 +110,14 @@ impl FakePort {
             self.script.lock().unwrap().ocr = text.to_string();
         } else if mark == "jobs:hold" {
             self.script.lock().unwrap().held = Some(Default::default());
-        } else if mark == "jobs:next" {
-            let job = self
-                .script
-                .lock()
-                .unwrap()
-                .held
-                .as_mut()
-                .and_then(|held| held.pop_front());
+        } else if mark == "jobs:next" || mark == "jobs:last" {
+            let job = self.script.lock().unwrap().held.as_mut().and_then(|held| {
+                if mark == "jobs:next" {
+                    held.pop_front()
+                } else {
+                    held.pop_back()
+                }
+            });
             if let Some(job) = job {
                 job();
             }

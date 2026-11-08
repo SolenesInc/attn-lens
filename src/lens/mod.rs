@@ -119,8 +119,9 @@ type WindowVisible = Box<dyn Fn() -> bool + Send>;
 pub struct Lens {
     port: Arc<dyn PlatformPort>,
     state: Mutex<State>,
-    /// Stills being taken; a send waits for them so none is left out.
-    pending_stills: (Mutex<usize>, Condvar),
+    /// The capture of each still being taken. A send waits for its capture's
+    /// stills so none is left out; another capture's stills are not its concern.
+    pending_stills: (Mutex<Vec<u64>>, Condvar),
     generation: AtomicU64,
     wakers: Mutex<Vec<Box<dyn Fn() + Send>>>,
     /// Each window's name and how to ask whether it shows, for automation.
@@ -679,9 +680,11 @@ impl Lens {
             if let Some(capture) = state.capture.as_mut() {
                 capture.next_still += 1;
             }
+            // Counted before the state is released, so a send never sees the
+            // still neither kept nor on the way.
+            self.pending_stills.0.lock().unwrap().push(id);
             (id, area, still_id)
         };
-        *self.pending_stills.0.lock().unwrap() += 1;
         let lens = self.clone();
         self.port.run(Box::new(move || {
             let frame = lens.port.still(area).map(|frame| {
@@ -720,7 +723,11 @@ impl Lens {
                     }
                 }
             }
-            *lens.pending_stills.0.lock().unwrap() -= 1;
+            {
+                let mut pending = lens.pending_stills.0.lock().unwrap();
+                let index = pending.iter().position(|&c| c == id).unwrap();
+                pending.swap_remove(index);
+            }
             lens.pending_stills.1.notify_all();
             lens.changed();
         }));
@@ -759,7 +766,6 @@ impl Lens {
         target: Option<String>,
         message: Option<String>,
     ) -> Result<(), String> {
-        let in_flight = *self.pending_stills.0.lock().unwrap();
         let (id, needs_still, voice) = {
             let mut state = self.state.lock().unwrap();
             if state.send == SendStatus::Sending {
@@ -779,7 +785,9 @@ impl Lens {
                 return Err("The capture has no target session.".into());
             }
             // None kept and none on the way, as when × dropped every one.
-            let (id, needs_still) = (capture.id, capture.stills.is_empty() && in_flight == 0);
+            let id = capture.id;
+            let in_flight = self.pending_stills.0.lock().unwrap().contains(&id);
+            let needs_still = capture.stills.is_empty() && !in_flight;
             state.send = SendStatus::Sending;
             state.sending = Some(id);
             (id, needs_still, state.voice.take())
@@ -798,7 +806,7 @@ impl Lens {
     fn finish_send(self: &Arc<Self>, id: u64, voice: Option<Voice>) {
         let voice = voice.map_or(Ok(()), Voice::finish);
         let mut pending = self.pending_stills.0.lock().unwrap();
-        while *pending > 0 {
+        while pending.contains(&id) {
             pending = self.pending_stills.1.wait(pending).unwrap();
         }
         drop(pending);
