@@ -421,6 +421,13 @@ fn a_send_whose_still_fails_keeps_the_capture_and_retries() {
 }
 
 #[test]
+fn an_event_from_a_stopped_watch_leaves_the_new_capture_alone() {
+    let run = Run::new("late-watch.json", ONE_SESSION);
+    assert_eq!(ink_count(&capture_state(&run, "after-late")), 1);
+    assert_eq!(ink_count(&capture_state(&run, "after-own")), 0);
+}
+
+#[test]
 fn stills_come_with_their_causes_and_ink_fades_only_once_its_still_exists() {
     let run = Run::new("stills.json", ONE_SESSION);
 

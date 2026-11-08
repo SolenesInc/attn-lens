@@ -4,6 +4,7 @@
 //! key:draw-down  key:draw-up  key:capture  key:voice  key:keyboard  key:send
 //! key:shift-down  key:shift-up
 //! watch:click  watch:scroll  watch:switch  watch:change:0.7
+//! watch:late:scroll          the same events, to the watch that stopped last
 //! say:0.5:1.2:the words      a segment from 0.5 s to 1.2 s, while voice runs
 //! clipboard:PATH             the system clipboard now holds the image at PATH
 //! ocr:the words              text recognition finds these words from now on
@@ -36,7 +37,15 @@ pub const DISPLAY: Area = Area {
     rect: [0., 0., 640., 400.],
 };
 
-type Sinks = Arc<Mutex<(Option<Sink<WatchEvent>>, Option<Sink<Segment>>)>>;
+#[derive(Default)]
+struct SinkSlots {
+    watch: Option<Sink<WatchEvent>>,
+    /// The watch stopped last: a `watch:late:` mark sends it an event in flight.
+    stopped_watch: Option<Sink<WatchEvent>>,
+    voice: Option<Sink<Segment>>,
+}
+
+type Sinks = Arc<Mutex<SinkSlots>>;
 
 type PickSink = Sink<Result<Option<[u8; 3]>, String>>;
 
@@ -96,13 +105,21 @@ impl FakePort {
             if let Some(sink) = sink {
                 sink(event);
             }
+        } else if let Some(event) = mark
+            .strip_prefix("watch:late:")
+            .and_then(|event| watch_event(&format!("watch:{event}")))
+        {
+            let sink = self.sinks.lock().unwrap().stopped_watch.clone();
+            if let Some(sink) = sink {
+                sink(event);
+            }
         } else if let Some(event) = watch_event(mark) {
-            let sink = self.sinks.lock().unwrap().0.clone();
+            let sink = self.sinks.lock().unwrap().watch.clone();
             if let Some(sink) = sink {
                 sink(event);
             }
         } else if let Some(segment) = segment(mark) {
-            let sink = self.sinks.lock().unwrap().1.clone();
+            let sink = self.sinks.lock().unwrap().voice.clone();
             if let Some(sink) = sink {
                 sink(segment);
             }
@@ -227,15 +244,18 @@ impl PlatformPort for FakePort {
         }))
     }
     fn watch(&self, _area: Area, sink: Sink<WatchEvent>) -> Watch {
-        self.sinks.lock().unwrap().0 = Some(sink);
+        self.sinks.lock().unwrap().watch = Some(sink);
         let sinks = self.sinks.clone();
-        Watch(Some(Box::new(move || sinks.lock().unwrap().0 = None)))
+        Watch(Some(Box::new(move || {
+            let mut sinks = sinks.lock().unwrap();
+            sinks.stopped_watch = sinks.watch.take();
+        })))
     }
     fn voice(&self, sink: Sink<Segment>) -> Result<Voice, String> {
-        self.sinks.lock().unwrap().1 = Some(sink);
+        self.sinks.lock().unwrap().voice = Some(sink);
         let sinks = self.sinks.clone();
         Ok(Voice(Box::new(move || {
-            sinks.lock().unwrap().1 = None;
+            sinks.lock().unwrap().voice = None;
             Ok(())
         })))
     }

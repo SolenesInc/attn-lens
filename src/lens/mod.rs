@@ -121,6 +121,7 @@ struct State {
     /// A failure with no capture to hold it, such as a refused still.
     error: Option<String>,
     next_capture: u64,
+    watch_generation: u64,
     voice: Option<Voice>,
     watch: Option<Watch>,
 }
@@ -323,12 +324,23 @@ impl Lens {
         }
     }
 
+    /// Starts a watch whose events count only until the next one starts: a frame
+    /// or event in flight when a watch stops can still arrive.
+    fn watch_area(self: &Arc<Self>, area: Area) -> Watch {
+        let generation = {
+            let mut state = self.state.lock().unwrap();
+            state.watch_generation += 1;
+            state.watch_generation
+        };
+        let lens = self.clone();
+        let sink: Sink<WatchEvent> = Arc::new(move |event| lens.watched(generation, event));
+        self.port.watch(area, sink)
+    }
+
     /// Watches `area` from now on, in place of what was watched before.
     fn rewatch(self: &Arc<Self>, area: Area) {
         self.state.lock().unwrap().watch = None;
-        let lens = self.clone();
-        let sink: Sink<WatchEvent> = Arc::new(move |event| lens.watched(event));
-        let watch = self.port.watch(area, sink);
+        let watch = self.watch_area(area);
         let mut state = self.state.lock().unwrap();
         if state.capture.is_some() {
             state.watch = Some(watch);
@@ -350,9 +362,7 @@ impl Lens {
     }
 
     fn start_capture(self: &Arc<Self>, area: Area, display: DisplayFrame) {
-        let lens = self.clone();
-        let sink: Sink<WatchEvent> = Arc::new(move |event| lens.watched(event));
-        let watch = self.port.watch(area, sink);
+        let watch = self.watch_area(area);
         {
             let mut state = self.state.lock().unwrap();
             state.next_capture += 1;
@@ -721,7 +731,7 @@ impl Lens {
 
     /// The screen moved under the capture: ends the view, stales its ink, and
     /// takes the still D7 asks for.
-    fn watched(self: &Arc<Self>, event: WatchEvent) {
+    fn watched(self: &Arc<Self>, generation: u64, event: WatchEvent) {
         let cause = match event {
             WatchEvent::Click => Some(Cause::Click),
             WatchEvent::WindowSwitch => Some(Cause::WindowSwitch),
@@ -732,7 +742,11 @@ impl Lens {
         let cause = {
             let mut guard = self.state.lock().unwrap();
             let state = &mut *guard;
-            let Some(capture) = state.capture.as_mut() else {
+            let Some(capture) = state
+                .capture
+                .as_mut()
+                .filter(|_| state.watch_generation == generation)
+            else {
                 return;
             };
             // A running send has its stills; the page may still be clicked.
