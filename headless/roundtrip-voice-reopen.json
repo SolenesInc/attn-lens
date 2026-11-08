@@ -1,0 +1,105 @@
+{
+ "displays": [
+  {
+   "id": 1,
+   "frame": [
+    0,
+    0,
+    1280,
+    800
+   ],
+   "scale": 2,
+   "primary": true
+  }
+ ],
+ "pointer": [
+  400,
+  300
+ ],
+ "events": [
+  {
+   "t": 0.1,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 0.2,
+   "type": "drag",
+   "x": 100,
+   "y": 100,
+   "dx": 400,
+   "dy": 300,
+   "dur": 0.1
+  },
+  {
+   "t": 0.4,
+   "type": "mark",
+   "name": "open"
+  },
+  {
+   "t": 0.5,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 0.6,
+   "type": "mark",
+   "name": "key:voice"
+  },
+  {
+   "t": 0.7,
+   "type": "mark",
+   "name": "voice:listening"
+  },
+  {
+   "t": 0.8,
+   "type": "mark",
+   "name": "jobs:hold"
+  },
+  {
+   "t": 0.9,
+   "type": "mark",
+   "name": "key:voice"
+  },
+  {
+   "t": 1.0,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 1.2,
+   "type": "mark",
+   "name": "escaped"
+  },
+  {
+   "t": 1.3,
+   "type": "tap",
+   "key": "tile"
+  },
+  {
+   "t": 1.5,
+   "type": "mark",
+   "name": "reopened"
+  },
+  {
+   "t": 1.6,
+   "type": "mark",
+   "name": "key:voice"
+  },
+  {
+   "t": 1.7,
+   "type": "mark",
+   "name": "voice:listening"
+  },
+  {
+   "t": 1.8,
+   "type": "mark",
+   "name": "jobs:release"
+  },
+  {
+   "t": 2.2,
+   "type": "mark",
+   "name": "done"
+  }
+ ]
+}

@@ -1052,3 +1052,9 @@ fn a_closing_capture_cancels_a_send_queued_in_the_editor() {
     assert_eq!(state(&run, "done")["send"]["state"], "idle");
     assert!(!run.path("args").exists(), "a frame was sent");
 }
+
+#[test]
+fn an_earlier_voice_finishing_leaves_a_reopened_captures_new_voice() {
+    let run = Run::new("roundtrip-voice-reopen.json", ONE_SESSION);
+    assert_eq!(state(&run, "done")["voice"]["state"], "listening");
+}

@@ -1066,7 +1066,9 @@ impl Lens {
         state.palette = None;
         let handle = match voice {
             Some(CaptureVoice::Running { handle, .. }) => Some(handle),
-            Some(CaptureVoice::Finishing { send_after: true }) => {
+            Some(CaptureVoice::Finishing {
+                send_after: true, ..
+            }) => {
                 state.sending = None;
                 state.send = SendStatus::Failed(CLOSED_BEFORE_SENT.into());
                 None
@@ -1234,13 +1236,17 @@ impl Lens {
         };
         let id = capture.id;
         match std::mem::take(&mut capture.voice) {
-            CaptureVoice::Running { handle, .. } => {
-                capture.voice = CaptureVoice::Finishing { send_after: false };
+            CaptureVoice::Running { run, handle, .. } => {
+                capture.voice = CaptureVoice::Finishing {
+                    run,
+                    send_after: false,
+                };
                 drop(state);
                 self.changed();
                 let lens = self.clone();
-                self.port
-                    .run(Box::new(move || lens.voice_stopped(id, handle.finish())));
+                self.port.run(Box::new(move || {
+                    lens.voice_stopped(id, run, handle.finish())
+                }));
                 return;
             }
             // A voice still finishing holds the speech helper's one recording.
@@ -1305,12 +1311,22 @@ impl Lens {
 
     /// The finish ⌘⌥S asked for returned. It starts the send that waited for it, or
     /// fails it, as the send would lose the last sentence.
-    fn voice_stopped(self: &Arc<Self>, id: u64, finished: Result<(), String>) {
+    fn voice_stopped(self: &Arc<Self>, id: u64, run: u64, finished: Result<(), String>) {
         let mut state = self.state.lock().unwrap();
         let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) else {
             return;
         };
-        let send_after = matches!(capture.voice, CaptureVoice::Finishing { send_after: true });
+        // A reopened capture keeps its id, and may be on a newer voice by now.
+        let CaptureVoice::Finishing {
+            run: finishing,
+            send_after,
+        } = capture.voice
+        else {
+            return;
+        };
+        if finishing != run {
+            return;
+        }
         capture.voice = CaptureVoice::Off;
         match finished {
             Ok(()) => {}
@@ -1364,14 +1380,22 @@ impl Lens {
                 (capture.stills.is_empty() && !in_flight) || capture.unseen_change.is_some();
             let (voice, handle, after_voice) = match std::mem::take(&mut capture.voice) {
                 CaptureVoice::Off => (CaptureVoice::Off, None, false),
-                CaptureVoice::Running { handle, .. } => (
-                    CaptureVoice::Finishing { send_after: false },
+                CaptureVoice::Running { run, handle, .. } => (
+                    CaptureVoice::Finishing {
+                        run,
+                        send_after: false,
+                    },
                     Some(handle),
                     false,
                 ),
-                CaptureVoice::Finishing { .. } => {
-                    (CaptureVoice::Finishing { send_after: true }, None, true)
-                }
+                CaptureVoice::Finishing { run, .. } => (
+                    CaptureVoice::Finishing {
+                        run,
+                        send_after: true,
+                    },
+                    None,
+                    true,
+                ),
             };
             capture.voice = voice;
             state.send = SendStatus::Sending;
@@ -1396,7 +1420,11 @@ impl Lens {
         let voice = voice.map_or(Ok(()), |voice| {
             let finished = voice.finish();
             let mut state = self.state.lock().unwrap();
-            if let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) {
+            if let Some(capture) = state
+                .capture
+                .as_mut()
+                .filter(|c| c.id == id && matches!(c.voice, CaptureVoice::Finishing { .. }))
+            {
                 capture.voice = CaptureVoice::Off;
             }
             finished
