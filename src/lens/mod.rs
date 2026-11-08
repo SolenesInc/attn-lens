@@ -181,8 +181,6 @@ struct State {
     /// Never reset, so an edit coming back for a closed capture's still matches nothing.
     next_still: u64,
     watch_generation: u64,
-    /// Counts voice starts; see `CaptureVoice::Running`.
-    voice_run: u64,
     /// Set by automation: the next ⌘⌥S plays this WAV instead of the microphone.
     voice_wav: Option<PathBuf>,
     watch: Option<Watch>,
@@ -1068,22 +1066,17 @@ impl Lens {
         state.palette = None;
         // A tile keeps the voice as finishing, so its last sentence lands in the
         // capture and a reopened capture's Send waits for it.
-        let run = match &voice {
-            Some(CaptureVoice::Running { run, .. } | CaptureVoice::Finishing { run, .. }) => {
-                Some(*run)
-            }
-            _ => None,
-        };
-        if let Some(run) = run
+        let had_voice = matches!(
+            voice,
+            Some(CaptureVoice::Running { .. } | CaptureVoice::Finishing { .. })
+        );
+        if had_voice
             && let Some(tile) = state
                 .tile
                 .as_mut()
                 .filter(|t| Some(t.capture.id) == closing_id)
         {
-            tile.capture.voice = CaptureVoice::Finishing {
-                run,
-                send_after: false,
-            };
+            tile.capture.voice = CaptureVoice::Finishing { send_after: false };
         }
         let handle = match voice {
             Some(CaptureVoice::Running { handle, .. }) => Some(handle),
@@ -1105,13 +1098,12 @@ impl Lens {
         // A stopping voice keeps its helper to itself, and the next capture gets
         // its own: a helper records one voice at a time.
         self.port.end_voice();
-        let (Some(handle), Some(id), Some(run)) = (handle, closing_id, run) else {
+        let (Some(handle), Some(id)) = (handle, closing_id) else {
             return;
         };
         let lens = self.clone();
-        self.port.run(Box::new(move || {
-            lens.voice_stopped(id, run, handle.finish())
-        }));
+        self.port
+            .run(Box::new(move || lens.voice_stopped(id, handle.finish())));
     }
 
     /// The screen moved under the capture: ends the view, stales its ink, and
@@ -1259,17 +1251,13 @@ impl Lens {
         };
         let id = capture.id;
         match std::mem::take(&mut capture.voice) {
-            CaptureVoice::Running { run, handle, .. } => {
-                capture.voice = CaptureVoice::Finishing {
-                    run,
-                    send_after: false,
-                };
+            CaptureVoice::Running { handle, .. } => {
+                capture.voice = CaptureVoice::Finishing { send_after: false };
                 drop(state);
                 self.changed();
                 let lens = self.clone();
-                self.port.run(Box::new(move || {
-                    lens.voice_stopped(id, run, handle.finish())
-                }));
+                self.port
+                    .run(Box::new(move || lens.voice_stopped(id, handle.finish())));
                 return;
             }
             // A voice still finishing holds the speech helper's one recording.
@@ -1279,19 +1267,16 @@ impl Lens {
             }
             CaptureVoice::Off => {}
         }
-        state.voice_run += 1;
-        let run = state.voice_run;
         let source = state
             .voice_wav
             .clone()
             .map_or(VoiceSource::Microphone, VoiceSource::Wav);
         // `voice` returns at once and reports through the sink from elsewhere, so
         // the first report finds the handle stored.
-        match self.port.voice(source, self.voice_sink(id, run)) {
+        match self.port.voice(source, self.voice_sink(id)) {
             Ok(handle) => {
                 if let Some(capture) = state.capture.as_mut() {
                     capture.voice = CaptureVoice::Running {
-                        run,
                         handle,
                         status: None,
                     };
@@ -1303,8 +1288,9 @@ impl Lens {
         self.changed();
     }
 
-    /// Where voice `run` of capture `id` reports. Once the capture closes, nothing does.
-    fn voice_sink(self: &Arc<Self>, id: u64, run: u64) -> Sink<VoiceEvent> {
+    /// Where the voice of capture `id` reports. Once the capture closes, nothing does.
+    /// A capture holds one voice until its finish returns, so these are always its own.
+    fn voice_sink(self: &Arc<Self>, id: u64) -> Sink<VoiceEvent> {
         let lens = self.clone();
         Arc::new(move |event| {
             let mut guard = lens.state.lock().unwrap();
@@ -1312,17 +1298,16 @@ impl Lens {
             let Some(capture) = capture_by_id(&mut state.capture, &mut state.tile, id) else {
                 return;
             };
-            let current = matches!(capture.voice, CaptureVoice::Running { run: r, .. } if r == run);
             match event {
                 // A segment counts even after voice stops: stopping waits for it.
                 VoiceEvent::Segment(segment) => capture.segments.push(segment),
                 VoiceEvent::Status(new) => {
-                    if current && let CaptureVoice::Running { status, .. } = &mut capture.voice {
+                    if let CaptureVoice::Running { status, .. } = &mut capture.voice {
                         *status = Some(new);
                     }
                 }
                 VoiceEvent::Failed(error) => {
-                    if current {
+                    if matches!(capture.voice, CaptureVoice::Running { .. }) {
                         capture.voice = CaptureVoice::Off;
                     }
                     state.error = Some(error);
@@ -1335,23 +1320,15 @@ impl Lens {
 
     /// The finish ⌘⌥S asked for returned. It starts the send that waited for it, or
     /// fails it, as the send would lose the last sentence.
-    fn voice_stopped(self: &Arc<Self>, id: u64, run: u64, finished: Result<(), String>) {
+    fn voice_stopped(self: &Arc<Self>, id: u64, finished: Result<(), String>) {
         let mut guard = self.state.lock().unwrap();
         let state = &mut *guard;
         let Some(capture) = capture_by_id(&mut state.capture, &mut state.tile, id) else {
             return;
         };
-        // A reopened capture keeps its id, and may be on a newer voice by now.
-        let CaptureVoice::Finishing {
-            run: finishing,
-            send_after,
-        } = capture.voice
-        else {
+        let CaptureVoice::Finishing { send_after } = capture.voice else {
             return;
         };
-        if finishing != run {
-            return;
-        }
         capture.voice = CaptureVoice::Off;
         match finished {
             Ok(()) => {}
@@ -1405,22 +1382,14 @@ impl Lens {
                 (capture.stills.is_empty() && !in_flight) || capture.unseen_change.is_some();
             let (voice, handle, after_voice) = match std::mem::take(&mut capture.voice) {
                 CaptureVoice::Off => (CaptureVoice::Off, None, false),
-                CaptureVoice::Running { run, handle, .. } => (
-                    CaptureVoice::Finishing {
-                        run,
-                        send_after: false,
-                    },
+                CaptureVoice::Running { handle, .. } => (
+                    CaptureVoice::Finishing { send_after: false },
                     Some(handle),
                     false,
                 ),
-                CaptureVoice::Finishing { run, .. } => (
-                    CaptureVoice::Finishing {
-                        run,
-                        send_after: true,
-                    },
-                    None,
-                    true,
-                ),
+                CaptureVoice::Finishing { .. } => {
+                    (CaptureVoice::Finishing { send_after: true }, None, true)
+                }
             };
             capture.voice = voice;
             state.send = SendStatus::Sending;

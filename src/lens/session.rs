@@ -104,19 +104,13 @@ pub enum CaptureVoice {
     #[default]
     Off,
     Running {
-        /// Which ⌘⌥S started it, so a stopped voice's late progress is ignored.
-        run: u64,
         handle: Voice,
         /// `None` until the port reports progress.
         status: Option<VoiceStatus>,
     },
     /// Waiting for the sentence in progress. `send_after`: Send came meanwhile, and
     /// starts, or fails, once this finish returns, so it carries the last sentence.
-    Finishing {
-        /// The run being finished; see `Running`.
-        run: u64,
-        send_after: bool,
-    },
+    Finishing { send_after: bool },
 }
 
 /// One live session from ⌘⌥X to Send or Esc, over one area.
