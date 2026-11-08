@@ -220,6 +220,26 @@ fn wait_returns_when_the_state_changes_and_reports_it() {
 }
 
 #[test]
+fn a_pick_over_an_open_capture_closes_it_and_its_voice() {
+    let dir = tempfile::tempdir().unwrap();
+    let lens = Harness::new(dir.path(), None);
+    lens.ask(r#"{"cmd":"key","key":"capture"}"#);
+    lens.ask(r#"{"cmd":"pick"}"#);
+    lens.ask(r#"{"cmd":"key","key":"voice"}"#);
+    assert_eq!(lens.state()["voice"]["state"], "starting");
+    let first = lens.state()["capture"]["id"].clone();
+
+    assert_eq!(lens.ask(r#"{"cmd":"pick-last"}"#)["ok"], true);
+    assert_ne!(lens.state()["capture"]["id"], first);
+    assert_eq!(lens.state()["voice"]["state"], "off");
+
+    // The first voice was stopped, so the helper is free for this capture's.
+    lens.ask(r#"{"cmd":"key","key":"voice"}"#);
+    assert_eq!(lens.state()["error"], Value::Null);
+    assert_eq!(lens.state()["voice"]["state"], "starting");
+}
+
+#[test]
 fn voice_wav_takes_only_a_regular_file_by_its_absolute_path() {
     let dir = tempfile::tempdir().unwrap();
     let dir = dir.path();

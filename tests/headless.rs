@@ -659,6 +659,10 @@ fn voice_on_a_new_capture_does_not_wait_for_the_last_one_to_stop() {
     // The old voice ending leaves the new one running.
     let later = run.tree("bar", "old-voice-finished");
     assert_eq!(text(&later, "voice"), Some("Listening · ⌘⌥S to stop"));
+
+    // A closed capture's voice failing while it stops is not the next capture's error.
+    let clean = run.tree("bar", "after-closed-voice-failed");
+    assert_eq!(text(&clean, "error"), None);
 }
 
 #[test]

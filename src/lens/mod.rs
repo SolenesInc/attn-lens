@@ -357,6 +357,13 @@ impl Lens {
     }
 
     fn start_capture(self: &Arc<Self>, area: Area, display: DisplayFrame) {
+        // Automation can pick while a capture is open.
+        let state = self.state.lock().unwrap();
+        if state.capture.is_some() {
+            self.close_capture(state);
+        } else {
+            drop(state);
+        }
         let lens = self.clone();
         let sink: Sink<WatchEvent> = Arc::new(move |event| lens.watched(event));
         let watch = self.port.watch(area, sink);
@@ -689,10 +696,10 @@ impl Lens {
         // its own: a helper records one voice at a time.
         self.port.end_voice();
         let Some(handle) = handle else { return };
-        let lens = self.clone();
         self.port.run(Box::new(move || {
+            // The capture is gone and nobody waits on this, so the bar is not told.
             if let Err(error) = handle.finish() {
-                lens.fail(error);
+                eprintln!("Attn Lens: {error}");
             }
         }));
     }
