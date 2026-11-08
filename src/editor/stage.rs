@@ -4,7 +4,10 @@
 //! `preview.rs` does. A frame stays shown until the next one lands, so playback
 //! never flashes empty.
 use super::{Editor, Message, Panel};
-use crate::{animation::Renderer, backdrop::Backdrop};
+use crate::{
+    animation::{Motion, Renderer},
+    backdrop::Backdrop,
+};
 use image::RgbaImage;
 use rune::Pixels;
 use std::sync::Arc;
@@ -28,6 +31,23 @@ pub(crate) enum Scene {
     },
     /// The whole picture, image and marks included, of document `revision`.
     Entrance { revision: u64, edge: u32 },
+}
+
+impl Scene {
+    /// What a screen reader announces. It names the scene and never the frame, so the
+    /// accessibility tree stays still while the preview plays.
+    pub(crate) fn label(self, entrance: &str) -> String {
+        match self {
+            Self::Entrance { .. } => format!("Preview, {entrance} entrance"),
+            Self::Backdrop { backdrop, .. } if backdrop.motion != Motion::Still => {
+                format!("Preview, {} backdrop", backdrop.motion.label())
+            }
+            Self::Backdrop { backdrop, .. } if backdrop.gradient => {
+                "Preview, Gradient backdrop".into()
+            }
+            Self::Backdrop { .. } => "Preview, Solid backdrop".into(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

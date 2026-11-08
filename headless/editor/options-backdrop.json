@@ -456,7 +456,10 @@
    "present": [
     "backdrop-panel"
    ],
-   "status_contains": "Backdrop added"
+   "status_contains": "Backdrop added",
+   "label": {
+    "stage": "Preview, Solid backdrop"
+   }
   },
   {
    "at": "format-square",

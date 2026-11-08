@@ -294,7 +294,7 @@ impl Editor {
         if let (Some(rect), Some(shown)) = (self.stage_rect(), self.stage.shown) {
             root = root.child(
                 el().key("stage")
-                    .label(format!("{:?} tick {}", shown.scene, shown.tick))
+                    .label(shown.scene.label(doc.image_animation.effect.label()))
                     .absolute(rect[0], rect[1])
                     .w(rect[2])
                     .h(rect[3])

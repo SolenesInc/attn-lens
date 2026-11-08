@@ -273,6 +273,12 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
             fail.push(format!("{key} reads {found:?}, expected {want}"));
         }
     }
+    for (key, want) in expected["label"].as_object().into_iter().flatten() {
+        let found = element(key).and_then(|e| e["label"].as_str());
+        if found != want.as_str() {
+            fail.push(format!("{key} is labelled {found:?}, expected {want}"));
+        }
+    }
     for (key, want) in expected["value"].as_object().into_iter().flatten() {
         let found = node(key).and_then(|n| n["value"].as_str());
         if found != want.as_str() {

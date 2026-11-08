@@ -237,7 +237,10 @@
     "randomize",
     "duration-slider",
     "stage"
-   ]
+   ],
+   "label": {
+    "stage": "Preview, Flow backdrop"
+   }
   },
   {
    "at": "paused",
@@ -471,6 +474,9 @@
       "max": 1.7
      }
     }
+   },
+   "label": {
+    "stage": "Preview, Flow backdrop"
    }
   },
   {
@@ -484,7 +490,10 @@
    "absent": [
     "randomize",
     "duration-slider"
-   ]
+   ],
+   "label": {
+    "stage": "Preview, Gradient backdrop"
+   }
   }
  ]
 }

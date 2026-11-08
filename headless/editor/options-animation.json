@@ -312,6 +312,9 @@
      320,
      200
     ]
+   },
+   "label": {
+    "stage": "Preview, Diagonal reveal entrance"
    }
   },
   {
@@ -354,6 +357,9 @@
      320,
      200
     ]
+   },
+   "label": {
+    "stage": "Preview, Spring pop entrance"
    }
   },
   {
@@ -396,6 +402,9 @@
      320,
      200
     ]
+   },
+   "label": {
+    "stage": "Preview, 3D settle entrance"
    }
   },
   {
