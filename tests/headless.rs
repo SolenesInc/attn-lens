@@ -23,6 +23,9 @@ impl Run {
             format!(
                 r#"#!/bin/sh
 cat > /dev/null
+if [ "$2" = "sessions" ] && [ -f "{dir}/first-listing" ]; then
+  cat "{dir}/first-listing"; rm "{dir}/first-listing"; exit 0
+fi
 if [ "$2" = "sessions" ]; then echo '{sessions}'; exit 0; fi
 echo "$@" > "{dir}/args"
 for arg in "$@"; do case "$arg" in *.png) cp "$arg" "{dir}/";; esac; done
@@ -507,7 +510,8 @@ fn stills_come_with_their_causes_and_ink_fades_only_once_its_still_exists() {
         "send left it open"
     );
     let args = std::fs::read_to_string(run.path("args")).unwrap();
-    assert_eq!(args.matches(".png").count(), 8, "{args}");
+    // Eight frames, and two sheets for them.
+    assert_eq!(args.matches("--file ").count(), 10, "{args}");
 }
 
 #[test]
@@ -637,7 +641,7 @@ fn the_strip_drops_stills_the_palette_chooses_and_send_delivers() {
     assert!(!visible(&sent, "ink"));
     let args = std::fs::read_to_string(run.path("args")).unwrap();
     assert!(args.starts_with("send s2 "), "{args}");
-    assert!(args.ends_with("-m hi!\n"), "{args}");
+    assert!(args.contains("-m hi!\n\nScreen capture"), "{args}");
     assert!(run.path("frame-02.png").exists());
     assert!(
         !Path::new(&run.path("frame-03.png")).exists(),
@@ -777,6 +781,34 @@ fn the_bar_shows_how_far_voice_has_got_and_waits_for_the_last_sentence() {
     let after = run.tree("bar", "voice-after-send");
     assert_eq!(text(&after, "voice"), Some("Starting voice…"));
     assert_eq!(text(&after, "error"), None);
+}
+
+#[test]
+fn an_older_listing_finishing_last_cannot_change_the_target() {
+    let run = Run::new("listing-order.json", ONE_SESSION);
+    std::fs::write(
+        run.path("first-listing"),
+        r#"[{"agent":"claude","id":"s2","label":"newest","state":"idle"}]"#,
+    )
+    .unwrap();
+    run.tree("bar", "sent");
+    let args = std::fs::read_to_string(run.path("args")).unwrap();
+    assert!(args.starts_with("send s2 "), "{args}");
+}
+
+#[test]
+fn send_delivers_the_timeline_a_sheet_and_the_frames() {
+    let run = Run::new("deliver.json", ONE_SESSION);
+    run.tree("bar", "sent");
+    let args = std::fs::read_to_string(run.path("args")).unwrap();
+    assert!(args.contains("still 1 (draw)"), "{args}");
+    assert!(args.contains("on still 1"), "{args}");
+    assert!(args.contains("\"it breaks here\""), "{args}");
+    assert!(args.contains("still 2 (hotkey)"), "{args}");
+    assert_eq!(args.matches("--file ").count(), 3, "{args}");
+    let sheet = image::open(run.path("sheet.png")).unwrap();
+    assert!(sheet.width().max(sheet.height()) <= 1600);
+    assert!(run.path("frame-02.png").exists());
 }
 
 #[test]

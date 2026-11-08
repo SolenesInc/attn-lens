@@ -72,8 +72,18 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
     assert_eq!(lens.state()["capture"]["area"]["rect"][2], 640.);
     assert_eq!(lens.ask(r#"{"cmd":"key","key":"draw-down"}"#)["ok"], true);
     assert_eq!(lens.state()["input"], "All");
+    let stroke = r#"{"cmd":"stroke","points":[[10,10],[200,120]]}"#;
+    assert_eq!(lens.ask(stroke)["ok"], true);
+    assert_eq!(lens.state()["capture"]["stills"][0]["cause"], "draw");
+    assert_eq!(lens.state()["capture"]["stills"][0]["marks"], 1);
     lens.ask(r#"{"cmd":"key","key":"draw-up"}"#);
     assert_eq!(lens.state()["input"], "None");
+    assert!(
+        lens.ask(stroke)["error"]
+            .as_str()
+            .unwrap()
+            .contains("draw-down")
+    );
 
     assert_eq!(lens.ask(r#"{"cmd":"sessions"}"#)["sessions"][0]["id"], "s1");
 
@@ -85,7 +95,7 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
     let failed = lens.state();
     assert_eq!(failed["send"]["state"], "failed");
     assert_eq!(failed["send"]["error"], "send: session closed is closed");
-    assert_eq!(failed["capture"]["stills"][0]["cause"], "send");
+    assert_eq!(failed["capture"]["stills"][0]["cause"], "draw");
 
     // Sending again uses the stills it has, then closes the capture.
     lens.ask(r#"{"cmd":"key","key":"capture"}"#);
@@ -103,7 +113,7 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
         args.starts_with("send s1 --token-stdin --json --file "),
         "{args}"
     );
-    assert!(args.ends_with("-m look here\n"), "{args}");
+    assert!(args.contains("-m look here\n\nScreen capture"), "{args}");
     for frame in ["frame-01.png", "frame-02.png"] {
         let image = image::open(dir.join(frame)).unwrap();
         assert_eq!((image.width(), image.height()), (1280, 800));
@@ -170,14 +180,29 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
     );
 }
 
+/// The child of `a_live_socket_is_kept_and_a_stale_one_is_replaced`.
+#[test]
+#[ignore = "run by a_live_socket_is_kept_and_a_stale_one_is_replaced"]
+fn bind_a_socket_and_exit() {
+    if let Some(path) = std::env::var_os("LENS_TEST_SOCKET") {
+        std::mem::forget(std::os::unix::net::UnixListener::bind(path).unwrap());
+    }
+}
+
 #[test]
 fn a_live_socket_is_kept_and_a_stale_one_is_replaced() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("lens.sock");
     let lens = || Lens::new(Arc::new(FakePort::new(vec![], None)));
 
-    // A socket whose process is gone: bound, then its listener dropped.
-    drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
+    // A socket whose process is gone. Bound in a process of its own: another test
+    // forking here could keep a listener of this process alive past its drop.
+    let bound = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "bind_a_socket_and_exit"])
+        .env("LENS_TEST_SOCKET", &path)
+        .status()
+        .unwrap();
+    assert!(bound.success());
     automation::listen(lens(), &path).unwrap();
 
     let refused = automation::listen(lens(), &path).unwrap_err();

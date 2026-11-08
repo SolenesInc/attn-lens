@@ -37,6 +37,8 @@ This file's Glance rules still apply to the code that remains.
 - `src/lens/attn.rs`: the only contract with attn: `attn send sessions`, `attn
   send pair` and `attn send <session>` JSON, plus the Keychain token. Its tests
   use a stand-in `attn`; attn's `cmd/attn/send_stack_test.go` pins the real JSON.
+- `src/lens/deliver.rs`: what Send delivers: the timeline message, the contact
+  sheets and the frames, written only from `Document::export()`.
 - `src/lens/capture.rs`: stills through Hex's capture-core (ScreenCaptureKit).
 - `src/lens/watch.rs`: macOS's `PlatformPort::watch`. `LENS_WATCH_LOG=1` prints each
   event, and `--ink-in-capture` lets a recording of a driven check show the ink.

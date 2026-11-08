@@ -14,6 +14,8 @@
 //! {"cmd":"pick-last"}
 //! {"cmd":"cancel"}
 //! {"cmd":"still","cause":"hotkey"}
+//! {"cmd":"stroke","points":[[x,y],...]}             what a drag on the ink layer does, in points
+//!                                                   from the area's corner; needs draw-down first
 //! {"cmd":"sessions"}
 //! {"cmd":"send","target":"<session id>","message":"..."}
 //! {"cmd":"end"}
@@ -165,6 +167,22 @@ fn handle(lens: &Arc<Lens>, request: &Value) -> Result<Value, String> {
             lens.take_still(parse_cause(text("cause").unwrap_or("hotkey"))?);
             Ok(json!({}))
         }
+        "stroke" => {
+            let points: Vec<(f32, f32)> = serde_json::from_value(request["points"].clone())
+                .map_err(|_| "stroke needs \"points\": [[x, y], ...].")?;
+            let area = lens
+                .read(|summary| summary.capture.as_ref().map(|c| c.area))
+                .ok_or("stroke needs an open capture.")?;
+            let start = lens
+                .begin_stroke()
+                .ok_or("stroke needs the draw key held: send key draw-down first.")?;
+            let on_display = points
+                .iter()
+                .map(|(x, y)| (x + area.rect[0] as f32, y + area.rect[1] as f32))
+                .collect();
+            lens.finish_stroke(start, on_display);
+            Ok(json!({}))
+        }
         "sessions" => Ok(json!({"sessions": lens.sessions()?.iter().map(|s| json!({
             "id": s.id,
             "label": s.label,
@@ -188,7 +206,7 @@ fn handle(lens: &Arc<Lens>, request: &Value) -> Result<Value, String> {
             Ok(json!({}))
         }
         other => Err(format!(
-            "Unknown cmd \"{other}\". Expected state, key, pick, pick-last, cancel, still, sessions, send, end or voice-wav."
+            "Unknown cmd \"{other}\". Expected state, key, pick, pick-last, cancel, still, stroke, sessions, send, end or voice-wav."
         )),
     }
 }
