@@ -48,7 +48,9 @@ pub trait Source: Send {
 pub struct Speech {
     helper: Mutex<Option<Arc<Helper>>>,
     /// Voices started and not yet stopped; the helper stays while any runs.
-    active: Arc<AtomicUsize>,
+    active: AtomicUsize,
+    /// The capture ended while a voice still ran: the last one to stop lets go.
+    release_when_idle: AtomicBool,
 }
 
 impl Speech {
@@ -62,6 +64,7 @@ impl Speech {
     ) -> Voice {
         let run = Arc::new(Run::default());
         self.active.fetch_add(1, Ordering::SeqCst);
+        self.release_when_idle.store(false, Ordering::SeqCst);
         let speech = self.clone();
         let thread_run = run.clone();
         std::thread::spawn(move || {
@@ -71,7 +74,11 @@ impl Speech {
                 sink(VoiceEvent::Failed(error));
             }
             thread_run.set(Phase::Done);
-            speech.active.fetch_sub(1, Ordering::SeqCst);
+            if speech.active.fetch_sub(1, Ordering::SeqCst) == 1
+                && speech.release_when_idle.load(Ordering::SeqCst)
+            {
+                speech.release();
+            }
         });
         Voice(Box::new(move || run.finish()))
     }
@@ -81,6 +88,8 @@ impl Speech {
         if self.active.load(Ordering::SeqCst) == 0 {
             // Its stdin closes with it, and the helper exits.
             self.helper.lock().unwrap().take();
+        } else {
+            self.release_when_idle.store(true, Ordering::SeqCst);
         }
     }
 
@@ -124,9 +133,17 @@ impl Speech {
         helper.request(&json!({"op": "listen", "id": id}))?;
         sink(VoiceEvent::Status(VoiceStatus::WarmingUp));
         let base: Arc<Mutex<Option<HostTime>>> = Arc::default();
+        // Closed by `finish` before it asks for the transcript, so no audio
+        // arrives after it, whatever the source has in flight.
+        let gate = Arc::new(Mutex::new(true));
         let feed: Feed = {
-            let (helper, base, sink) = (helper.clone(), base.clone(), sink.clone());
+            let (helper, base, sink, gate) =
+                (helper.clone(), base.clone(), sink.clone(), gate.clone());
             Box::new(move |samples, first| {
+                let open = gate.lock().unwrap();
+                if !*open {
+                    return;
+                }
                 if let Some(first) = first {
                     *base.lock().unwrap() = Some(first);
                     sink(VoiceEvent::Status(VoiceStatus::Listening));
@@ -151,6 +168,7 @@ impl Speech {
             id,
             helper: helper.clone(),
             source: Some(source),
+            gate,
         });
         let result = deliver(&answers, &base, sink);
         helper.unroute(id);
@@ -234,6 +252,7 @@ enum Phase {
         id: u64,
         helper: Arc<Helper>,
         source: Option<Box<dyn Source>>,
+        gate: Arc<Mutex<bool>>,
     },
     /// `finish` came before listening began.
     Stopped,
@@ -307,11 +326,17 @@ impl Run {
                 // The helper keeps what it downloaded, so the next ⌘⌥S resumes.
                 helper.request(&json!({"op": "cancel", "target": id}))
             }
-            Phase::Listening { id, helper, source } => {
+            Phase::Listening {
+                id,
+                helper,
+                source,
+                gate,
+            } => {
                 drop(phase);
                 if let Some(source) = source {
                     source.stop();
                 }
+                *gate.lock().unwrap() = false;
                 helper.request(&json!({"op": "finish", "target": id}))?;
                 let mut result = self.result.lock().unwrap();
                 while result.is_none() {

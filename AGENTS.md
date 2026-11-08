@@ -33,6 +33,12 @@ code that remains.
   send pair` and `attn send <session>` JSON, plus the Keychain token. Its tests
   use a stand-in `attn`; attn's `cmd/attn/send_stack_test.go` pins the real JSON.
 - `src/lens/capture.rs`: stills through Hex's capture-core (ScreenCaptureKit).
+- `src/lens/voice.rs`: voice. It runs `speech/` (attn's speech helper, protocol 3)
+  as a child, feeds it the microphone (`voice/mic.rs`) or, through the socket's
+  `voice-wav`, a WAV, and puts each phrase on the capture clock. `speech/` is its
+  own crate, built by `scripts/bundle.sh`; `speech/tests/segments.rs` and
+  `tests/voice.rs` check phrase times against `speech/tests/fixtures` (opt in with
+  the models, as their headers say). `scripts/lens-vm.sh voice OUT` drives it in the VM.
 - `src/lens/automation.rs`: the development socket. Launch with `--automation`, then
   `AttnLens lens '{"cmd":"state"}'`; the module's header lists the requests.
 - `tools/driver/driver.swift`: posts synthetic keys and drags. Run it in the VM below;
