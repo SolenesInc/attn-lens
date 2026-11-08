@@ -864,10 +864,13 @@ impl Editor {
         if self.is_busy() {
             return;
         }
-        if let Some((still, document)) = self.opening.take() {
-            self.open_still(still, document, tx);
-        } else if let Some(send) = self.leaving.take() {
+        if let Some(send) = self.leaving.take() {
             self.leave_for_key(send, tx);
+        }
+        if !self.is_busy()
+            && let Some((still, document)) = self.opening.take()
+        {
+            self.open_still(still, document, tx);
         }
     }
 
