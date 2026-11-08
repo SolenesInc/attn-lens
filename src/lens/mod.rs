@@ -368,6 +368,7 @@ impl Lens {
                 view_still: None,
                 next_still: 0,
                 unseen_change: false,
+                send_still_error: None,
                 segments: vec![],
                 target,
                 message: String::new(),
@@ -554,7 +555,6 @@ impl Lens {
             }
             (capture.view_still, state.tool)
         };
-        let at = self.port.now();
         let still = match open {
             Some(still) => still,
             None => {
@@ -565,6 +565,8 @@ impl Lens {
                 still
             }
         };
+        // Read after the still's own time, so a frame is never later than its marks.
+        let at = self.port.now();
         Some(StrokeStart {
             still,
             at,
@@ -760,7 +762,7 @@ impl Lens {
     /// Returns the id the still will have.
     pub fn take_still(self: &Arc<Self>, cause: Cause) -> Option<u64> {
         let at = self.port.now();
-        let (id, area, still_id) = {
+        let (id, area, still_id, covers_change) = {
             let mut state = self.state.lock().unwrap();
             let capture = state.capture.as_mut()?;
             let (id, area, still_id) = (capture.id, capture.area, capture.next_still);
@@ -769,6 +771,8 @@ impl Lens {
                 self.fail("Attn Lens is sending this capture, so no still was taken.".into());
                 return None;
             }
+            let covers_change =
+                cause == Cause::Send || state.capture.as_ref().is_some_and(|c| c.unseen_change);
             if let Some(capture) = state.capture.as_mut() {
                 capture.next_still += 1;
                 capture.unseen_change = false;
@@ -776,7 +780,7 @@ impl Lens {
             // Counted before the state is released, so a send never sees the
             // still neither kept nor on the way.
             self.pending_stills.0.lock().unwrap().push(id);
-            (id, area, still_id)
+            (id, area, still_id, covers_change)
         };
         let lens = self.clone();
         self.port.run(Box::new(move || {
@@ -806,7 +810,15 @@ impl Lens {
                     }
                     Err(error) => {
                         // Ink with no frame under it cannot be sent; the next press retries.
+                        let sending = state.sending == Some(id);
                         if let Some(capture) = state.capture.as_mut().filter(|c| c.id == id) {
+                            // The change is still unseen, and a send must not go without it.
+                            if covers_change {
+                                capture.unseen_change = true;
+                                if sending {
+                                    capture.send_still_error = Some(error.clone());
+                                }
+                            }
                             capture.ink.retain(|m| m.still != still_id);
                             if capture.view_still == Some(still_id) {
                                 capture.view_still = None;
@@ -903,7 +915,16 @@ impl Lens {
             pending = self.pending_stills.1.wait(pending).unwrap();
         }
         drop(pending);
+        let still_error = self
+            .state
+            .lock()
+            .unwrap()
+            .capture
+            .as_mut()
+            .filter(|c| c.id == id)
+            .and_then(|c| c.send_still_error.take());
         let delivered = voice
+            .and_then(|()| still_error.map_or(Ok(()), Err))
             .map_err(attn::Failure::Error)
             .and_then(|()| self.deliver(id));
         {

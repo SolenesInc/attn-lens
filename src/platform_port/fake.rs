@@ -8,6 +8,7 @@
 //! clipboard:PATH             the system clipboard now holds the image at PATH
 //! ocr:the words              text recognition finds these words from now on
 //! pick:#RRGGBB  pick:cancel  answers a Pick from screen that is waiting
+//! still:fail                 the next still fails
 //! ```
 //!
 //! Any other mark is left to the script. Work runs inline, so a tree read at a
@@ -47,6 +48,7 @@ struct Script {
     keys: Option<Sink<KeyEvent>>,
     clipboard: Option<RgbaImage>,
     ocr: String,
+    fail_still: bool,
     pick: Option<PickSink>,
     /// After a `jobs:hold` mark, jobs wait here until a `jobs:next` mark runs the oldest,
     /// a `jobs:last` mark the newest, a `jobs:drain` mark every one waiting, or a
@@ -109,6 +111,8 @@ impl FakePort {
             self.script.lock().unwrap().clipboard = Some(image.to_rgba8());
         } else if let Some(text) = mark.strip_prefix("ocr:") {
             self.script.lock().unwrap().ocr = text.to_string();
+        } else if mark == "still:fail" {
+            self.script.lock().unwrap().fail_still = true;
         } else if mark == "jobs:hold" {
             self.script.lock().unwrap().held = Some(Default::default());
         } else if mark == "jobs:next" || mark == "jobs:last" {
@@ -213,6 +217,9 @@ impl PlatformPort for FakePort {
         true
     }
     fn still(&self, area: Area) -> Result<RgbaImage, String> {
+        if std::mem::take(&mut self.script.lock().unwrap().fail_still) {
+            return Err("The fake still failed.".into());
+        }
         // Two pixels per point, as on a Retina display.
         let (width, height) = ((area.rect[2] * 2.) as u32, (area.rect[3] * 2.) as u32);
         Ok(RgbaImage::from_fn(width, height, |x, y| {

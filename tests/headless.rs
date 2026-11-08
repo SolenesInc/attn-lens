@@ -399,6 +399,28 @@ fn ink_count(capture: &Value) -> usize {
 }
 
 #[test]
+fn a_send_whose_still_fails_keeps_the_capture_and_retries() {
+    let run = Run::new("send-still-fails.json", ONE_SESSION);
+    let failed = capture_state(&run, "failed");
+    assert_eq!(causes(&failed), ["hotkey"]);
+    assert!(!run.path("args").exists(), "the stale stills were sent");
+    let bar = run.tree("bar", "failed");
+    assert!(
+        serde_json::to_string(&bar)
+            .unwrap()
+            .contains("The fake still failed."),
+        "the failure is not shown"
+    );
+
+    let run = Run::new("send-still-fails.json", ONE_SESSION);
+    run.tree("bar", "retried");
+    assert!(
+        run.path("frame-02.png").exists(),
+        "the retry sent no new still"
+    );
+}
+
+#[test]
 fn stills_come_with_their_causes_and_ink_fades_only_once_its_still_exists() {
     let run = Run::new("stills.json", ONE_SESSION);
 

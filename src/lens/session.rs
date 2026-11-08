@@ -106,6 +106,8 @@ pub struct Capture {
     pub next_still: u64,
     /// The screen changed after the last still, so a send takes one more.
     pub unseen_change: bool,
+    /// Why the still a running send was waiting for failed; that send fails too.
+    pub send_still_error: Option<String>,
     pub segments: Vec<Segment>,
     /// The session id the capture will be sent to.
     pub target: Option<String>,
