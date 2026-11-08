@@ -1,0 +1,89 @@
+{
+ "displays": [
+  {
+   "id": 1,
+   "frame": [
+    0,
+    0,
+    1280,
+    800
+   ],
+   "scale": 2,
+   "primary": true
+  }
+ ],
+ "pointer": [
+  400,
+  300
+ ],
+ "events": [
+  {
+   "t": 0.1,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 0.2,
+   "type": "drag",
+   "x": 100,
+   "y": 100,
+   "dx": 400,
+   "dy": 300,
+   "dur": 0.1
+  },
+  {
+   "t": 0.4,
+   "type": "mark",
+   "name": "open"
+  },
+  {
+   "t": 0.5,
+   "type": "mark",
+   "name": "key:draw-down"
+  },
+  {
+   "t": 0.55,
+   "type": "drag",
+   "x": 150,
+   "y": 150,
+   "dx": 100,
+   "dy": 40,
+   "dur": 0.05
+  },
+  {
+   "t": 0.7,
+   "type": "mark",
+   "name": "key:draw-up"
+  },
+  {
+   "t": 0.75,
+   "type": "mark",
+   "name": "drawn"
+  },
+  {
+   "t": 0.8,
+   "type": "mark",
+   "name": "watch:change:0.9"
+  },
+  {
+   "t": 0.9,
+   "type": "tap",
+   "key": "edit"
+  },
+  {
+   "t": 1.2,
+   "type": "mark",
+   "name": "editing"
+  },
+  {
+   "t": 1.4,
+   "type": "tap",
+   "key": "send-capture"
+  },
+  {
+   "t": 1.8,
+   "type": "mark",
+   "name": "sent"
+  }
+ ]
+}

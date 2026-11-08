@@ -33,7 +33,8 @@ still. Use any tool, for example **Pixelate** on a secret. See
 
 - **‹ Back** (or closing the window, or **⌘⌥X**) returns to the same live capture.
   The still keeps its marks and undo history, so you can open it again and go on.
-- **Send ↩** in the editor's toolbar, or **⌘⌥↩**, sends the capture from there.
+- **Send ↩** in the editor's toolbar, or **⌘⌥↩**, sends the capture from there,
+  with the stills you have. It adds no fresh still of the screen.
 
 While a still is open the capture waits: its outline and bar hide, and no stills
 are taken. Voice keeps running. Lens never sends a raw copy of an edited still, but

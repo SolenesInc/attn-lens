@@ -860,6 +860,15 @@ impl Editor {
 
     /// Takes in what a worker finished.
     pub(crate) fn receive(&mut self, message: Message, tx: &mut Tx) {
+        self.take_in(message, tx);
+        if !self.is_busy()
+            && let Some(send) = self.leaving.take()
+        {
+            self.leave_for_key(send, tx);
+        }
+    }
+
+    fn take_in(&mut self, message: Message, tx: &mut Tx) {
         let id = match &message {
             Message::Preview(_)
             | Message::Frame(_)

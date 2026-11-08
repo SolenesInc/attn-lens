@@ -219,6 +219,8 @@ pub struct Editor {
     pub(crate) still: Option<u64>,
     /// The image that was open when a still replaced it, back when the still is done.
     parked: Option<Document>,
+    /// Back or Send waiting for the running operation; true means Send.
+    leaving: Option<bool>,
 }
 
 impl Editor {
@@ -274,6 +276,7 @@ impl Editor {
             capture,
             still: None,
             parked: None,
+            leaving: None,
         }
     }
 
@@ -288,15 +291,14 @@ impl Editor {
     pub fn on_window_close(&mut self, tx: &mut rune::Tx) {
         self.open = false;
         if self.still.is_some() {
-            self.commit_text(tx);
-            self.cancel_gesture();
-            self.leave_still(false);
+            self.leave_for_key(false, tx);
         }
     }
 
     /// Shows a capture's still, undo and all, in place of whatever image was open.
-    pub fn open_still(&mut self, still: u64, document: Document) {
+    pub fn open_still(&mut self, still: u64, document: Document, tx: &mut rune::Tx) {
         if self.still.is_none() {
+            self.commit_text(tx);
             self.parked = self.doc.take();
         }
         self.still = Some(still);
@@ -307,6 +309,9 @@ impl Editor {
 
     /// Hands the still back with its edits and returns to what was open before.
     pub(crate) fn leave_still(&mut self, send: bool) {
+        if self.still.is_none() || self.doc.is_none() {
+            return;
+        }
         let (Some(still), Some(document)) = (self.still.take(), self.doc.take()) else {
             return;
         };
@@ -318,7 +323,7 @@ impl Editor {
         self.me.hide();
         self.capture.finish_editing();
         if send {
-            self.capture.send_or_recover();
+            self.capture.send_edited();
         }
     }
 
@@ -333,8 +338,13 @@ impl Editor {
         }));
     }
 
-    /// Asked by Lens: ⌘⌥X or ⌘⌥↩ pressed while a still is open.
+    /// Back or Send from outside the toolbar: a key, Lens, or the window closing.
+    /// A running operation is waited for, so its result lands on the still.
     pub fn leave_for_key(&mut self, send: bool, tx: &mut rune::Tx) {
+        if self.is_busy() {
+            self.leaving = Some(self.leaving.unwrap_or(false) || send);
+            return;
+        }
         let action = if send {
             actions::Action::SendCapture
         } else {

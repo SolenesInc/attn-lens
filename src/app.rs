@@ -335,14 +335,23 @@ pub fn run() -> Result<(), String> {
         let opening = me.clone();
         let port = lens.port().clone();
         let closing = me.clone();
-        port.close_button(
+        port.script_button(
             "editor",
             Arc::new(move |()| closing.update(|s: &mut Editor, tx| s.on_window_close(tx))),
+        );
+        let editing = lens.clone();
+        port.script_button("bar-edit", Arc::new(move |()| editing.edit_latest()));
+        let picking = lens.clone();
+        port.script_button(
+            "pick",
+            Arc::new(move |()| {
+                let _ = picking.pick_pointer_display();
+            }),
         );
         let for_editor = lens.clone();
         lens.set_editor(Arc::new(move |call| match call {
             EditorCall::Open { still, document } => {
-                opening.update(move |s: &mut Editor, _| s.open_still(still, *document))
+                opening.update(move |s: &mut Editor, tx| s.open_still(still, *document, tx))
             }
             EditorCall::Leave { send } => {
                 opening.update(move |s: &mut Editor, tx| s.leave_for_key(send, tx))

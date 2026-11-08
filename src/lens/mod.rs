@@ -62,7 +62,6 @@ pub enum EditorCall {
 enum Closing {
     Esc,
     Sent,
-    Replaced,
 }
 
 /// A closed capture, kept in the corner until it leaves or the user acts on it.
@@ -629,7 +628,7 @@ impl Lens {
         // Automation can pick while a capture is open.
         let state = self.state.lock().unwrap();
         if state.capture.is_some() {
-            self.close_capture(state, Closing::Replaced);
+            self.close_capture(state, Closing::Esc);
         } else {
             drop(state);
         }
@@ -763,6 +762,15 @@ impl Lens {
                 }
             }
         }
+    }
+
+    /// Send from the editor. The user chose what to send, so a screen change from
+    /// before the edit adds no fresh still they have not seen.
+    pub fn send_edited(self: &Arc<Self>) {
+        if let Some(capture) = self.state.lock().unwrap().capture.as_mut() {
+            capture.unseen_change = None;
+        }
+        self.send_or_recover();
     }
 
     /// Sets the message the next send carries.
@@ -1010,7 +1018,6 @@ impl Lens {
             capture.unseen_change = None;
             let in_flight = self.pending_stills.0.lock().unwrap().contains(&capture.id);
             state.tile = match closing {
-                Closing::Replaced => None,
                 Closing::Sent => Some(Tile {
                     capture,
                     sent: true,
@@ -1400,6 +1407,14 @@ impl Lens {
         // The user may have closed it, or opened another, while it was sent.
         if sent && state.capture.as_ref().is_some_and(|c| c.id == id) {
             return self.close_capture(state, Closing::Sent);
+        }
+        // Esc closed it during the send: its tile must not say it was never sent.
+        if sent {
+            let leaves = self.port.now().after(TILE_STAYS);
+            if let Some(tile) = state.tile.as_mut().filter(|t| t.capture.id == id) {
+                tile.sent = true;
+                tile.leaves = Some(leaves);
+            }
         }
         drop(state);
         self.changed();

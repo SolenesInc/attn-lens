@@ -1,0 +1,116 @@
+{
+ "row": "a label being typed survives opening a still",
+ "displays": [
+  {
+   "id": 1,
+   "frame": [
+    0,
+    0,
+    1280,
+    800
+   ],
+   "scale": 2,
+   "primary": true
+  }
+ ],
+ "pointer": [
+  400,
+  300
+ ],
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.5,
+   "type": "mark",
+   "name": "press:pick"
+  },
+  {
+   "t": 0.7,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 0.9,
+   "type": "key",
+   "name": "t"
+  },
+  {
+   "t": 1.0,
+   "type": "tap",
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 1.2,
+   "type": "type",
+   "text": "label",
+   "every": 0.01
+  },
+  {
+   "t": 1.4,
+   "type": "mark",
+   "name": "typing"
+  },
+  {
+   "t": 1.5,
+   "type": "mark",
+   "name": "press:bar-edit"
+  },
+  {
+   "t": 1.9,
+   "type": "mark",
+   "name": "on-still"
+  },
+  {
+   "t": 2.0,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 2.5,
+   "type": "mark",
+   "name": "back"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "typing",
+   "present": [
+    "text-editor"
+   ]
+  },
+  {
+   "at": "on-still",
+   "marks": []
+  },
+  {
+   "at": "back",
+   "marks": [
+    {
+     "tool": "Text",
+     "text": "label"
+    }
+   ]
+  }
+ ]
+}

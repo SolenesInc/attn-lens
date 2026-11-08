@@ -18,6 +18,8 @@
 //! pick:#RRGGBB  pick:cancel  answers a Pick from screen that is waiting
 //! still:fail                 the next still fails
 //! close:editor               presses the window's close button
+//! press:bar-edit  press:pick presses the bar's Edit, or picks the display, from a script
+//!                            driving another window
 //! ```
 //!
 //! Any other mark is left to the script. Work runs inline, so a tree read at a
@@ -77,7 +79,7 @@ struct Script {
     /// a `jobs:last` mark the newest, a `jobs:drain` mark every one waiting, or a
     /// `jobs:release` mark every one waiting, after which jobs run at once again.
     held: Option<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
-    close_buttons: Vec<(&'static str, Sink<()>)>,
+    buttons: Vec<(&'static str, Sink<()>)>,
 }
 
 pub struct FakePort {
@@ -196,16 +198,19 @@ impl FakePort {
             for job in jobs {
                 job();
             }
-        } else if let Some(window) = mark.strip_prefix("close:") {
+        } else if let Some(window) = mark
+            .strip_prefix("close:")
+            .or_else(|| mark.strip_prefix("press:"))
+        {
             let press = self
                 .script
                 .lock()
                 .unwrap()
-                .close_buttons
+                .buttons
                 .iter()
                 .find(|(w, _)| *w == window)
                 .map(|(_, press)| press.clone());
-            press.expect("close: names a window with a close button")(());
+            press.expect("close: or press: names a script button")(());
         } else if let Some(answer) = mark.strip_prefix("pick:") {
             let sink = self.script.lock().unwrap().pick.take();
             if let Some(sink) = sink {
@@ -409,12 +414,8 @@ impl PlatformPort for FakePort {
             None => crate::video::encoder_path(),
         }
     }
-    fn close_button(&self, window: &'static str, press: Sink<()>) {
-        self.script
-            .lock()
-            .unwrap()
-            .close_buttons
-            .push((window, press));
+    fn script_button(&self, name: &'static str, press: Sink<()>) {
+        self.script.lock().unwrap().buttons.push((name, press));
     }
     fn pick_color(&self, sink: PickSink) {
         self.script.lock().unwrap().pick = Some(sink);

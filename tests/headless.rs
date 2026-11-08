@@ -962,3 +962,40 @@ fn an_escaped_capture_keeps_its_tile_and_reopens() {
     assert_eq!(reopened["capture"]["stills"].as_array().unwrap().len(), 2);
     assert!(visible(&run.tree("bar", "reopened"), "bar"));
 }
+
+#[test]
+fn closing_the_editor_during_an_operation_keeps_the_result() {
+    let run = Run::new("roundtrip-close-busy.json", ONE_SESSION);
+    // Waits for the rotate instead of racing it.
+    assert!(state(&run, "closed")["editing"].is_number());
+    assert_eq!(state(&run, "done")["editing"], Value::Null);
+    assert!(visible(&run.tree("bar", "done"), "bar"));
+    assert_eq!(state(&run, "sent")["send"]["state"], "sent");
+    let frame = image::open(run.path("frame-01.png")).unwrap();
+    assert!(
+        frame.height() > frame.width(),
+        "the sent frame lost the rotate"
+    );
+    // A Dock click afterwards shows no capture's frame.
+    let dock = run.tree("editor", "dock");
+    assert!(visible(&dock, "editor"));
+    assert!(
+        dock.to_string().contains("editor-empty"),
+        "the editor still holds the frame"
+    );
+}
+
+#[test]
+fn closing_the_editor_while_a_still_loads_gives_the_capture_back() {
+    let run = Run::new("roundtrip-close-load.json", ONE_SESSION);
+    assert_eq!(state(&run, "done")["editing"], Value::Null);
+    assert!(visible(&run.tree("bar", "done"), "bar"));
+}
+
+#[test]
+fn send_from_the_editor_adds_no_fresh_still() {
+    let run = Run::new("roundtrip-send-no-fresh.json", ONE_SESSION);
+    assert_eq!(state(&run, "sent")["send"]["state"], "sent");
+    let args = std::fs::read_to_string(run.path("args")).unwrap();
+    assert_eq!(args.matches(".png").count(), 1, "{args}");
+}

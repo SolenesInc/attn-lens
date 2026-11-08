@@ -56,6 +56,7 @@ This file's Glance rules still apply to the code that remains.
   and `live OUT` to run `scripts/lens-live.sh`, both against the stand-in `tools/vm/attn`,
   `editor OUT` to run `scripts/lens-editor-check.sh` (menus, Copy as OCR, Pick from screen,
   scroll and zoom, light and dark, read through `tools/driver/ax.swift`),
+  `tile OUT` to run `scripts/lens-tile.sh` (tile hover and click, and Back not counted as a change),
   and `stop` when done: it holds 8 GB. `tools/vm/`
   grants the VM's permissions without a click. Nothing of this Mac's goes in: no shared
   folders, Keychain, tokens or signing identity. Speed budgets and the feel of drawing
