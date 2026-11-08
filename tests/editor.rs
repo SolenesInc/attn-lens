@@ -241,6 +241,13 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
             fail.push(format!("{key} should be unchecked"));
         }
     }
+    // An action button has no checked state, so a screen reader does not call it a checkbox.
+    for key in expected["stateless"].as_array().into_iter().flatten() {
+        let key = key.as_str().unwrap();
+        if node(key).is_none() || has_state(key, "checked") || has_state(key, "unchecked") {
+            fail.push(format!("{key} should be a plain button: {:?}", node(key)));
+        }
+    }
     for (key, want) in expected["text"].as_object().into_iter().flatten() {
         let found = element(key).and_then(|e| e["text"].as_str());
         if found != want.as_str() && !(want == "" && found.is_none()) {

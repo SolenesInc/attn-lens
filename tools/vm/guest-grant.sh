@@ -30,6 +30,9 @@ for client in sys.argv[1:]:
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_bytes(plistlib.dumps(approvals, fmt=plistlib.FMT_BINARY))
 PY
+# The editor check switches light and dark through System Events. Its Automation row
+# lives in the user's database, keyed by the guest agent's real path.
+sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db" "INSERT OR REPLACE INTO access (service,client,client_type,auth_value,auth_reason,auth_version,indirect_object_identifier_type,indirect_object_identifier,flags) VALUES ('kTCCServiceAppleEvents','$(realpath /opt/homebrew/bin/tart-guest-agent)',1,2,4,1,0,'com.apple.systemevents',0);"
 killall replayd 2>/dev/null || true
 sudo killall tccd 2>/dev/null || true
 killall tccd 2>/dev/null || true
