@@ -194,16 +194,24 @@ impl Engine {
             recording
                 .voice
                 .observe(frame, *probability, self.frames(MIN_SPEECH_MS));
-            if recording.voice.first.is_none()
-                || recording.voice.quiet_frames < self.frames(PAUSE_MS)
-            {
+            if recording.voice.quiet_frames < self.frames(PAUSE_MS) {
+                continue;
+            }
+            let dropped = recording.heard - recording.open.len();
+            if recording.voice.first.is_none() {
+                // Quiet with no phrase yet is let go, keeping half a pause before
+                // whatever comes next, so minutes of silence before speech are
+                // neither held nor recognized.
+                let keep_from = (frame + 1 - self.frames(PAUSE_MS) / 2) * self.frame_samples;
+                recording
+                    .open
+                    .drain(..keep_from.saturating_sub(dropped).min(recording.open.len()));
                 continue;
             }
             // The audio is cut in the middle of the pause, so recognition hears
             // the phrase whole; its times come from its speech frames.
             let pause_middle = frame + 1 - recording.voice.quiet_frames / 2;
-            let length =
-                pause_middle * self.frame_samples - (recording.heard - recording.open.len());
+            let length = pause_middle * self.frame_samples - dropped;
             let rest = recording.open.split_off(length.min(recording.open.len()));
             let audio = std::mem::replace(&mut recording.open, rest);
             closed.extend(self.close_segment(recording, audio, cancel)?);

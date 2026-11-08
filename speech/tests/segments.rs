@@ -119,9 +119,26 @@ fn hear(samples: &[f32]) -> Heard {
 }
 
 fn check(name: &str) -> Heard {
-    let (samples, phrases) = fixture(name);
+    check_after(name, 0)
+}
+
+/// Checks fixture `name` after `lead_ms` more of its own opening silence.
+fn check_after(name: &str, lead_ms: i64) -> Heard {
+    let (mut samples, mut phrases) = fixture(name);
+    let lead = usize::try_from(lead_ms).unwrap() * 16;
+    let silence: Vec<f32> = samples[..lead.min(8_000)]
+        .iter()
+        .copied()
+        .cycle()
+        .take(lead)
+        .collect();
+    samples.splice(0..0, silence);
+    for phrase in &mut phrases {
+        phrase.start_ms += lead_ms;
+        phrase.end_ms += lead_ms;
+    }
     let heard = hear(&samples);
-    eprintln!("{name}:");
+    eprintln!("{name}: transcript {}", heard.transcript);
     for segment in &heard.segments {
         eprintln!("  {segment}");
     }
@@ -186,4 +203,14 @@ fn finish_returns_the_sentence_still_being_spoken() {
 #[ignore = "needs Metal and the speech models in ATTN_SPEECH_CACHE"]
 fn a_hesitation_inside_a_sentence_keeps_it_one_segment() {
     check("hesitation");
+}
+
+/// Past the model's longest single run, so recognition would split held silence
+/// and speech mid-word, and a capture can start with minutes of quiet.
+#[test]
+#[ignore = "needs Metal and the speech models in ATTN_SPEECH_CACHE"]
+fn five_silent_minutes_before_a_sentence_are_let_go() {
+    let started = std::time::Instant::now();
+    check_after("long-lead-in", 300_000);
+    eprintln!("heard in {:?}", started.elapsed());
 }

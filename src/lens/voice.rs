@@ -18,7 +18,7 @@ use std::{
     process::{ChildStdin, Command, Stdio},
     sync::{
         Arc, Condvar, Mutex,
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
     time::{Duration, Instant},
@@ -43,14 +43,11 @@ pub trait Source: Send {
     fn stop(self: Box<Self>);
 }
 
-/// The speech helper for this app, started on demand.
+/// The speech helper for this app, started on demand. Each running voice holds
+/// the helper too, so it exits once released and the last voice has stopped.
 #[derive(Default)]
 pub struct Speech {
     helper: Mutex<Option<Arc<Helper>>>,
-    /// Voices started and not yet stopped; the helper stays while any runs.
-    active: AtomicUsize,
-    /// The capture ended while a voice still ran: the last one to stop lets go.
-    release_when_idle: AtomicBool,
 }
 
 impl Speech {
@@ -63,8 +60,6 @@ impl Speech {
         sink: Sink<VoiceEvent>,
     ) -> Voice {
         let run = Arc::new(Run::default());
-        self.active.fetch_add(1, Ordering::SeqCst);
-        self.release_when_idle.store(false, Ordering::SeqCst);
         let speech = self.clone();
         let thread_run = run.clone();
         std::thread::spawn(move || {
@@ -74,23 +69,14 @@ impl Speech {
                 sink(VoiceEvent::Failed(error));
             }
             thread_run.set(Phase::Done);
-            if speech.active.fetch_sub(1, Ordering::SeqCst) == 1
-                && speech.release_when_idle.load(Ordering::SeqCst)
-            {
-                speech.release();
-            }
         });
         Voice(Box::new(move || run.finish()))
     }
 
-    /// Lets go of the helper and its model, unless a voice still runs.
+    /// Lets go of the helper and its model. Its stdin closes, and it exits,
+    /// once no voice holds it.
     pub fn release(&self) {
-        if self.active.load(Ordering::SeqCst) == 0 {
-            // Its stdin closes with it, and the helper exits.
-            self.helper.lock().unwrap().take();
-        } else {
-            self.release_when_idle.store(true, Ordering::SeqCst);
-        }
+        self.helper.lock().unwrap().take();
     }
 
     fn helper(&self) -> Result<Arc<Helper>, String> {
@@ -259,46 +245,53 @@ enum Phase {
     Done,
 }
 
+/// One voice's phase and, once its transcript or error arrived, its outcome,
+/// under one lock so `finish` can wait for either.
 struct Run {
-    phase: Mutex<Phase>,
+    state: Mutex<RunState>,
     changed: Condvar,
-    /// The recording's outcome, once its transcript or error arrived.
-    result: Mutex<Option<Result<(), String>>>,
+}
+
+struct RunState {
+    phase: Phase,
+    outcome: Option<Result<(), String>>,
 }
 
 impl Default for Run {
     fn default() -> Self {
         Self {
-            phase: Mutex::new(Phase::Starting),
+            state: Mutex::new(RunState {
+                phase: Phase::Starting,
+                outcome: None,
+            }),
             changed: Condvar::new(),
-            result: Mutex::new(None),
         }
     }
 }
 
 impl Run {
     fn set(&self, phase: Phase) {
-        *self.phase.lock().unwrap() = phase;
+        self.state.lock().unwrap().phase = phase;
         self.changed.notify_all();
     }
 
     /// Moves on to `phase` unless `finish` already stopped this voice.
     fn advance(&self, phase: Phase) -> bool {
-        let mut current = self.phase.lock().unwrap();
-        if matches!(*current, Phase::Stopped) {
+        let mut state = self.state.lock().unwrap();
+        if matches!(state.phase, Phase::Stopped) {
             return false;
         }
-        *current = phase;
+        state.phase = phase;
         self.changed.notify_all();
         true
     }
 
     fn stopped(&self) -> bool {
-        matches!(*self.phase.lock().unwrap(), Phase::Stopped)
+        matches!(self.state.lock().unwrap().phase, Phase::Stopped)
     }
 
     fn stop_source(&self) {
-        let source = match &mut *self.phase.lock().unwrap() {
+        let source = match &mut self.state.lock().unwrap().phase {
             Phase::Listening { source, .. } => source.take(),
             _ => None,
         };
@@ -307,22 +300,23 @@ impl Run {
         }
     }
 
-    fn done(&self, result: Result<(), String>) {
-        *self.result.lock().unwrap() = Some(result);
+    fn done(&self, outcome: Result<(), String>) {
+        self.state.lock().unwrap().outcome = Some(outcome);
         self.changed.notify_all();
     }
 
     /// Stops the audio and waits for the last segment.
     fn finish(&self) -> Result<(), String> {
-        let mut phase = self.phase.lock().unwrap();
-        // Opening ends quickly, in Listening or with an error.
-        while matches!(*phase, Phase::Opening) {
-            phase = self.changed.wait(phase).unwrap();
+        let mut state = self.state.lock().unwrap();
+        // Opening ends in Listening or with an error; the first time, it waits
+        // for the user to answer the microphone prompt.
+        while matches!(state.phase, Phase::Opening) {
+            state = self.changed.wait(state).unwrap();
         }
-        match std::mem::replace(&mut *phase, Phase::Stopped) {
+        match std::mem::replace(&mut state.phase, Phase::Stopped) {
             Phase::Starting => Ok(()),
             Phase::Preparing { id, helper } => {
-                drop(phase);
+                drop(state);
                 // The helper keeps what it downloaded, so the next ⌘⌥S resumes.
                 helper.request(&json!({"op": "cancel", "target": id}))
             }
@@ -332,17 +326,19 @@ impl Run {
                 source,
                 gate,
             } => {
-                drop(phase);
+                drop(state);
                 if let Some(source) = source {
                     source.stop();
                 }
                 *gate.lock().unwrap() = false;
                 helper.request(&json!({"op": "finish", "target": id}))?;
-                let mut result = self.result.lock().unwrap();
-                while result.is_none() {
-                    result = self.changed.wait(result).unwrap();
+                let mut state = self.state.lock().unwrap();
+                loop {
+                    if let Some(outcome) = state.outcome.take() {
+                        return outcome;
+                    }
+                    state = self.changed.wait(state).unwrap();
                 }
-                result.take().unwrap_or(Ok(()))
             }
             // Voice failed on its own and reported it already.
             Phase::Opening | Phase::Stopped | Phase::Done => Ok(()),

@@ -25,7 +25,7 @@ use session::{Area, Capture, Cause, DisplayFrame, HostTime, InkMark, Segment, St
 use std::{
     path::PathBuf,
     sync::{
-        Arc, Condvar, Mutex,
+        Arc, Condvar, Mutex, MutexGuard,
         atomic::{AtomicU64, Ordering},
     },
 };
@@ -648,17 +648,20 @@ impl Lens {
 
     /// Closes the open capture and lets go of everything it held.
     pub fn end_capture(self: &Arc<Self>) {
-        let voice = {
-            let mut state = self.state.lock().unwrap();
-            state.capture = None;
-            state.input = Input::None;
-            state.resizing = false;
-            state.watch = None;
-            state.label = None;
-            state.palette = None;
-            state.voice_state = VoiceState::Off;
-            state.voice.take()
-        };
+        self.close_capture(self.state.lock().unwrap());
+    }
+
+    /// Esc and a successful send both close the capture here, voice included.
+    fn close_capture(self: &Arc<Self>, mut state: MutexGuard<'_, State>) {
+        state.capture = None;
+        state.input = Input::None;
+        state.resizing = false;
+        state.watch = None;
+        state.label = None;
+        state.palette = None;
+        state.voice_state = VoiceState::Off;
+        let voice = state.voice.take();
+        drop(state);
         self.port.capture_keys(false);
         self.changed();
         // The capture is gone, so its last sentence has nowhere to go; stopping
@@ -921,30 +924,23 @@ impl Lens {
         let delivered = voice
             .map_err(attn::Failure::Error)
             .and_then(|()| self.deliver(id));
-        {
-            let mut state = self.state.lock().unwrap();
-            state.sending = None;
-            state.send = match delivered {
-                Ok(target) => {
-                    if state.capture.as_ref().is_some_and(|c| c.id == id) {
-                        state.capture = None;
-                        state.input = Input::None;
-                        state.watch = None;
-                    }
-                    SendStatus::Sent(target)
-                }
-                Err(attn::Failure::NotPaired(text)) => {
-                    self.port.forget_token();
-                    state.attn = AttnStatus::Unpaired(text.clone());
-                    SendStatus::Failed(text)
-                }
-                Err(attn::Failure::Error(text)) => SendStatus::Failed(text),
-            };
+        let mut state = self.state.lock().unwrap();
+        state.sending = None;
+        let sent = delivered.is_ok();
+        state.send = match delivered {
+            Ok(target) => SendStatus::Sent(target),
+            Err(attn::Failure::NotPaired(text)) => {
+                self.port.forget_token();
+                state.attn = AttnStatus::Unpaired(text.clone());
+                SendStatus::Failed(text)
+            }
+            Err(attn::Failure::Error(text)) => SendStatus::Failed(text),
+        };
+        // The user may have closed it, or opened another, while it was sent.
+        if sent && state.capture.as_ref().is_some_and(|c| c.id == id) {
+            return self.close_capture(state);
         }
-        if !self.is_open() {
-            self.port.capture_keys(false);
-            self.port.end_voice();
-        }
+        drop(state);
         self.changed();
     }
 

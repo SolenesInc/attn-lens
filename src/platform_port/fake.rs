@@ -105,7 +105,14 @@ impl FakePort {
                 sink(event);
             }
         } else if let Some(event) = voice_event(mark) {
-            let sink = self.sinks.lock().unwrap().1.clone();
+            let mut sinks = self.sinks.lock().unwrap();
+            // Voice that fails has stopped.
+            let sink = if matches!(event, VoiceEvent::Failed(_)) {
+                sinks.1.take()
+            } else {
+                sinks.1.clone()
+            };
+            drop(sinks);
             if let Some(sink) = sink {
                 sink(event);
             }
@@ -253,7 +260,13 @@ impl PlatformPort for FakePort {
         Watch(Some(Box::new(move || sinks.lock().unwrap().0 = None)))
     }
     fn voice(&self, _source: VoiceSource, sink: Sink<VoiceEvent>) -> Result<Voice, String> {
-        self.sinks.lock().unwrap().1 = Some(sink);
+        let mut sinks = self.sinks.lock().unwrap();
+        // The helper holds one recording at a time.
+        if sinks.1.is_some() {
+            return Err("Voice is already running.".into());
+        }
+        sinks.1 = Some(sink);
+        drop(sinks);
         let sinks = self.sinks.clone();
         Ok(Voice(Box::new(move || {
             sinks.lock().unwrap().1 = None;

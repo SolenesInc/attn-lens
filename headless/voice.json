@@ -35,5 +35,21 @@
  {"t":1.85,"type":"mark","name":"key:send"},
  {"t":1.9,"type":"mark","name":"send-finishing"},
  {"t":1.95,"type":"mark","name":"jobs:drain"},
- {"t":2.0,"type":"mark","name":"sent"}
+ {"t":2.0,"type":"mark","name":"sent"},
+
+ {"t":2.1,"type":"mark","name":"key:capture"},
+ {"t":2.2,"type":"drag","x":200,"y":100,"dx":400,"dy":300,"dur":0.1},
+ {"t":2.35,"type":"mark","name":"jobs:drain"},
+ {"t":2.4,"type":"mark","name":"jobs:hold"},
+ {"t":2.45,"type":"mark","name":"key:send"},
+ {"t":2.5,"type":"mark","name":"key:voice"},
+ {"t":2.55,"type":"mark","name":"voice-during-send"},
+ {"t":2.6,"type":"mark","name":"jobs:drain"},
+ {"t":2.65,"type":"mark","name":"jobs:drain"},
+ {"t":2.7,"type":"mark","name":"sent-again"},
+ {"t":2.75,"type":"mark","name":"key:capture"},
+ {"t":2.8,"type":"drag","x":200,"y":100,"dx":400,"dy":300,"dur":0.1},
+ {"t":2.95,"type":"mark","name":"jobs:drain"},
+ {"t":3.0,"type":"mark","name":"key:voice"},
+ {"t":3.05,"type":"mark","name":"voice-after-send"}
 ]}

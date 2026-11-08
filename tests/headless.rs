@@ -627,4 +627,22 @@ fn the_bar_shows_how_far_voice_has_got_and_waits_for_the_last_sentence() {
     assert!(!visible(&run.tree("bar", "sent"), "bar"));
     let args = std::fs::read_to_string(run.path("args")).unwrap();
     assert!(args.starts_with("send s1 "), "{args}");
+
+    // ⌘⌥S while a send is delivering starts voice on that capture; the send
+    // closing the capture stops it, so the next capture's ⌘⌥S starts afresh.
+    assert_eq!(
+        text(&run.tree("bar", "voice-during-send"), "voice"),
+        Some("Starting voice…")
+    );
+    let again = run.tree("bar", "sent-again");
+    assert!(
+        !visible(&again, "bar"),
+        "{:?} {:?} {:?}",
+        text(&again, "error"),
+        text(&again, "status"),
+        text(&again, "voice")
+    );
+    let after = run.tree("bar", "voice-after-send");
+    assert_eq!(text(&after, "voice"), Some("Starting voice…"));
+    assert_eq!(text(&after, "error"), None);
 }

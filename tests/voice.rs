@@ -98,3 +98,58 @@ fn wav_voice_puts_each_phrase_on_the_clock_and_finish_keeps_the_last() {
     );
     speech.release();
 }
+
+/// The first ⌘⌥S can leave the microphone prompt up; Send then finishes a voice
+/// whose source is still opening. A FIFO holds the WAV source open the same way.
+#[test]
+#[ignore = "needs Metal, the speech helper and the models in ATTN_LENS_SPEECH_CACHE"]
+fn finish_while_the_source_is_still_opening_returns_and_stops() {
+    assert!(std::env::var_os("ATTN_LENS_SPEECH_CACHE").is_some());
+    let (wav, _) = fixture("short-phrases");
+    let dir = tempfile::tempdir().unwrap();
+    let fifo = dir.path().join("voice.wav");
+    let made = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .unwrap();
+    assert!(made.success());
+    let origin = Instant::now();
+    let (events, received) = mpsc::channel();
+    let events = Mutex::new(events);
+    let speech = Arc::new(Speech::default());
+    let voice = speech.start(
+        VoiceSource::Wav(fifo.clone()),
+        Arc::new(move || HostTime(origin.elapsed().as_nanos() as u64)),
+        Arc::new(move |event| events.lock().unwrap().send(event).unwrap()),
+    );
+    // Warming up is reported just before the source opens.
+    loop {
+        match received.recv_timeout(Duration::from_secs(120)).unwrap() {
+            VoiceEvent::Status(VoiceStatus::WarmingUp) => break,
+            VoiceEvent::Failed(error) => panic!("{error}"),
+            _ => {}
+        }
+    }
+    let (done, finished) = mpsc::channel();
+    let finishing = std::thread::spawn(move || done.send(voice.finish()).unwrap());
+    // finish waits for the source; the "user" answers the prompt a moment later.
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        finished.try_recv().is_err(),
+        "finish waits while the source opens"
+    );
+    std::fs::write(&fifo, std::fs::read(wav).unwrap()).unwrap();
+    finished
+        .recv_timeout(Duration::from_secs(30))
+        .expect("finish returns once the source opened")
+        .unwrap();
+    finishing.join().unwrap();
+    // Voice is over: no more events once it has stopped.
+    std::thread::sleep(Duration::from_millis(500));
+    let late: Vec<_> = received
+        .try_iter()
+        .filter(|event| matches!(event, VoiceEvent::Segment(_) | VoiceEvent::Failed(_)))
+        .collect();
+    assert!(late.is_empty(), "{late:?}");
+    speech.release();
+}
