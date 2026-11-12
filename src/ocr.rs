@@ -42,16 +42,8 @@ pub fn extract(image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String,
     sample.save(&input).map_err(|e| e.to_string())?;
     #[cfg(target_os = "macos")]
     let mut command = {
-        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let dir = exe.parent().ok_or("App directory unavailable")?;
-        let helper = [
-            dir.join("glance-ocr"),
-            dir.join("../glance-ocr"),
-            dir.join("../../glance-ocr"),
-        ]
-        .into_iter()
-        .find(|path| path.is_file())
-        .ok_or("Text recognition helper unavailable. Build with scripts/bundle.sh.")?;
+        let helper = crate::platform::native_helper("glance-ocr")
+            .ok_or("Text recognition helper unavailable. Build with scripts/bundle.sh.")?;
         let mut command = Command::new(helper);
         command.arg(&input);
         command

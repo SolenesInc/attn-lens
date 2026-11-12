@@ -1,5 +1,5 @@
 use image::{ImageReader, RgbaImage};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 mod color_sampler;
 pub use color_sampler::sample_screen_color;
 pub fn load(path: &std::path::Path) -> Result<RgbaImage, String> {
@@ -194,6 +194,16 @@ pub fn shortcut_label(label: &str) -> String {
 mod linux;
 #[cfg(target_os = "linux")]
 pub use linux::{clipboard_image, copy};
+/// The native helper `name` beside the app's executable, as `scripts/bundle.sh`
+/// places it, or in `target/`, where `scripts/bundle.sh` and CI build it.
+pub fn native_helper(name: &str) -> Option<PathBuf> {
+    let beside = std::env::current_exe().ok()?.with_file_name(name);
+    let built = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(name);
+    [beside, built].into_iter().find(|path| path.is_file())
+}
+
 #[cfg(test)]
 mod tests {
     use super::checked_export_path;

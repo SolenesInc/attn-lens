@@ -271,11 +271,13 @@ impl Lens {
         }
     }
 
-    /// Starts listening for keys.
+    /// Starts listening for keys. Without Screen Recording, it shows the user how
+    /// to allow it now rather than at the first ⌘⌥X.
     pub fn listen(self: &Arc<Self>) {
         let lens = self.clone();
         let sink: Sink<KeyEvent> = Arc::new(move |event| lens.key(event));
         self.port.keys(sink);
+        self.port.screen_recording();
     }
 
     pub fn key(self: &Arc<Self>, event: KeyEvent) {

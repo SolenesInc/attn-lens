@@ -16,18 +16,8 @@ impl Drop for Encoder {
     }
 }
 pub fn encoder_path() -> Result<PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let dir = exe.parent().ok_or("App directory unavailable")?;
-    for path in [
-        dir.join("glance-video-encoder"),
-        dir.join("../glance-video-encoder"),
-        dir.join("../../glance-video-encoder"),
-    ] {
-        if path.is_file() {
-            return Ok(path);
-        }
-    }
-    Err("Video encoder unavailable. Build with scripts/bundle.sh (macOS) or scripts/package-linux.sh.".into())
+    crate::platform::native_helper("glance-video-encoder")
+        .ok_or_else(|| "Video encoder unavailable. Build with scripts/bundle.sh.".into())
 }
 pub fn encode(
     document: &Document,
