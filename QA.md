@@ -47,8 +47,8 @@ checked on a real Mac; VM numbers do not count for them.
 
 ## Capture and send
 
-- With Screen Recording missing, check the guide opens System Settings and the grant
-  works after relaunch.
+- With Screen Recording missing, check the guide opens System Settings at launch
+  and on **⌘⌥X**, and the grant works after relaunch.
 - Start with **⌘⌥X**: drag an area, click for a display, **↩** for the last area,
   **Esc** to cancel. Drag a corner to adjust the area.
 - Hold **fn** and draw an arrow, a freehand stroke and, with **⇧**, a box. Check

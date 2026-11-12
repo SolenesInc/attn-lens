@@ -39,8 +39,8 @@ Notable user-visible changes are recorded here.
   ⌘⌥S downloads the speech model (731 MB) with its progress in the bar, which then
   shows the model loading, the microphone starting and listening. Send waits for
   the sentence you are finishing. Missing Microphone access opens System Settings.
-- Missing Screen Recording access opens System Settings with a tile of the app
-  to drag into the list (from Hex, MIT).
+- Missing Screen Recording access opens System Settings at launch and on **⌘⌥X**,
+  with a tile of the app to drag into the list (from Hex, MIT).
 - The editor interface follows the system’s light or dark appearance, including
   changes while Glance is running. Image content and exported media keep their colors.
 

@@ -55,7 +55,7 @@ JPEG. It has crop, pixelate, callouts, backdrops, OCR, and GIF and MP4 export. S
 ## Permissions
 
 - **Screen Recording**, to take stills. When it is missing, Lens opens System
-  Settings at the list; enable Attn Lens there, then quit and reopen it.
+  Settings at the list as it launches, and again on **⌘⌥X**; enable Attn Lens there, then quit and reopen it.
 - **Microphone**, for voice. macOS asks on the first **⌘⌥S**.
 
 ## What stays on the Mac
