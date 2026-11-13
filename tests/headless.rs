@@ -21,9 +21,9 @@ impl Run {
     fn new(script: &'static str, sessions: &str) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path();
-        std::fs::write(
-            path.join("attn"),
-            format!(
+        attn_lens::stand_in::write_executable(
+            &path.join("attn"),
+            &format!(
                 r#"#!/bin/sh
 if [ "$1" = "refine" ]; then
   cat > "{dir}/refine-stdin"; echo "$@" > "{dir}/refine-args"
@@ -46,10 +46,7 @@ echo '{{"id":"cap"}}'
 "#,
                 dir = path.display()
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(path.join("attn"), std::fs::Permissions::from_mode(0o755))
-            .unwrap();
+        );
         image::RgbaImage::from_pixel(16, 10, image::Rgba([40, 44, 52, 255]))
             .save(path.join("backdrop.png"))
             .unwrap();
@@ -900,9 +897,9 @@ fn an_unpaired_lens_pairs_from_the_bar() {
     // attn refuses the token until `attn send pair` has run.
     let attn = std::fs::read_to_string(run.path("attn")).unwrap();
     let dir = run.dir.path().display();
-    std::fs::write(
-        run.path("attn"),
-        attn.replacen(
+    attn_lens::stand_in::write_executable(
+        &run.path("attn"),
+        &attn.replacen(
             "cat > /dev/null\n",
             &format!(
                 r#"cat > /dev/null
@@ -917,8 +914,7 @@ if [ ! -e "{dir}/paired" ]; then echo 'token unknown: run attn send pair' >&2; e
             ),
             1,
         ),
-    )
-    .unwrap();
+    );
 
     let unpaired = run.tree("bar", "unpaired");
     assert_eq!(label(&unpaired, "chip"), Some("Not paired with attn"));
