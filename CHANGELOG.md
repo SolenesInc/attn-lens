@@ -57,6 +57,10 @@ Notable user-visible changes are recorded here.
 
 ### Fixed
 
+- Attn Lens's session chip cuts a long session label with "…" inside the chip and
+  keeps the host readable. The Tab palette shows states in words ("waiting for
+  you", "needs approval") and an outpost's name, or "outpost" and a short id
+  until attn sends the name, instead of raw states and the full id.
 - The app menu reads "Attn Lens", from the bundle, rather than the executable's name.
 - Attn Lens: a drag started right after the area picker appears now always registers,
   and captures no longer keep about 10 MB of memory each after they close.

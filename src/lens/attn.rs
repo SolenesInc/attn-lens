@@ -19,16 +19,35 @@ pub struct Session {
     pub label: String,
     pub agent: String,
     pub state: String,
-    /// The outpost the session runs on; absent for this Mac.
+    /// The id of the outpost the session runs on; absent for this Mac.
     #[serde(default)]
     pub host: Option<String>,
+    /// The outpost's name, once attn gives one (seed `s-4fvthn` in attn's garden).
+    #[serde(default)]
+    pub host_label: Option<String>,
     #[serde(default)]
     pub last_focused_at: Option<String>,
 }
 
 impl Session {
-    pub fn host_label(&self) -> &str {
-        self.host.as_deref().unwrap_or("this Mac")
+    /// Where the session runs, for the user: "this Mac", the outpost's name, or
+    /// while attn gives only an id, "outpost" and the id's first eight characters.
+    pub fn host_label(&self) -> String {
+        match (&self.host_label, &self.host) {
+            (Some(name), _) if !name.is_empty() => name.clone(),
+            (_, Some(id)) => format!("outpost {}", id.chars().take(8).collect::<String>()),
+            (_, None) => "this Mac".into(),
+        }
+    }
+
+    /// The session's state in words; a state Lens does not know shows without underscores.
+    pub fn state_label(&self) -> String {
+        match self.state.as_str() {
+            "waiting_input" => "waiting for you".into(),
+            "pending_approval" => "needs approval".into(),
+            "launching" => "starting".into(),
+            other => other.replace('_', " "),
+        }
     }
 }
 
@@ -269,7 +288,7 @@ mod tests {
         let bin = fake(
             dir.path(),
             r#"read token; printf '%s' "$token" > "$(dirname "$0")/token"
-echo '[{"agent":"claude","id":"s1","label":"local","last_focused_at":"2026-11-02T10:00:00Z","state":"idle"},{"agent":"claude","host":"ai-sandbox","id":"s2","label":"remote","state":"working"}]'"#,
+echo '[{"agent":"claude","id":"s1","label":"local","last_focused_at":"2026-11-02T10:00:00Z","state":"idle"},{"agent":"claude","host":"7a35fcaf-012f-4a33-8239-1da4d324514f","id":"s2","label":"remote","state":"waiting_input"},{"agent":"claude","host":"7a35fcaf-012f-4a33-8239-1da4d324514f","host_label":"ai-sandbox","id":"s3","label":"named","state":"pending_approval"}]'"#,
         );
         let sessions = sessions(&bin, "tok-1").unwrap();
         assert_eq!(
@@ -282,9 +301,18 @@ echo '[{"agent":"claude","id":"s1","label":"local","last_focused_at":"2026-11-02
                 .trim(),
             "send sessions --token-stdin --json"
         );
-        assert_eq!(sessions.len(), 2);
-        assert_eq!(sessions[0].host_label(), "this Mac");
-        assert_eq!(sessions[1].host.as_deref(), Some("ai-sandbox"));
+        assert_eq!(sessions.len(), 3);
+        // attn gives an outpost's id as `host`; the user sees its name, or a short form until attn sends one.
+        let shown = |s: &Session| (s.host_label(), s.state_label());
+        assert_eq!(shown(&sessions[0]), ("this Mac".into(), "idle".into()));
+        assert_eq!(
+            shown(&sessions[1]),
+            ("outpost 7a35fcaf".into(), "waiting for you".into())
+        );
+        assert_eq!(
+            shown(&sessions[2]),
+            ("ai-sandbox".into(), "needs approval".into())
+        );
         assert_eq!(default_session(&sessions), Some(0));
     }
 
@@ -365,6 +393,7 @@ echo '{"sender":{"id":"x","name":"Attn Lens","created_at":"2026-11-02T10:00:00Z"
             agent: "claude".into(),
             state: "idle".into(),
             host: None,
+            host_label: None,
             last_focused_at: at.map(Into::into),
         };
         assert_eq!(default_session(&[]), None);

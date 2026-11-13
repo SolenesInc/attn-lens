@@ -1,0 +1,10 @@
+{"displays":[{"id":1,"frame":[0,0,1280,800],"scale":2,"primary":true}],
+ "pointer":[400,300],
+ "events":[
+ {"t":0.1,"type":"mark","name":"key:capture"},
+ {"t":0.2,"type":"drag","x":200,"y":100,"dx":400,"dy":300,"dur":0.1},
+ {"t":1.0,"type":"mark","name":"open"},
+ {"t":1.1,"type":"key","name":"Tab"},
+ {"t":1.8,"type":"mark","name":"palette-open"},
+ {"t":1.9,"type":"mark","name":"end"}
+]}
