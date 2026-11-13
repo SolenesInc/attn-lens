@@ -40,7 +40,9 @@ Notable user-visible changes are recorded here.
   shows the model loading, the microphone starting and listening. Send waits for
   the sentence you are finishing. Missing Microphone access opens System Settings.
 - Missing Screen Recording access opens System Settings at launch and on **⌘⌥X**,
-  with a tile of the app to drag into the list (from Hex, MIT).
+  with a tile of the app to drag into the list (from Hex, MIT). The guide says Lens
+  is being set up, lists each access with why it is needed, and ends with quitting
+  and reopening Lens.
 - The editor interface follows the system’s light or dark appearance, including
   changes while Glance is running. Image content and exported media keep their colors.
 
@@ -57,6 +59,10 @@ Notable user-visible changes are recorded here.
 
 ### Fixed
 
+- Attn Lens's session chip cuts a long session label with "…" inside the chip and
+  keeps the host readable. The Tab palette shows states in words ("waiting for
+  you", "needs approval") and an outpost's name, or "outpost" and a short id
+  when attn has no name for it, instead of raw states and the full id.
 - The app menu reads "Attn Lens", from the bundle, rather than the executable's name.
 - Attn Lens: a drag started right after the area picker appears now always registers,
   and captures no longer keep about 10 MB of memory each after they close.
