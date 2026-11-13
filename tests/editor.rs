@@ -221,7 +221,7 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
         )
         .args(["--script"])
         .arg(script)
-        .args(["--window", "editor", "--scale", "1", "--at"])
+        .args(["--window", "editor", "--scale", "1", "--chrome", "--at"])
         .arg(format!("mark:{at}"))
         .arg("--tree")
         .arg(&tree_path)
@@ -233,6 +233,13 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
             String::from_utf8_lossy(&run.stderr)
         )];
     }
+    // Nothing may sit under the window buttons, with or without Back.
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    let mut fail: Vec<String> = stderr
+        .lines()
+        .filter(|line| line.contains("overlaps the traffic lights"))
+        .map(str::to_string)
+        .collect();
     let tree: Value = serde_json::from_slice(&std::fs::read(&tree_path).unwrap()).unwrap();
     let elements = tree["elements"].as_array().unwrap();
     let element = |key: &str| elements.iter().find(|e| e["key"] == key);
@@ -246,7 +253,6 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
                 .is_some_and(|states| states.iter().any(|s| s == state))
         })
     };
-    let mut fail = vec![];
     for key in expected["present"].as_array().into_iter().flatten() {
         if element(key.as_str().unwrap()).is_none() {
             fail.push(format!("{key} is missing"));
