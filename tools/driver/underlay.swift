@@ -1,12 +1,17 @@
 // A plain page under the ink layer that logs what reaches it, so a driven run can
 // prove clicks, scrolls and text selection pass through an area while the draw key
 // is up. The page is a text view, as a browser's text would be.
-//   underlay X Y WIDTH HEIGHT [NAME]   in global top-left points; logs to stdout,
+//   underlay X Y WIDTH HEIGHT [NAME]   in global top-left points; logs to stdout
 //                                      and "active NAME" each time it comes to the front
 import AppKit
 
 setvbuf(stdout, nil, _IOLBF, 0)
-func log(_ text: String) { print("underlay \(text)") }
+var timebase = mach_timebase_info_data_t()
+mach_timebase_info(&timebase)
+/// Each line starts with the host time in nanoseconds, the driver's clock.
+func log(_ text: String) {
+    print("\(mach_absolute_time() * UInt64(timebase.numer) / UInt64(timebase.denom)) underlay \(text)")
+}
 
 final class Page: NSTextView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }

@@ -97,23 +97,37 @@ SCRIPT
 
 "$OUT/driver" --front "Attn Lens" --front underlay "$OUT/script.txt" | tee "$OUT/driver.log"
 
-# The front app at each draw, from the pages' own activation log.
-cat "$OUT/pages.log"
-grep -q 'active browser' "$OUT/pages.log" || {
-    echo "⌘Tab never brought the browser page to the front." >&2
-    exit 1
-}
 grep -F 'lens {"cmd":"state"} -> ' "$OUT/driver.log" | tail -1 | sed 's/.* -> //' >"$OUT/state.json"
-# Three draws, each a still of its own with a mark on it.
-/usr/bin/python3 -I - "$OUT/state.json" <<'PY'
+# Each ⌘Tab brought the other page to the front before the next draw, and each draw
+# is a still of its own with its mark.
+/usr/bin/python3 -I - "$OUT/driver.log" "$OUT/pages.log" "$OUT/state.json" <<'PY'
 import json, sys
-text = open(sys.argv[1]).read()
-state = json.loads(text)["state"]
-stills = state["capture"]["stills"]
-drawn = [s for s in stills if s["marks"] > 0]
+driver, pages, state = sys.argv[1:]
+marks = {}
+for line in open(driver):
+    t, _, text = line.partition(" ")
+    if text.startswith("mark "):
+        marks[text.split()[1]] = int(t)
+active = []
+for line in open(pages):
+    t, _, text = line.partition(" ")
+    if text.startswith("underlay active "):
+        active.append((int(t), text.split()[2]))
+def front(after, before):
+    names = [name for t, name in active if marks[after] < t < marks[before]]
+    return names[-1] if names else None
+for after, before, want in [
+    ("drawn-terminal", "drawn-browser", "browser"),
+    ("drawn-browser", "drawn-terminal-again", "terminal"),
+]:
+    got = front(after, before)
+    if got != want:
+        sys.exit(f"after {after}, ⌘Tab should bring {want} to the front; it brought {got}")
+stills = json.load(open(state))["state"]["capture"]["stills"]
 print("stills:", [(s["cause"], s["marks"]) for s in stills])
-if sum(s["marks"] for s in drawn) < 3:
-    sys.exit(f"expected 3 marks across the stills, found {sum(s['marks'] for s in drawn)}")
+drawn = [s for s in stills if s["cause"] == "draw" and s["marks"] == 1]
+if len(drawn) != 3:
+    sys.exit(f"expected 3 draw stills with one mark each, found {len(drawn)}")
 PY
 sent="$(ls -td "$HOME/lens-check/sent"/*/ | head -1)"
 ls "$sent"
