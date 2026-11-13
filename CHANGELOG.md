@@ -32,8 +32,8 @@ Notable user-visible changes are recorded here.
 - **Attn Lens**: a tap of right ⌘ alone, the capture key, opens a crosshair over the live screen: drag for an area,
   click for the whole display, ↩ for the last area, Esc to cancel. The area stays
   outlined for the whole capture, its corners adjust it, and the page under it
-  keeps working. Hold fn and drag to draw: a straight drag is an arrow, any other
-  stays freehand, and ⇧ makes a box; the bar's tool row sets highlight, label or
+  keeps working. Hold fn and drag to draw: a lone straight drag is an arrow, any other
+  stays freehand, strokes in quick succession stay as written, and ⇧ makes a box; the bar's tool row sets highlight, label or
   counter for the next stroke. Type a message in the bar, or click the page to give
   it the keys and ⌘⌥C to take them back. The capture key takes a still, × drops one, Tab opens a
   palette of sessions, and ↩ or ⌘⌥↩ sends to an attn session, local or on an

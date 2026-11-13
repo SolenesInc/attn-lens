@@ -1,6 +1,6 @@
 //! Every window, driven through Rune's headless tooling against the fake port and
 //! a stand-in `attn`. Trees are read with `--window KEY --tree out.json --at mark:NAME`.
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
@@ -323,7 +323,7 @@ fn a_click_takes_the_whole_second_display_and_keeps_its_outline() {
     has_area_frame(&whole);
     // The outline stays inside the display, where it can be seen.
     let outline = element(&whole, "area-outline").unwrap();
-    assert_eq!(outline["rect"], serde_json::json!([0., 0., 1024., 768.]));
+    assert_eq!(outline["rect"], json!([0., 0., 1024., 768.]));
     assert_eq!(
         frame(&whole, "handle-bottom-right"),
         [2280., 744., 24., 24.]
@@ -431,6 +431,54 @@ fn the_draw_key_gives_an_arrow_a_freehand_stroke_and_a_box() {
     let args = std::fs::read_to_string(run.path("args")).unwrap();
     assert!(args.starts_with("send s1 "), "{args}");
     assert!(run.path("frame-01.png").exists(), "{args}");
+}
+
+/// What each mark on the ink layer is, in order.
+fn ink_kinds(run: &Run, mark: &str) -> Vec<String> {
+    let tree = run.tree("ink", mark);
+    (0..)
+        .map_while(|i| label(&tree, &format!("mark-{i}")).map(str::to_owned))
+        .collect()
+}
+
+#[test]
+fn strokes_written_in_quick_succession_stay_freehand_and_a_lone_drag_is_an_arrow() {
+    let run = Run::new("handwriting.json", ONE_SESSION);
+
+    // Alone, the H's first upright is an arrow, and it is on the still.
+    assert_eq!(ink_kinds(&run, "first-stroke"), ["arrow"]);
+    assert_eq!(
+        state(&run, "first-stroke")["capture"]["stills"][0]["kinds"],
+        json!(["arrow"])
+    );
+
+    // The second upright, close after it, makes both freehand, on the still too.
+    assert_eq!(ink_kinds(&run, "second-stroke"), ["freehand", "freehand"]);
+    assert_eq!(
+        state(&run, "second-stroke")["capture"]["stills"][0]["kinds"],
+        json!(["freehand", "freehand"])
+    );
+
+    // "Hi" and its underline, every stroke straight, all stay freehand.
+    assert_eq!(ink_kinds(&run, "hi-underlined"), ["freehand"; 5]);
+
+    // A straight drag after a pause is an arrow, and so is one soon after it
+    // that is too far away to be part of the same word.
+    assert_eq!(ink_kinds(&run, "lone-drag")[5..], ["arrow"]);
+    // A slip of the pointer beside it makes no mark, so the arrow stays.
+    assert_eq!(ink_kinds(&run, "tapped")[5..], ["arrow"]);
+    assert_eq!(
+        state(&run, "tapped")["capture"]["stills"][0]["kinds"][5],
+        "arrow"
+    );
+    assert_eq!(ink_kinds(&run, "quick-but-far")[5..], ["arrow", "arrow"]);
+    let still = &state(&run, "quick-but-far")["capture"]["stills"][0];
+    assert_eq!(
+        still["kinds"],
+        json!([
+            "freehand", "freehand", "freehand", "freehand", "freehand", "arrow", "arrow"
+        ])
+    );
 }
 
 #[test]

@@ -965,12 +965,33 @@ impl Lens {
                 .iter()
                 .filter(|m| m.still == start.still && m.mark.tool == crate::document::Tool::Counter)
                 .count();
-            if let Some(mark) = ink::mark_from_stroke(&start, &points, counter) {
+            let previous = capture.ink.last_mut().filter(|prev| {
+                prev.still == start.still
+                    && (prev.drawn_as.is_some() || prev.mark.tool == crate::document::Tool::Pen)
+                    && start.at.since(prev.times.1) <= ink::BURST_GAP
+            });
+            let writing = start.tool == InkTool::Stroke
+                && !start.boxed
+                && previous.as_ref().is_some_and(|prev| {
+                    let path = prev.drawn_as.as_deref().unwrap_or(&prev.mark.points);
+                    ink::near(path, &points)
+                });
+            let mark = ink::mark_from_stroke(&start, &points, counter, writing);
+            // Only a stroke that makes a mark is writing: a slip leaves the arrow be.
+            if writing
+                && mark.is_some()
+                && let Some(prev) = previous
+            {
+                unarrow(prev, &mut capture.stills);
+            }
+            if let Some(mark) = mark {
                 let stale = capture.view_still != Some(start.still);
+                let drawn_as = (mark.tool == crate::document::Tool::Arrow).then(|| points.clone());
                 capture.ink.push(InkMark {
                     still: start.still,
                     mark,
                     times: (start.at, end),
+                    drawn_as,
                     committed: false,
                     stale,
                     fade_from: None,
@@ -996,6 +1017,7 @@ impl Lens {
                 still: draft.start.still,
                 mark: ink::label_mark(draft.at, text.trim()),
                 times: (draft.start.at, draft.end),
+                drawn_as: None,
                 committed: false,
                 stale,
                 fade_from: None,
@@ -1639,7 +1661,7 @@ impl Lens {
                         id: s.id,
                         at: s.at,
                         cause: s.cause,
-                        marks: s.doc.marks.len(),
+                        marks: s.doc.marks.iter().map(ink::kind).collect(),
                         times: s
                             .doc
                             .marks
@@ -1752,7 +1774,8 @@ impl Lens {
                     "id": s.id,
                     "at": s.at,
                     "cause": s.cause,
-                    "marks": s.marks,
+                    "marks": s.marks.len(),
+                    "kinds": s.marks,
                     "times": s.times,
                     "width": s.width,
                     "height": s.height,
@@ -1801,15 +1824,34 @@ fn capture_by_id<'a>(
     open.iter_mut().chain(closed).find(|c| c.id == id)
 }
 
+/// Turns a stroke the straight rule made an arrow back into the freehand it was
+/// drawn as, on its still too when it has joined one.
+fn unarrow(ink: &mut InkMark, stills: &mut [Still]) {
+    let Some(points) = ink.drawn_as.take() else {
+        return;
+    };
+    ink.mark = ink::pen_mark(&points);
+    if ink.committed
+        && let Some(still) = stills.iter_mut().find(|s| s.id == ink.still)
+    {
+        still.doc.replace_drawn(on_still(ink, still));
+    }
+}
+
+/// `ink`'s mark as it is on `still`'s document.
+fn on_still(ink: &InkMark, still: &Still) -> crate::document::Mark {
+    let scale = still.doc.base.width() as f32 / still.area.rect[2] as f32;
+    let mut mark = ink::on_still(&ink.mark, still.area, scale);
+    mark.drawn = Some((ink.times.0.0, ink.times.1.0));
+    mark
+}
+
 /// Puts finished ink on the stills whose frames have arrived, so a stroke and its
 /// frame may finish in either order and the frame always exists first.
 fn join_finished_ink(capture: &mut Capture) {
     for ink in capture.ink.iter_mut().filter(|m| !m.committed) {
         if let Some(still) = capture.stills.iter_mut().find(|s| s.id == ink.still) {
-            let scale = still.doc.base.width() as f32 / still.area.rect[2] as f32;
-            let mut mark = ink::on_still(&ink.mark, still.area, scale);
-            mark.drawn = Some((ink.times.0.0, ink.times.1.0));
-            still.doc.commit(mark);
+            still.doc.commit(on_still(ink, still));
             ink.committed = true;
         }
     }
@@ -1819,7 +1861,8 @@ pub struct StillSummary {
     pub id: u64,
     pub at: session::HostTime,
     pub cause: Cause,
-    pub marks: usize,
+    /// What each mark on the still is, as the ink layer names it.
+    pub marks: Vec<&'static str>,
     pub times: Vec<(HostTime, HostTime)>,
     pub thumb: rune::Pixels,
     pub width: u32,
