@@ -159,7 +159,8 @@ impl Shown {
                 .filter(|_| summary.input == Input::None)
                 .map(|c| Corner::ALL.map(|corner| corner.rect(c.area, c.display))),
             resizing: summary.resizing,
-            bar_rect: capture.map(|c| bar::placement(c.area.rect, c.display, bar::height(summary))),
+            bar_rect: capture
+                .map(|c| bar::placement(c.area.rect, c.display, bar::height(summary), c.bar_at)),
             bar_key_requests: summary.bar_key_requests,
             tile: summary
                 .tile
@@ -549,6 +550,9 @@ pub fn run() -> Result<(), String> {
         let bar = bar
             .init(move || Bar::new(state))
             .on_focus(move |s, focused, _| {
+                // Lens hands the keys to the bar itself (a capture opening, ⌘⌥C), so
+                // the page still having them means a click on the bar took them.
+                s.keys_from_page = focused && s.lens.read(|summary| summary.keys == KeyOwner::Page);
                 s.lens.set_key_owner(if focused {
                     KeyOwner::Bar
                 } else {

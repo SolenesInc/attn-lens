@@ -357,6 +357,20 @@ fn picked(answer: &str) -> Option<[u8; 3]> {
     Some([(hex >> 16) as u8, (hex >> 8) as u8, hex as u8])
 }
 
+/// Writes `line` to the log a test named in `ATTN_LENS_FAKE_FOCUS`: who Lens gave
+/// the keyboard back to.
+fn focus_log(line: &str) {
+    if let Some(path) = std::env::var_os("ATTN_LENS_FAKE_FOCUS") {
+        use std::io::Write;
+        let mut log = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .expect("ATTN_LENS_FAKE_FOCUS names a file that can be written");
+        writeln!(log, "{line}").expect("write the focus log");
+    }
+}
+
 /// Where the fake's clipboard writes land, when a test asked for them.
 fn clipboard_file(name: &str) -> Option<std::path::PathBuf> {
     Some(std::path::Path::new(&std::env::var_os("ATTN_LENS_FAKE_CLIPBOARD")?).join(name))
@@ -387,15 +401,10 @@ impl PlatformPort for FakePort {
         }
         script.front = Some(app.clone());
         drop(script);
-        if let Some(path) = std::env::var_os("ATTN_LENS_FAKE_FOCUS") {
-            use std::io::Write;
-            let mut log = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)
-                .expect("ATTN_LENS_FAKE_FOCUS names a file that can be written");
-            writeln!(log, "{app}").expect("write the focus log");
-        }
+        focus_log(&app);
+    }
+    fn release_keys(&self) {
+        focus_log("released");
     }
     fn pill_keys(&self, on: bool) {
         self.script.lock().unwrap().pill_keys = on;

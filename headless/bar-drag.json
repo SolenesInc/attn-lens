@@ -1,0 +1,262 @@
+{
+ "displays": [
+  {
+   "id": 1,
+   "frame": [
+    0,
+    0,
+    1280,
+    800
+   ],
+   "scale": 2,
+   "primary": true
+  },
+  {
+   "id": 2,
+   "frame": [
+    1280,
+    0,
+    1024,
+    768
+   ],
+   "scale": 1
+  }
+ ],
+ "pointer": [
+  400,
+  300
+ ],
+ "events": [
+  {
+   "t": 0.1,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 0.2,
+   "type": "drag",
+   "x": 100,
+   "y": 50,
+   "dx": 600,
+   "dy": 745,
+   "dur": 0.1
+  },
+  {
+   "t": 0.4,
+   "type": "mark",
+   "name": "open"
+  },
+  {
+   "t": 0.45,
+   "type": "type",
+   "text": "hi"
+  },
+  {
+   "t": 0.55,
+   "type": "mark",
+   "name": "typed"
+  },
+  {
+   "t": 0.6,
+   "type": "down",
+   "x": 850,
+   "y": 704
+  },
+  {
+   "t": 0.65,
+   "type": "move",
+   "x": 850,
+   "y": 554
+  },
+  {
+   "t": 0.7,
+   "type": "move",
+   "x": 850,
+   "y": 404
+  },
+  {
+   "t": 0.75,
+   "type": "up",
+   "x": 850,
+   "y": 404
+  },
+  {
+   "t": 0.8,
+   "type": "mark",
+   "name": "dragged"
+  },
+  {
+   "t": 0.85,
+   "type": "type",
+   "text": "!"
+  },
+  {
+   "t": 0.9,
+   "type": "mark",
+   "name": "typed-after-drag"
+  },
+  {
+   "t": 0.95,
+   "type": "mark",
+   "name": "key:draw-down"
+  },
+  {
+   "t": 1.0,
+   "type": "drag",
+   "x": 200,
+   "y": 730,
+   "dx": 200,
+   "dy": 20,
+   "dur": 0.1
+  },
+  {
+   "t": 1.2,
+   "type": "mark",
+   "name": "key:draw-up"
+  },
+  {
+   "t": 1.25,
+   "type": "mark",
+   "name": "drawn-under"
+  },
+  {
+   "t": 1.26,
+   "type": "mark",
+   "name": "watch:click"
+  },
+  {
+   "t": 1.27,
+   "focus": false
+  },
+  {
+   "t": 1.28,
+   "type": "mark",
+   "name": "page-keys"
+  },
+  {
+   "t": 1.3,
+   "type": "down",
+   "x": 850,
+   "y": 404
+  },
+  {
+   "t": 1.35,
+   "type": "move",
+   "x": 1850,
+   "y": 1104
+  },
+  {
+   "t": 1.4,
+   "type": "mark",
+   "name": "off-edge"
+  },
+  {
+   "t": 1.45,
+   "type": "up",
+   "x": 1850,
+   "y": 1104
+  },
+  {
+   "t": 1.5,
+   "type": "mark",
+   "name": "at-edge"
+  },
+  {
+   "t": 1.52,
+   "type": "mark",
+   "name": "key:keyboard"
+  },
+  {
+   "t": 1.55,
+   "type": "key",
+   "name": "Tab"
+  },
+  {
+   "t": 1.65,
+   "type": "mark",
+   "name": "palette-at-edge"
+  },
+  {
+   "t": 1.7,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 1.75,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 1.8,
+   "type": "mark",
+   "name": "closed"
+  },
+  {
+   "t": 1.85,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 1.9,
+   "type": "drag",
+   "x": 1300,
+   "y": 30,
+   "dx": 500,
+   "dy": 730,
+   "dur": 0.1
+  },
+  {
+   "t": 2.1,
+   "type": "mark",
+   "name": "display-2-open"
+  },
+  {
+   "t": 2.15,
+   "type": "down",
+   "x": 2050,
+   "y": 672
+  },
+  {
+   "t": 2.2,
+   "type": "move",
+   "x": 1050,
+   "y": 372
+  },
+  {
+   "t": 2.25,
+   "type": "up",
+   "x": 1050,
+   "y": 372
+  },
+  {
+   "t": 2.3,
+   "type": "mark",
+   "name": "display-2-dragged"
+  },
+  {
+   "t": 2.35,
+   "type": "mark",
+   "name": "key:voice"
+  },
+  {
+   "t": 2.4,
+   "type": "mark",
+   "name": "voice:listening"
+  },
+  {
+   "t": 2.45,
+   "type": "mark",
+   "name": "say:0.92:1.4:move this over there and then look at what was under it"
+  },
+  {
+   "t": 2.5,
+   "type": "mark",
+   "name": "voice-dragged"
+  },
+  {
+   "t": 2.6,
+   "type": "mark",
+   "name": "end"
+  }
+ ]
+}

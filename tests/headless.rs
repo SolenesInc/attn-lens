@@ -1552,3 +1552,61 @@ fn a_capture_taking_a_dictation_attn_is_refining_gives_enter_back_to_the_app() {
     // The refinement still waiting when the capture took over is dropped unpasted.
     assert!(run.pasted("after").is_empty());
 }
+
+#[test]
+fn the_bar_drags_out_of_the_way_and_stays_on_its_display() {
+    let run = Run::new("bar-drag.json", ONE_SESSION);
+    let bar = |mark: &str| frame(&run.tree("bar", mark), "bar");
+
+    // The area is too tall for the bar above or below it, so it starts inside the
+    // bottom edge, over the area.
+    assert_eq!(bar("open"), [100., 700., 760., 92.]);
+
+    // A drag on its background moves it with the pointer. Nothing is drawn, no still
+    // is taken, and the field keeps the keys.
+    let dragged = run.tree("bar", "dragged");
+    assert_eq!(frame(&dragged, "bar"), [100., 400., 760., 92.]);
+    assert_eq!(text(&dragged, "keys"), Some("Typing here"));
+    let capture = capture_state(&run, "dragged");
+    assert_eq!(capture["stills"].as_array().unwrap().len(), 0);
+    assert_eq!(capture["ink"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        text(&run.tree("bar", "typed-after-drag"), "message"),
+        Some("hi!")
+    );
+
+    // Ink lands where the bar was, and the bar stays where it was dragged.
+    let drawn = run.tree("ink", "drawn-under");
+    assert_eq!(label(&drawn, "mark-0"), Some("arrow"));
+    assert_eq!(frame(&drawn, "bar"), [100., 400., 760., 92.]);
+
+    // Dragged past the display's corner, it stops whole on the display. The press
+    // took the keys from the page, and the drag gives them back.
+    assert_eq!(
+        text(&run.tree("bar", "page-keys"), "keys"),
+        Some("Typing on the page")
+    );
+    assert_eq!(run.focus_returned("at-edge"), ["released"]);
+    let edge = run.tree("bar", "at-edge");
+    assert_eq!(frame(&edge, "bar"), [512., 700., 760., 92.]);
+    assert_eq!(text(&edge, "keys"), Some("Typing on the page"));
+
+    // The palette grows the bar, which rises to stay on the display.
+    let palette = run.tree("bar", "palette-at-edge");
+    assert!(element(&palette, "palette-label-0").is_some());
+    let [x, y, _, height] = frame(&palette, "bar")[..] else {
+        unreachable!()
+    };
+    assert_eq!((x, y + height), (512., 792.));
+
+    // The next capture, on the second display, starts at the default place, and a
+    // drag toward the first display stops at the second's edge.
+    assert_eq!(bar("display-2-open"), [1300., 668., 760., 92.]);
+    assert_eq!(capture_state(&run, "display-2-open")["bar_at"], Value::Null);
+    assert_eq!(bar("display-2-dragged"), [1288., 368., 760., 92.]);
+
+    // Voice shows its words in the bar, which stays where it was dragged.
+    let voice = run.tree("bar", "voice-dragged");
+    assert!(text(&voice, "segment-0").is_some_and(|words| words.starts_with("move this")));
+    assert_eq!(frame(&voice, "bar"), [1288., 368., 760., 92.]);
+}

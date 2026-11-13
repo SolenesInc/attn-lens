@@ -6,6 +6,9 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
+- **Attn Lens**: drag the capture bar by its background to move it off what you
+  want to see or click. It stays whole on the capture's display, leaves the
+  keyboard where it was, and keeps its place until the capture ends.
 - **Attn Lens** dictation: with no capture open, right ⌥ (tap, or hold) dictates
   into the app in front. A pill above the Dock shows the words, attn refines them
   through `attn refine`, and the text pastes once at the cursor with the clipboard

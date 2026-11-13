@@ -243,6 +243,31 @@ impl PlatformPort for MacPort {
         });
     }
 
+    fn release_keys(&self) {
+        on_main(|| {
+            // With Lens in front, its own window is the one to keep the keys.
+            if frontmost_pid() == Some(std::process::id() as i32) {
+                return;
+            }
+            let Some(class) = AnyClass::get(c"NSApplication") else {
+                return;
+            };
+            // SAFETY: AppKit calls on the main thread; `keyWindow` is a live window or nil.
+            // Ordering the key panel out hands the keyboard back to the active app, as a
+            // hide does, and ordering it straight back in shows it again without taking
+            // keys, within one turn of the run loop, so it never leaves the screen.
+            unsafe {
+                let app: Retained<AnyObject> = msg_send![class, sharedApplication];
+                let window: Option<Retained<AnyObject>> = msg_send![&app, keyWindow];
+                if let Some(window) = window {
+                    let none: *const AnyObject = std::ptr::null();
+                    let _: () = msg_send![&window, orderOut: none];
+                    let _: () = msg_send![&window, orderFrontRegardless];
+                }
+            }
+        });
+    }
+
     fn capture_keys(&self, open: bool) {
         if let Some(tap) = self.tap.get() {
             tap.capture_open(open);

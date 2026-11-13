@@ -7,7 +7,9 @@ use super::{
 };
 use crate::platform_port::VoiceStatus;
 use image::RgbaImage;
-use rune::{Color, Cx, El, Key, KeyEvent, TextEdit, Tx, col, el, row, text, text_input, tok};
+use rune::{
+    Color, Cx, Drag, El, Key, KeyEvent, Phase, TextEdit, Tx, col, el, row, text, text_input, tok,
+};
 use std::sync::Arc;
 
 pub const WIDTH: f32 = 760.;
@@ -83,29 +85,64 @@ fn palette_height(summary: &Summary) -> f32 {
     PALETTE_ROW * summary.sessions.len().clamp(1, PALETTE_ROWS) as f32 + GAP
 }
 
-/// Where the bar goes: under the area if it fits, otherwise over it, otherwise
-/// (a whole display) inside the bottom edge. Stills leave Lens's windows out.
-pub fn placement(area: [f64; 4], display: DisplayFrame, height: f32) -> [f32; 4] {
+/// Where the bar goes: where the user dragged it, kept whole on the display and
+/// clear of the menu bar and the Dock. Otherwise under the area if it fits, then
+/// over it, then (a whole display) inside the bottom edge. Stills leave Lens's
+/// windows out.
+pub fn placement(
+    area: [f64; 4],
+    display: DisplayFrame,
+    height: f32,
+    dragged: Option<(f64, f64)>,
+) -> [f32; 4] {
     let (display_w, display_h) = (display.frame[2], display.frame[3]);
     let width = f64::from(WIDTH).min(display_w - MARGIN * 2.);
     let height = f64::from(height);
-    let below = area[1] + area[3] + MARGIN;
-    let above = area[1] - MARGIN - height;
-    let y = if below + height + MARGIN <= display_h {
-        below
-    } else if above >= MARGIN {
-        above
-    } else {
-        display_h - height - MARGIN
+    let right = (display_w - width - MARGIN).max(MARGIN);
+    let (x, y) = match dragged {
+        Some((x, y)) => {
+            let top = display.menu_bar + MARGIN;
+            let bottom = (display_h - display.dock - height - MARGIN).max(top);
+            (x.clamp(MARGIN, right), y.clamp(top, bottom))
+        }
+        None => {
+            let below = area[1] + area[3] + MARGIN;
+            let above = area[1] - MARGIN - height;
+            let y = if below + height + MARGIN <= display_h {
+                below
+            } else if above >= MARGIN {
+                above
+            } else {
+                display_h - height - MARGIN
+            };
+            (area[0].clamp(MARGIN, right), y)
+        }
     };
-    let x = area[0].clamp(MARGIN, (display_w - width - MARGIN).max(MARGIN));
     [x as f32, y as f32, width as f32, height as f32]
+}
+
+/// A drag on the bar's background: where the press sat in the bar, so the bar
+/// moves with the pointer and does not jump.
+#[derive(Clone, Copy)]
+struct Grab {
+    offset: (f32, f32),
+    /// Where the bar was, for a drag that is cancelled.
+    was: Option<(f64, f64)>,
+    /// The press took the keyboard from the page, which gets it back when the drag ends.
+    from_page: bool,
 }
 
 pub struct Bar {
     pub lens: Arc<Lens>,
     pub seen: u64,
     capture: Option<u64>,
+    /// The bar's top-left in points from the primary display's top-left, as the
+    /// window last reported it.
+    origin: (f32, f32),
+    grab: Option<Grab>,
+    /// The bar has the keyboard because a click took it from the page, and nothing
+    /// has been typed in the bar since.
+    pub keys_from_page: bool,
     placing_label: bool,
     message: TextEdit,
     label: TextEdit,
@@ -119,6 +156,9 @@ impl Bar {
             lens,
             seen: 0,
             capture: None,
+            origin: (0., 0.),
+            grab: None,
+            keys_from_page: false,
             placing_label: false,
             message,
             label: TextEdit::new(""),
@@ -333,6 +373,7 @@ fn palette(summary: &Summary, selected: usize, t: &tok::Theme) -> El {
 /// focus; the bar window does when anything else in the bar has. Returns whether the
 /// key was used.
 pub fn bar_key(s: &mut Bar, event: &KeyEvent, _: &mut Tx) -> bool {
+    s.keys_from_page = false;
     let (palette_open, placing) = s
         .lens
         .read(|summary| (summary.palette.is_some(), summary.placing_label));
@@ -373,6 +414,7 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
                 )
                 .on_edit(|s: &mut Bar| &mut s.message)
                 .on_input_change(|s: &mut Bar, _: &mut Tx| {
+                    s.keys_from_page = false;
                     s.lens.set_message(&s.message.text);
                 })
         }
@@ -497,8 +539,51 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
         if let Some(selected) = summary.palette {
             bar = bar.child(palette(summary, selected, &t));
         }
-        bar
+        bar.on_screen_layout(|s: &mut Bar, rect| s.origin = (rect[0], rect[1]))
+            .on_drag(drag_bar)
     })
+}
+
+/// A drag on the bar's background moves the bar: the field and the buttons take
+/// their own presses. Where the pointer is comes from where the window is now, so
+/// the bar follows it although the drag moves the window it is in.
+fn drag_bar(s: &mut Bar, d: &mut Drag, _: &mut Tx) {
+    let capture = s
+        .lens
+        .read(|summary| summary.capture.as_ref().map(|c| (c.display, c.bar_at)));
+    let Some((display, bar_at)) = capture else {
+        return;
+    };
+    match d.phase {
+        Phase::Down => {
+            s.grab = Some(Grab {
+                offset: (d.x, d.y),
+                was: bar_at,
+                from_page: std::mem::take(&mut s.keys_from_page),
+            });
+        }
+        Phase::Move => {
+            if let Some(grab) = s.grab {
+                let x = s.origin.0 + d.x - grab.offset.0;
+                let y = s.origin.1 + d.y - grab.offset.1;
+                s.lens.move_bar(Some((
+                    f64::from(x) - display.frame[0],
+                    f64::from(y) - display.frame[1],
+                )));
+            }
+        }
+        Phase::Up => {
+            let Some(grab) = s.grab.take() else {
+                return;
+            };
+            if d.cancelled() {
+                s.lens.move_bar(grab.was);
+            }
+            if grab.from_page {
+                s.lens.release_keys();
+            }
+        }
+    }
 }
 
 /// Voice in the bar: what the voice key does now, or how far voice has got.
