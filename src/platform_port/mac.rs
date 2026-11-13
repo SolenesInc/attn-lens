@@ -1,5 +1,5 @@
-//! The macOS port. Keys come from Carbon hotkeys and `NSEvent` flags monitors, so
-//! Lens needs no Accessibility or Input Monitoring; stills come from capture-core.
+//! The macOS port. Keys come from Carbon hotkeys and polled modifier flags, so Lens
+//! needs no Accessibility or Input Monitoring; stills come from capture-core.
 //! AppKit and Carbon calls run on the main thread.
 #![allow(unexpected_cfgs)] // objc 0.2 macros use a legacy cargo-clippy feature.
 use super::{
@@ -14,31 +14,21 @@ use crate::{
     },
     permission_guide::{self, Permission},
 };
-use block2::RcBlock;
 use global_hotkey::{
     GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
     hotkey::{Code, HotKey, Modifiers},
 };
 use image::RgbaImage;
-use objc2::{
-    msg_send,
-    rc::Retained,
-    runtime::{AnyClass, AnyObject},
-};
+use objc2::{msg_send, runtime::AnyClass};
 use std::{
     cell::RefCell,
     ffi::c_void,
-    ptr::NonNull,
-    sync::{
-        Arc, OnceLock,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, Mutex, OnceLock, mpsc},
+    time::Duration,
 };
 
 /// The key held to draw: fn. `NSEventModifierFlagFunction`.
 const DRAW_KEY_FLAG: u64 = 0x80_0000;
-/// `NSEventMaskFlagsChanged`.
-const FLAGS_CHANGED_MASK: u64 = 1 << 12;
 /// `NSEventModifierFlagShift`.
 const SHIFT_FLAG: u64 = 0x2_0000;
 
@@ -114,12 +104,17 @@ pub(crate) fn queue_on_main(job: impl FnOnce() + Send + 'static) {
 
 pub struct MacPort {
     speech: Arc<Speech>,
+    draw_key: Mutex<DrawKey>,
 }
 
 impl MacPort {
     pub fn new() -> Self {
         Self {
             speech: Arc::default(),
+            draw_key: Mutex::new(DrawKey {
+                sink: None,
+                poll: None,
+            }),
         }
     }
 
@@ -170,43 +165,65 @@ fn install_hotkeys(sink: Sink<KeyEvent>) -> Result<(), String> {
     Ok(())
 }
 
-/// Reads the draw key from the global monitor while another app is key, and the
-/// local one while a Lens window is. Neither needs a permission.
-fn install_draw_key_monitors(sink: Sink<KeyEvent>) {
-    static HELD: AtomicBool = AtomicBool::new(false);
-    fn flags_changed(event: &AnyObject, sink: &Sink<KeyEvent>) {
-        // SAFETY: `event` is the NSEvent AppKit passes to the monitor.
-        let flags: u64 = unsafe { msg_send![event, modifierFlags] };
-        let held = flags & DRAW_KEY_FLAG != 0;
-        if HELD.swap(held, Ordering::SeqCst) != held {
-            sink(if held {
-                KeyEvent::DrawDown
-            } else {
-                KeyEvent::DrawUp
-            });
-        }
-    }
+/// The current modifier flags. A class property that needs no permission and works
+/// off the main thread, for keys held in any app.
+fn modifier_flags() -> u64 {
     let class = AnyClass::get(c"NSEvent").expect("AppKit is linked");
-    let global_sink = sink.clone();
-    let global = RcBlock::new(move |event: NonNull<AnyObject>| {
-        // SAFETY: AppKit passes a live event.
-        flags_changed(unsafe { event.as_ref() }, &global_sink);
-    });
-    // SAFETY: the mask and block match the method's signature; the monitors and
-    // their blocks live for the whole process.
-    unsafe {
-        let monitor: Option<Retained<AnyObject>> = msg_send![class, addGlobalMonitorForEventsMatchingMask: FLAGS_CHANGED_MASK, handler: &*global];
-        std::mem::forget((monitor, global));
-    }
-    let local = RcBlock::new(move |event: NonNull<AnyObject>| -> *mut AnyObject {
-        // SAFETY: AppKit passes a live event.
-        flags_changed(unsafe { event.as_ref() }, &sink);
-        event.as_ptr()
-    });
-    // SAFETY: as above.
-    unsafe {
-        let monitor: Option<Retained<AnyObject>> = msg_send![class, addLocalMonitorForEventsMatchingMask: FLAGS_CHANGED_MASK, handler: &*local];
-        std::mem::forget((monitor, local));
+    // SAFETY: a class property with no arguments.
+    unsafe { msg_send![class, modifierFlags] }
+}
+
+/// Reads the draw key while a capture is open, by polling the modifier flags. An
+/// `NSEvent` flags monitor would need no polling, but AppKit gives a global monitor
+/// key events, modifiers included, only when the app has Accessibility: without it,
+/// fn went unseen whenever another app was in front. Posted keys reach the monitor
+/// regardless, which is why a driven run never showed this.
+struct DrawKey {
+    sink: Option<Sink<KeyEvent>>,
+    /// Dropping it stops the poll.
+    poll: Option<mpsc::Sender<()>>,
+}
+
+impl DrawKey {
+    /// F21 on the plan: polling every 8 ms reads a key 3.8–4.4 ms after it moves
+    /// (p50), against 3.6 ms for the flags monitor.
+    const INTERVAL: Duration = Duration::from_millis(8);
+
+    fn poll(&mut self, open: bool) {
+        if !open {
+            self.poll = None;
+            return;
+        }
+        let Some(sink) = self.sink.clone() else {
+            return;
+        };
+        if self.poll.is_some() {
+            return;
+        }
+        let (stop, stopped) = mpsc::channel::<()>();
+        self.poll = Some(stop);
+        let spawned = std::thread::Builder::new()
+            .name("lens-draw-key".into())
+            .spawn(move || {
+                let mut held = false;
+                while let Err(mpsc::RecvTimeoutError::Timeout) =
+                    stopped.recv_timeout(Self::INTERVAL)
+                {
+                    let now = modifier_flags() & DRAW_KEY_FLAG != 0;
+                    if now != held {
+                        held = now;
+                        sink(if held {
+                            KeyEvent::DrawDown
+                        } else {
+                            KeyEvent::DrawUp
+                        });
+                    }
+                }
+            });
+        if let Err(error) = spawned {
+            eprintln!("Attn Lens: the draw key cannot be read: {error}");
+            self.poll = None;
+        }
     }
 }
 
@@ -217,15 +234,16 @@ impl PlatformPort for MacPort {
     }
 
     fn keys(&self, sink: Sink<KeyEvent>) {
+        self.draw_key.lock().unwrap().sink = Some(sink.clone());
         on_main(move || {
-            if let Err(error) = install_hotkeys(sink.clone()) {
+            if let Err(error) = install_hotkeys(sink) {
                 eprintln!("Attn Lens: {error}");
             }
-            install_draw_key_monitors(sink);
         });
     }
 
     fn capture_keys(&self, open: bool) {
+        self.draw_key.lock().unwrap().poll(open);
         on_main(move || {
             HOTKEYS.with(|hotkeys| {
                 let hotkeys = hotkeys.borrow();
@@ -260,10 +278,7 @@ impl PlatformPort for MacPort {
     }
 
     fn shift_held(&self) -> bool {
-        let class = AnyClass::get(c"NSEvent").expect("AppKit is linked");
-        // SAFETY: a class property that needs no permission and works off the main thread.
-        let flags: u64 = unsafe { msg_send![class, modifierFlags] };
-        flags & SHIFT_FLAG != 0
+        modifier_flags() & SHIFT_FLAG != 0
     }
 
     fn screen_recording(&self) -> bool {
