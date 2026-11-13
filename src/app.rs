@@ -367,6 +367,7 @@ pub fn run() -> Result<(), String> {
             });
 
         let mut bar = App::new(AppSpec {
+            on_key: Some(bar::bar_key),
             poll: Some(|s: &mut Bar, now, tx: &mut Tx| {
                 let lens = s.lens.clone();
                 if let Some(next) = lens.port().tick(now) {
