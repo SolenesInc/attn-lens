@@ -451,6 +451,30 @@ fn strip(run: &Run, mark: &str) -> Option<([f64; 4], String)> {
     ))
 }
 
+/// Every tool's chip is inside the layer, and none covers `pointer`.
+fn chips_clear_of(tree: &Value, pointer: (f64, f64), layer: (f64, f64)) {
+    for tool in ["pen", "arrow", "box", "highlight", "label", "counter"] {
+        let [x, y, w, h] = rect(tree, &format!("tool-{tool}"));
+        assert!(
+            x >= 0. && y >= 0. && x + w <= layer.0 && y + h <= layer.1,
+            "{tool} at {:?} leaves the layer",
+            [x, y, w, h]
+        );
+        let covers = (x..=x + w).contains(&pointer.0) && (y..=y + h).contains(&pointer.1);
+        assert!(!covers, "{tool} at {:?} covers the pointer", [x, y, w, h]);
+    }
+}
+
+#[test]
+fn near_a_corner_the_arc_turns_to_stay_on_screen() {
+    let run = Run::new("tool-strip-edge.json", ONE_SESSION);
+    // The pointer at the area's top left corner, (10, 10) on the layer.
+    let tree = run.tree("ink", "strip-shown");
+    chips_clear_of(&tree, (10., 10.), (600., 450.));
+    // A stroke from the pointer draws.
+    assert_eq!(ink_kinds(&run, "drawn"), ["freehand"]);
+}
+
 #[test]
 fn fn_shows_the_tool_strip_and_each_stroke_is_its_tool() {
     let run = Run::new("tool-strip.json", ONE_SESSION);
@@ -459,17 +483,11 @@ fn fn_shows_the_tool_strip_and_each_stroke_is_its_tool() {
     assert_eq!(state(&run, "digit-before-fn")["tool"], "Pen");
     assert_eq!(run.app_keys("digit-before-fn"), ["key:2"]);
 
-    // fn shows the strip up and right of where the pointer was: (220, 260) on the layer.
-    let (at, tool) = strip(&run, "strip-shown").expect("no strip while fn is down");
+    // fn fans the tools out around where the pointer was, (220, 260) on the
+    // layer, with no chip over it, so the first stroke starts clear.
+    let (_, tool) = strip(&run, "strip-shown").expect("no strip while fn is down");
     assert_eq!(tool, "Pen");
-    assert!(at[0] >= 220. && at[1] + at[3] <= 260., "strip at {at:?}");
-    for tool in ["pen", "arrow", "box", "highlight", "label", "counter"] {
-        let tree = run.tree("ink", "strip-shown");
-        assert!(
-            element(&tree, &format!("tool-{tool}")).is_some(),
-            "no {tool}"
-        );
-    }
+    chips_clear_of(&run.tree("ink", "strip-shown"), (220., 260.), (600., 450.));
 
     // A straight drag with Pen stays freehand: nothing is guessed from its shape.
     assert_eq!(ink_kinds(&run, "pen-drawn"), ["freehand"]);
