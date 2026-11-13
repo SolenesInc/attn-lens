@@ -937,10 +937,15 @@ impl Lens {
                     let path = prev.drawn_as.as_deref().unwrap_or(&prev.mark.points);
                     ink::near(path, &points)
                 });
-            if writing && let Some(prev) = previous {
+            let mark = ink::mark_from_stroke(&start, &points, counter, writing);
+            // Only a stroke that makes a mark is writing: a slip leaves the arrow be.
+            if writing
+                && mark.is_some()
+                && let Some(prev) = previous
+            {
                 unarrow(prev, &mut capture.stills);
             }
-            if let Some(mark) = ink::mark_from_stroke(&start, &points, counter, writing) {
+            if let Some(mark) = mark {
                 let stale = capture.view_still != Some(start.still);
                 let drawn_as = (mark.tool == crate::document::Tool::Arrow).then(|| points.clone());
                 capture.ink.push(InkMark {

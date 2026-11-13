@@ -398,6 +398,12 @@ fn strokes_written_in_quick_succession_stay_freehand_and_a_lone_drag_is_an_arrow
     // A straight drag after a pause is an arrow, and so is one soon after it
     // that is too far away to be part of the same word.
     assert_eq!(ink_kinds(&run, "lone-drag")[5..], ["arrow"]);
+    // A slip of the pointer beside it makes no mark, so the arrow stays.
+    assert_eq!(ink_kinds(&run, "tapped")[5..], ["arrow"]);
+    assert_eq!(
+        state(&run, "tapped")["capture"]["stills"][0]["kinds"][5],
+        "arrow"
+    );
     assert_eq!(ink_kinds(&run, "quick-but-far")[5..], ["arrow", "arrow"]);
     let still = &state(&run, "quick-but-far")["capture"]["stills"][0];
     assert_eq!(
