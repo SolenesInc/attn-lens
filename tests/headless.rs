@@ -549,6 +549,11 @@ fn the_bar_arms_tools_and_owns_the_keyboard() {
     // The bar starts on the session last focused in attn, with the keys.
     let open = run.tree("bar", "open");
     assert_eq!(label(&open, "chip"), Some("→ one · this Mac"));
+    assert_eq!(text(&open, "chip-target"), Some("→ one"));
+    assert!(
+        element(&open, "chip-target").unwrap().get("help").is_none(),
+        "a short label was cut"
+    );
     assert_eq!(text(&open, "keys"), Some("Typing here"));
     for key in [
         "message",
@@ -597,6 +602,60 @@ fn the_bar_arms_tools_and_owns_the_keyboard() {
         text(&run.tree("bar", "typed-again"), "message"),
         Some("hi!")
     );
+}
+
+/// Eight sessions as attn lists them: a long label, every state, and four on an
+/// outpost, which attn names by its id.
+const EIGHT_SESSIONS: &str = r#"[{"id":"s1","label":"Lens walkthrough with the user","agent":"claude","state":"waiting_input","last_focused_at":"2026-11-13T10:00:00Z"},{"id":"s2","label":"Review main","agent":"codex","state":"idle"},{"id":"s3","label":"Bar polish","agent":"claude","state":"working"},{"id":"s4","label":"Notebook sync","agent":"claude","state":"pending_approval"},{"id":"s5","label":"Outpost build","agent":"claude","state":"working","host":"7a35fcaf-012f-4a33-8239-1da4d324514f"},{"id":"s6","label":"Speech helper models","agent":"codex","state":"idle","host":"7a35fcaf-012f-4a33-8239-1da4d324514f"},{"id":"s7","label":"Test history service token for the sandbox","agent":"claude","state":"waiting_input","host":"7a35fcaf-012f-4a33-8239-1da4d324514f"},{"id":"s8","label":"Tart VM","agent":"claude","state":"launching","host":"7a35fcaf-012f-4a33-8239-1da4d324514f","host_label":"ai-sandbox"}]"#;
+
+fn rect(tree: &Value, key: &str) -> [f64; 4] {
+    let rect = &element(tree, key).unwrap_or_else(|| panic!("no {key}"))["rect"];
+    std::array::from_fn(|i| rect[i].as_f64().unwrap())
+}
+
+fn inside(tree: &Value, child: &str, parent: &str) {
+    let (c, p) = (rect(tree, child), rect(tree, parent));
+    assert!(
+        c[0] >= p[0] && c[0] + c[2] <= p[0] + p[2] && c[1] >= p[1] && c[1] + c[3] <= p[1] + p[3],
+        "{child} at {c:?} crosses {parent} at {p:?}"
+    );
+}
+
+#[test]
+fn a_long_session_label_ends_in_an_ellipsis_and_the_palette_reads_as_words() {
+    let run = Run::new("bar-sessions.json", EIGHT_SESSIONS);
+
+    // The label is cut inside the chip; the host after it stays whole.
+    let open = run.tree("bar", "open");
+    let full = "→ Lens walkthrough with the user · this Mac";
+    assert_eq!(label(&open, "chip"), Some(full));
+    assert_eq!(
+        element(&open, "chip-target").unwrap()["help"].as_str(),
+        Some(full),
+        "the long label was not cut"
+    );
+    assert_eq!(text(&open, "chip-host"), Some("· this Mac"));
+    inside(&open, "chip-target", "chip");
+    inside(&open, "chip-host", "chip");
+
+    // Each row: the label, the state in words, and where it runs, never an id.
+    let palette = run.tree("bar", "palette-open");
+    inside(&palette, "chip-host", "chip");
+    let meta = |index: usize| text(&palette, &format!("palette-meta-{index}")).unwrap();
+    assert_eq!(meta(0), "claude · waiting for you · this Mac");
+    assert_eq!(meta(3), "claude · needs approval · this Mac");
+    assert_eq!(meta(4), "claude · working · outpost 7a35fcaf");
+    assert_eq!(meta(7), "claude · starting · ai-sandbox");
+    for index in 0..8 {
+        let row = meta(index);
+        assert!(!row.contains('_'), "row {index} shows an enum: {row}");
+        assert!(!row.contains("7a35fcaf-"), "row {index} shows an id: {row}");
+        inside(
+            &palette,
+            &format!("palette-meta-{index}"),
+            &format!("palette-row-{index}"),
+        );
+    }
 }
 
 #[test]
