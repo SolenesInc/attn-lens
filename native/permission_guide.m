@@ -16,6 +16,7 @@
 typedef NS_ENUM(NSInteger, LensPermission) {
     LensPermissionScreenRecording = 1,
     LensPermissionMicrophone = 2,
+    LensPermissionAccessibility = 3,
 };
 
 static NSPanel *guidePanel;
@@ -54,9 +55,17 @@ static NSString *lensAppName(NSURL *bundleURL) {
     return name.length > 0 ? name : @"Attn Lens";
 }
 
+/// macOS 27 renames the Accessibility list (Hex's `accessibilityRenamed`).
+static BOOL accessibilityRenamed(void) {
+    NSOperatingSystemVersion version = {27, 0, 0};
+    return [NSProcessInfo.processInfo isOperatingSystemAtLeastVersion:version];
+}
+
 /// The name of the Privacy & Security list each permission lives in.
 static NSString *permissionListName(LensPermission permission) {
     switch (permission) {
+        case LensPermissionAccessibility:
+            return accessibilityRenamed() ? @"Device Control and Data Access" : @"Accessibility";
         case LensPermissionScreenRecording:
             return @"Screen & System Audio Recording";
         case LensPermissionMicrophone:
@@ -311,6 +320,9 @@ bool lens_permission_granted(int permission) {
         case LensPermissionMicrophone:
             return [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] ==
                    AVAuthorizationStatusAuthorized;
+        // What System Settings shows now; a grant reaches the running app.
+        case LensPermissionAccessibility:
+            return AXIsProcessTrusted();
     }
     return NO;
 }
@@ -527,6 +539,9 @@ void lens_show_permission_guide(int permission) {
         case LensPermissionMicrophone:
             pane = @"Privacy_Microphone";
             break;
+        case LensPermissionAccessibility:
+            pane = @"Privacy_Accessibility";
+            break;
     }
     NSURL *settingsURL = [NSURL URLWithString:[NSString stringWithFormat:
         @"x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?%@", pane]];
@@ -567,7 +582,8 @@ void lens_show_permission_guide(int permission) {
     // One entry per access Lens asks for. A new one is a new row here.
     NSArray<NSArray<NSString *> *> *accesses = @[
         @[ @"Screen Recording", @" — to take stills of your screen." ],
-        @[ @"Microphone", @" — for voice. macOS asks on your first ⌘⌥S." ],
+        @[ @"Accessibility", @" — for its keys: right ⌘, right ⌥ and fn. Without it, they do nothing." ],
+        @[ @"Microphone", @" — for voice. macOS asks the first time you press right ⌥." ],
     ];
     for (NSArray<NSString *> *access in accesses) {
         y = addGuideText(content, guideText(access[0], access[1], 13), guideInset + 10, y) + 2;

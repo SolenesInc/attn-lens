@@ -104,7 +104,7 @@ pub enum CaptureVoice {
     #[default]
     Off,
     Running {
-        /// Which ⌘⌥S started it, so a stopped voice's late progress is ignored.
+        /// Which voice key press started it, so a stopped voice's late progress is ignored.
         run: u64,
         handle: Voice,
         /// `None` until the port reports progress.
@@ -119,7 +119,7 @@ pub enum CaptureVoice {
     },
 }
 
-/// One live session from ⌘⌥X to Send or Esc, over one area.
+/// One live session from the capture key to Send or Esc, over one area.
 pub struct Capture {
     pub id: u64,
     pub area: Area,

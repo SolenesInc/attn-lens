@@ -16,14 +16,23 @@ pub type Sink<T> = Arc<dyn Fn(T) + Send + Sync>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Chord {
-    /// ⌘⌥X, always registered.
+    /// A tap of the capture key, right ⌘. Always listened for.
     Capture,
-    /// ⌘⌥S, only while a capture is open.
-    Voice,
     /// ⌘⌥C, only while a capture is open.
     Keyboard,
     /// ⌘⌥↩, only while a capture is open.
     Send,
+}
+
+/// A press of the voice key, right ⌥ (`crate::keys`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Press {
+    /// Pressed and released alone, before the hold threshold.
+    Tap,
+    /// Held alone past the hold threshold.
+    HoldStart,
+    /// A hold ended: the key came up, or a chord or a blind period ended it.
+    HoldEnd,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,6 +40,7 @@ pub enum KeyEvent {
     DrawDown,
     DrawUp,
     Pressed(Chord),
+    Voice(Press),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -79,11 +89,11 @@ pub enum VoiceSource {
     Wav(PathBuf),
 }
 
-/// How far voice has got since ⌘⌥S.
+/// How far voice has got since it started.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum VoiceStatus {
-    /// The first ⌘⌥S fetches the speech model.
+    /// The first voice fetches the speech model.
     Downloading {
         bytes: u64,
         total: u64,
@@ -116,7 +126,8 @@ impl Voice {
 
 pub trait PlatformPort: Send + Sync {
     fn now(&self) -> HostTime;
-    /// Starts reporting the draw key and ⌘⌥X. Called once, on the UI thread.
+    /// Starts reporting the draw key, the capture key and the voice key. Called
+    /// once, on the UI thread.
     fn keys(&self, sink: Sink<KeyEvent>);
     /// Registers or releases the keys that exist only during a capture.
     fn capture_keys(&self, open: bool);
@@ -131,6 +142,9 @@ pub trait PlatformPort: Send + Sync {
     fn shift_held(&self) -> bool;
     /// True when stills can be taken. Otherwise shows the user how to allow it.
     fn screen_recording(&self) -> bool;
+    /// True when the keys can be read: the capture key, the voice key and the
+    /// draw key need Accessibility. Otherwise shows the user how to allow it.
+    fn accessibility(&self) -> bool;
     fn still(&self, area: Area) -> Result<RgbaImage, String>;
     fn watch(&self, area: Area, sink: Sink<WatchEvent>) -> Watch;
     /// Starts voice. It reports its progress, then segments, to `sink` from

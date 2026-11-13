@@ -7,7 +7,7 @@ scrolls and typing keep reaching your apps.
 
 ## Capture and send
 
-1. Press **⌘⌥X**. Drag for an area, click for the whole display, press **↩** for
+1. Tap **right ⌘** alone. Drag for an area, click for the whole display, press **↩** for
    the last area, or **Esc** to cancel. The area stays outlined; drag a corner to
    adjust it.
 2. Hold **fn** and drag to draw. A straight drag is an arrow, any other stays
@@ -15,13 +15,13 @@ scrolls and typing keep reaching your apps.
    set the next stroke.
 3. Type your message in the bar. Click the page to give it the keyboard; **⌘⌥C**
    takes it back.
-4. Press **⌘⌥S** to talk: what you say is transcribed on this Mac, phrase by
-   phrase. **⌘⌥S** again stops. The first use downloads a 731 MB speech model, and
-   macOS asks for Microphone access.
+4. Tap **right ⌥** to talk: what you say is transcribed on this Mac, phrase by
+   phrase. Tap it again to stop, or hold it instead and talk until you let go. The
+   first use downloads a 731 MB speech model, and macOS asks for Microphone access.
 5. Press **↩** in the bar, or **⌘⌥↩** from anywhere. The capture goes to the
    session on the chip at the left of the bar.
 
-Lens takes stills as you go: when you start drawing on a new view, on **⌘⌥X**, on
+Lens takes stills as you go: when you start drawing on a new view, on the capture key, on
 each click in the area, on a window switch, and at Send if the screen moved after
 the last one. Ink fades once its still is saved and the screen changes. Each
 thumbnail in the bar has an **×** to drop that still.
@@ -32,7 +32,7 @@ The bar's **Edit** opens the newest still in the editor; a thumbnail opens that
 still. Use any tool, for example **Pixelate** on a secret. See
 [the editor's guide](usage.md).
 
-- **‹ Back** (or closing the window, or **⌘⌥X**) returns to the same live capture.
+- **‹ Back** (or closing the window, or the capture key) returns to the same live capture.
   The still keeps its marks and undo history, so you can open it again and go on.
 - **Send ↩** in the editor's toolbar, or **⌘⌥↩**, sends the capture from there,
   with the stills you have. It adds no fresh still of the screen.
@@ -76,13 +76,19 @@ machine works like a local one.
 
 | Key | Does |
 | --- | --- |
-| **⌘⌥X** | Starts a capture. During one, takes a still; in the editor, goes Back. |
+| **right ⌘** tapped | The capture key. Starts a capture. During one, takes a still; in the editor, goes Back. |
 | **fn** held | Drags draw. |
-| **⌘⌥S** | Starts or stops voice, during a capture. |
+| **right ⌥** tapped | The voice key. Starts or stops voice, during a capture. |
+| **right ⌥** held | Voice until you let go, during a capture. |
 | **⌘⌥C** | Gives the keyboard back to the message. |
 | **⌘⌥↩** | Sends, from anywhere, including the editor. |
 | **Tab** | Opens the palette of sessions. |
 | **Esc** | Closes the capture, keeping its tile if it holds a still. |
+
+A tap is a press and release of the key alone, within 300 ms; a hold is longer. A
+press with another key, a click or another modifier, such as right ⌘+C or right
+⌥+e, belongs to the app in front: it opens nothing and starts no voice. A hold of
+right ⌘ does nothing. Right ⌥ with no capture open does nothing yet.
 
 Lens is a Dock app: **⌘Q** quits, and a Dock click opens the editor, empty and
 ready for an image.
@@ -111,15 +117,20 @@ Lens runs the `attn` CLI. It looks for `ATTN_BIN`, then
 `/opt/homebrew/bin`, `/usr/local/bin` and `~/.local/bin`. If none exists, the
 bar names every place it looked.
 
-## Screen Recording
+## Permissions
 
-Lens needs Screen Recording, to take stills, and Microphone, for
-voice (macOS asks on the first **⌘⌥S**). When Screen Recording is missing, Lens
-opens System Settings at the list, at launch and again on **⌘⌥X**, and floats a
-guide beside it. The guide says Lens is being set up, lists every access with
-why each is needed, and gives the steps: drag the tile of the app into the list
-and switch it on, then quit and reopen Lens, because macOS applies the grant only
-to a new process.
+Lens needs Screen Recording, to take stills; Accessibility, for the capture,
+voice and draw keys, which read every key press to tell a tap from a chord; and
+Microphone, for voice (macOS asks the first time you press right ⌥). When Screen
+Recording is missing, Lens opens System Settings at the list, at launch and again
+on the capture key, and floats a guide beside it. The guide says Lens is being set
+up, lists every access with why each is needed, and gives the steps: drag the
+tile of the app into the list and switch it on, then quit and reopen Lens, because
+macOS applies the grant only to a new process.
+
+When Accessibility is missing, Lens shows the same guide at the Accessibility
+list at launch, after Screen Recording is granted. Until it is allowed the keys
+do nothing; once it is, they work within five seconds, with no reopen.
 
 ## Automation
 

@@ -184,14 +184,14 @@ fn launch_dock_and_capture_keys_reach_the_windows() {
     assert!(visible(&open, "bar"));
     assert_eq!(label(&open, "still-0"), None);
 
-    // ⌘⌥X during a capture, a click and a window switch each take a still, in
+    // The capture key during a capture, a click and a window switch each take a still, in
     // order; voice segments arrive.
     let stills = run.tree("bar", "stills-taken");
     assert_eq!(label(&stills, "still-0"), Some("Hotkey 1280×800"));
     assert_eq!(label(&stills, "still-1"), Some("Click 1280×800"));
     assert_eq!(label(&stills, "still-2"), Some("WindowSwitch 1280×800"));
     assert_eq!(label(&stills, "still-3"), None);
-    assert_eq!(text(&stills, "voice"), Some("Listening · ⌘⌥S to stop"));
+    assert_eq!(text(&stills, "voice"), Some("Listening · right ⌥ to stop"));
     assert_eq!(text(&stills, "segment-0"), Some("this button does nothing"));
 
     // ⌘⌥↩ without a session names what is missing and keeps the capture.
@@ -343,7 +343,7 @@ fn the_draw_key_gives_an_arrow_a_freehand_stroke_and_a_box() {
         None
     );
 
-    // A ⌘⌥X still ends the view, so the next stroke takes a still of its own.
+    // A capture-key still ends the view, so the next stroke takes a still of its own.
     let bar = run.tree("bar", "hotkey-still");
     assert_eq!(label(&bar, "still-1"), Some("Hotkey 800×600"));
     let bar = run.tree("bar", "drawn-after-still");
@@ -775,13 +775,48 @@ if [ ! -e "{dir}/paired" ]; then echo 'token unknown: run attn send pair' >&2; e
 }
 
 #[test]
+fn holding_the_voice_key_talks_until_release_and_a_tap_toggles() {
+    let run = Run::new("voice-hold.json", ONE_SESSION);
+    let voice = |mark| text(&run.tree("bar", mark), "voice").map(str::to_string);
+
+    // The voice key with no capture open opens nothing; the capture key still works.
+    assert_eq!(voice("open").as_deref(), Some("right ⌥ voice"));
+    let open = state(&run, "open");
+    assert_eq!(open["capture"]["segments"], serde_json::json!([]));
+    assert_eq!(open["error"], Value::Null);
+
+    // A hold starts voice and its release stops it, keeping what was said.
+    assert_eq!(
+        voice("holding").as_deref(),
+        Some("Listening · right ⌥ to stop")
+    );
+    assert_eq!(voice("released").as_deref(), Some("right ⌥ voice"));
+    assert_eq!(
+        text(&run.tree("bar", "released"), "segment-0"),
+        Some("held words")
+    );
+
+    // A hold while a tap's voice runs keeps it, and the release stops it.
+    assert_eq!(
+        voice("tapped-then-held").as_deref(),
+        Some("Listening · right ⌥ to stop")
+    );
+    assert_eq!(
+        voice("tapped-then-released").as_deref(),
+        Some("right ⌥ voice")
+    );
+    // A release with voice off starts nothing.
+    assert_eq!(voice("stray-release").as_deref(), Some("right ⌥ voice"));
+}
+
+#[test]
 fn the_bar_shows_how_far_voice_has_got_and_waits_for_the_last_sentence() {
     let run = Run::new("voice.json", ONE_SESSION);
     let voice = |mark| text(&run.tree("bar", mark), "voice").map(str::to_string);
 
-    assert_eq!(voice("open").as_deref(), Some("⌘⌥S voice"));
+    assert_eq!(voice("open").as_deref(), Some("right ⌥ voice"));
     assert_eq!(voice("starting").as_deref(), Some("Starting voice…"));
-    // The first ⌘⌥S fetches the model, with progress.
+    // The first voice fetches the model, with progress.
     assert_eq!(
         voice("downloading").as_deref(),
         Some("Downloading speech model 25%")
@@ -790,21 +825,21 @@ fn the_bar_shows_how_far_voice_has_got_and_waits_for_the_last_sentence() {
     assert_eq!(voice("warming").as_deref(), Some("Starting microphone…"));
     assert_eq!(
         voice("listening").as_deref(),
-        Some("Listening · ⌘⌥S to stop")
+        Some("Listening · right ⌥ to stop")
     );
     assert_eq!(
         text(&run.tree("bar", "segment"), "segment-0"),
         Some("open the settings")
     );
 
-    // Stopping waits for the sentence in progress, and ⌘⌥S then does nothing.
+    // Stopping waits for the sentence in progress, and a voice tap then does nothing.
     assert_eq!(voice("finishing").as_deref(), Some("Finishing…"));
     assert_eq!(voice("still-finishing").as_deref(), Some("Finishing…"));
-    assert_eq!(voice("stopped").as_deref(), Some("⌘⌥S voice"));
+    assert_eq!(voice("stopped").as_deref(), Some("right ⌥ voice"));
 
     // Voice that fails on its own says why and leaves the capture open.
     let failed = run.tree("bar", "failed");
-    assert_eq!(text(&failed, "voice"), Some("⌘⌥S voice"));
+    assert_eq!(text(&failed, "voice"), Some("right ⌥ voice"));
     assert_eq!(
         text(&failed, "error"),
         Some("Voice stopped: the speech helper quit.")
@@ -823,8 +858,8 @@ fn the_bar_shows_how_far_voice_has_got_and_waits_for_the_last_sentence() {
     let args = std::fs::read_to_string(run.path("args")).unwrap();
     assert!(args.starts_with("send s1 "), "{args}");
 
-    // ⌘⌥S while a send is delivering starts voice on that capture; the send
-    // closing the capture stops it, so the next capture's ⌘⌥S starts afresh.
+    // A voice tap while a send is delivering starts voice on that capture; the send
+    // closing the capture stops it, so the next capture's voice starts afresh.
     assert_eq!(
         text(&run.tree("bar", "voice-during-send"), "voice"),
         Some("Starting voice…")
@@ -876,12 +911,12 @@ fn voice_on_a_new_capture_does_not_wait_for_the_last_one_to_stop() {
 
     // Esc closed the capture and its voice is still stopping, held in a job.
     let second = run.tree("bar", "second-voice");
-    assert_eq!(text(&second, "voice"), Some("Listening · ⌘⌥S to stop"));
+    assert_eq!(text(&second, "voice"), Some("Listening · right ⌥ to stop"));
     assert_eq!(text(&second, "error"), None);
 
     // The old voice ending leaves the new one running.
     let later = run.tree("bar", "old-voice-finished");
-    assert_eq!(text(&later, "voice"), Some("Listening · ⌘⌥S to stop"));
+    assert_eq!(text(&later, "voice"), Some("Listening · right ⌥ to stop"));
 
     // A closed capture's voice failing while it stops is not the next capture's error.
     let clean = run.tree("bar", "after-closed-voice-failed");
@@ -905,17 +940,17 @@ fn a_closed_captures_finish_does_not_start_the_next_captures_send() {
 fn a_stopped_voices_late_failure_leaves_the_next_voice_running() {
     let run = Run::new("voice-late-failure.json", ONE_SESSION);
     let second = run.tree("bar", "second-voice");
-    assert_eq!(text(&second, "voice"), Some("Listening · ⌘⌥S to stop"));
+    assert_eq!(text(&second, "voice"), Some("Listening · right ⌥ to stop"));
 
     let later = run.tree("bar", "after-late-failure");
-    assert_eq!(text(&later, "voice"), Some("Listening · ⌘⌥S to stop"));
+    assert_eq!(text(&later, "voice"), Some("Listening · right ⌥ to stop"));
 }
 
 #[test]
 fn send_right_after_voice_stops_waits_for_its_last_sentence() {
     let run = Run::new("voice-send.json", ONE_SESSION);
 
-    // ⌘⌥S stopped voice and Send came while it finished: the send's still is
+    // A voice tap stopped voice and Send came while it finished: the send's still is
     // taken, but nothing goes to attn until the last sentence is in.
     let waiting = run.tree("bar", "still-while-finishing");
     assert_eq!(text(&waiting, "voice"), Some("Finishing…"));
@@ -924,7 +959,7 @@ fn send_right_after_voice_stops_waits_for_its_last_sentence() {
 
     let finished = run.tree("bar", "voice-finished");
     assert_eq!(text(&finished, "segment-0"), Some("and then it crashes"));
-    assert_eq!(text(&finished, "voice"), Some("⌘⌥S voice"));
+    assert_eq!(text(&finished, "voice"), Some("right ⌥ voice"));
     assert!(!run.path("args").exists(), "the send runs after the finish");
 
     assert!(!visible(&run.tree("bar", "sent"), "bar"));
@@ -1125,7 +1160,7 @@ fn a_closing_capture_cancels_a_send_queued_in_the_editor() {
 #[test]
 fn an_earlier_voice_finishing_leaves_a_reopened_captures_new_voice() {
     let run = Run::new("roundtrip-voice-reopen.json", ONE_SESSION);
-    // The earlier voice holds the helper until it finishes; ⌘⌥S waits for it.
+    // The earlier voice holds the helper until it finishes; a voice tap waits for it.
     assert_eq!(
         state(&run, "still-finishing")["voice"]["state"],
         "finishing"

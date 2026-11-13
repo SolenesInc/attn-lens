@@ -19,8 +19,8 @@ pub mod watch;
 use crate::{
     document::Document,
     platform_port::{
-        Chord, KeyEvent, PlatformPort, Sink, Voice, VoiceEvent, VoiceSource, VoiceStatus, Watch,
-        WatchEvent,
+        Chord, KeyEvent, PlatformPort, Press, Sink, Voice, VoiceEvent, VoiceSource, VoiceStatus,
+        Watch, WatchEvent,
     },
 };
 use ink::InkTool;
@@ -99,7 +99,7 @@ const CLOSED_BEFORE_SENT: &str = "The capture was closed before it was sent.";
 pub enum VoiceState {
     #[default]
     Off,
-    /// ⌘⌥S was pressed and the port has not reported progress yet.
+    /// The voice key was pressed and the port has not reported progress yet.
     Starting,
     Running(VoiceStatus),
     /// Waiting for the sentence in progress, before voice stops or the send goes.
@@ -183,7 +183,7 @@ struct State {
     watch_generation: u64,
     /// Counts voice starts; see `CaptureVoice::Running`.
     voice_run: u64,
-    /// Set by automation: the next ⌘⌥S plays this WAV instead of the microphone.
+    /// Set by automation: the next voice plays this WAV instead of the microphone.
     voice_wav: Option<PathBuf>,
     watch: Option<Watch>,
 }
@@ -271,13 +271,17 @@ impl Lens {
         }
     }
 
-    /// Starts listening for keys. Without Screen Recording, it shows the user how
-    /// to allow it now rather than at the first ⌘⌥X.
+    /// Starts listening for keys. Without Screen Recording or Accessibility, it
+    /// shows the user how to allow them now rather than at the first capture key.
+    /// Screen Recording comes first, since its grant needs a reopen; Accessibility
+    /// then shows after it.
     pub fn listen(self: &Arc<Self>) {
         let lens = self.clone();
         let sink: Sink<KeyEvent> = Arc::new(move |event| lens.key(event));
         self.port.keys(sink);
-        self.port.screen_recording();
+        if self.port.screen_recording() {
+            self.port.accessibility();
+        }
     }
 
     pub fn key(self: &Arc<Self>, event: KeyEvent) {
@@ -298,7 +302,13 @@ impl Lens {
                     self.open_picker();
                 }
             }
-            KeyEvent::Pressed(Chord::Voice) => self.toggle_voice(),
+            KeyEvent::Voice(press) => {
+                if self.is_open() {
+                    self.capture_voice(press);
+                } else {
+                    self.dictation(press);
+                }
+            }
             KeyEvent::Pressed(Chord::Keyboard) => self.give_keys_to_bar(),
             KeyEvent::Pressed(Chord::Send) => self.send_or_recover(),
         }
@@ -540,7 +550,7 @@ impl Lens {
         self.changed();
     }
 
-    /// Opens the area picker on every display connected now. ⌘⌥X during a pick does nothing.
+    /// Opens the area picker on every display connected now. The capture key during a pick does nothing.
     fn open_picker(&self) {
         if !self.port.screen_recording() {
             return;
@@ -1248,11 +1258,32 @@ impl Lens {
         Some(still_id)
     }
 
-    /// Plays `wav` instead of the microphone from the next ⌘⌥S; `None` goes
+    /// Plays `wav` instead of the microphone from the next voice; `None` goes
     /// back to the microphone. For driven checks, through automation.
     pub fn set_voice_wav(&self, wav: Option<PathBuf>) {
         self.state.lock().unwrap().voice_wav = wav;
     }
+
+    /// The voice key in a capture: a tap toggles voice, a hold talks until release.
+    fn capture_voice(self: &Arc<Self>, press: Press) {
+        let running = self
+            .state
+            .lock()
+            .unwrap()
+            .capture
+            .as_ref()
+            .is_some_and(|capture| !matches!(capture.voice, CaptureVoice::Off));
+        match press {
+            Press::Tap => self.toggle_voice(),
+            Press::HoldStart if !running => self.toggle_voice(),
+            Press::HoldEnd if running => self.toggle_voice(),
+            Press::HoldStart | Press::HoldEnd => {}
+        }
+    }
+
+    /// The voice key with no capture open: dictation, which the sibling seed
+    /// "Dictation in Lens" builds. Nothing yet.
+    fn dictation(self: &Arc<Self>, _press: Press) {}
 
     fn toggle_voice(self: &Arc<Self>) {
         let mut state = self.state.lock().unwrap();
@@ -1335,7 +1366,7 @@ impl Lens {
         })
     }
 
-    /// The finish ⌘⌥S asked for returned. It starts the send that waited for it, or
+    /// The finish the voice key asked for returned. It starts the send that waited for it, or
     /// fails it, as the send would lose the last sentence.
     fn voice_stopped(self: &Arc<Self>, id: u64, run: u64, finished: Result<(), String>) {
         let mut guard = self.state.lock().unwrap();
@@ -1390,7 +1421,7 @@ impl Lens {
             let capture = state
                 .capture
                 .as_mut()
-                .ok_or("No capture is open. Start one with ⌘⌥X.")?;
+                .ok_or("No capture is open. Start one with right ⌘.")?;
             if let Some(target) = target {
                 capture.target = Some(target);
             }

@@ -8,7 +8,7 @@
 //! {"cmd":"state"}
 //! {"cmd":"wait","since":0,"timeout_ms":1000}          blocks until the state changes after generation
 //!                                                   `since`, or the timeout; replies with `generation` and `state`
-//! {"cmd":"key","key":"capture"|"voice"|"keyboard"|"send"|"draw-down"|"draw-up"}
+//! {"cmd":"key","key":"capture"|"voice"|"voice-hold"|"voice-release"|"keyboard"|"send"|"draw-down"|"draw-up"}
 //! {"cmd":"pick"}                                    the whole display under the pointer
 //! {"cmd":"pick","display":1,"rect":[x,y,w,h]}       rect is optional: the whole display
 //! {"cmd":"pick-last"}
@@ -23,12 +23,12 @@
 //! {"cmd":"back"}                                    back to the capture; "send":true also sends
 //! {"cmd":"reopen"}                                  the tile's capture
 //! {"cmd":"discard"}                                 the tile
-//! {"cmd":"voice-wav","path":"/abs/16k-mono.wav"}    the next ⌘⌥S plays it, not the microphone
+//! {"cmd":"voice-wav","path":"/abs/16k-mono.wav"}    the next voice plays it, not the microphone
 //! {"cmd":"voice-wav"}                               back to the microphone
 //! ```
 //! A reply is `{"ok":true,...}` or `{"ok":false,"error":"..."}`.
 use super::{Lens, session::Cause};
-use crate::platform_port::{Chord, KeyEvent};
+use crate::platform_port::{Chord, KeyEvent, Press};
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, BufReader, Write},
@@ -230,14 +230,16 @@ fn voice_wav(path: &str) -> Result<PathBuf, String> {
 fn parse_key(name: &str) -> Result<KeyEvent, String> {
     Ok(match name {
         "capture" => KeyEvent::Pressed(Chord::Capture),
-        "voice" => KeyEvent::Pressed(Chord::Voice),
+        "voice" => KeyEvent::Voice(Press::Tap),
+        "voice-hold" => KeyEvent::Voice(Press::HoldStart),
+        "voice-release" => KeyEvent::Voice(Press::HoldEnd),
         "keyboard" => KeyEvent::Pressed(Chord::Keyboard),
         "send" => KeyEvent::Pressed(Chord::Send),
         "draw-down" => KeyEvent::DrawDown,
         "draw-up" => KeyEvent::DrawUp,
         other => {
             return Err(format!(
-                "Unknown key \"{other}\". Expected capture, voice, keyboard, send, draw-down or draw-up."
+                "Unknown key \"{other}\". Expected capture, voice, voice-hold, voice-release, keyboard, send, draw-down or draw-up."
             ));
         }
     })

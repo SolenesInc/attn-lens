@@ -3,7 +3,7 @@
 //! from the recording's first sample; this module puts those times on the capture
 //! clock through the host time of that first sample.
 //!
-//! The helper starts on the first ⌘⌥S of a capture and stays warm, model loaded,
+//! The helper starts on the first voice of a capture and stays warm, model loaded,
 //! until the capture ends ([`Speech::release`]).
 #[cfg(target_os = "macos")]
 mod mic;
@@ -320,7 +320,7 @@ impl Run {
             Phase::Starting => Ok(()),
             Phase::Preparing { id, helper } => {
                 drop(state);
-                // The helper keeps what it downloaded, so the next ⌘⌥S resumes.
+                // The helper keeps what it downloaded, so the next voice resumes.
                 helper.request(&json!({"op": "cancel", "target": id}))
             }
             Phase::Listening {

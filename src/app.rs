@@ -1,5 +1,5 @@
 //! The Rune app: a Dock app whose windows read the Lens state. It starts with no
-//! window, ⌘⌥X opens the area picker, and a Dock click opens the empty editor.
+//! window, the capture key (right ⌘) opens the area picker, and a Dock click opens the empty editor.
 use crate::{
     editor::{self, Editor},
     lens::{
