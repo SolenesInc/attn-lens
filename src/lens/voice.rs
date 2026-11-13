@@ -3,8 +3,11 @@
 //! from the recording's first sample; this module puts those times on the capture
 //! clock through the host time of that first sample.
 //!
-//! The helper starts on the first voice of a capture and stays warm, model loaded,
-//! until the capture ends ([`Speech::release`]).
+//! The helper starts on the first voice, of a dictation or a capture, and stays
+//! warm, model loaded, until a capture ends ([`Speech::release`]) or Lens quits.
+//! Warm and idle it uses no CPU and under 100 MB; the model's weights are a
+//! read-only file mapping the system can reclaim. Unloading it would save little
+//! and make the next voice wait for the model before the microphone opens.
 #[cfg(target_os = "macos")]
 mod mic;
 
