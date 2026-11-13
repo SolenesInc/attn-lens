@@ -59,6 +59,8 @@ Notable user-visible changes are recorded here.
 
 ### Fixed
 
+- Attn Lens: Esc, Enter and Tab in the bar work after you click away and back,
+  without clicking the message field first.
 - Attn Lens's session chip cuts a long session label with "…" inside the chip and
   keeps the host readable. The Tab palette shows states in words ("waiting for
   you", "needs approval") and an outpost's name, or "outpost" and a short id

@@ -329,7 +329,9 @@ fn palette(summary: &Summary, selected: usize, t: &tok::Theme) -> El {
     list
 }
 
-/// Keys the field does not take for itself. Returns whether the key was used.
+/// Enter, Esc, Tab and the palette's arrows. The field hands them here when it has
+/// focus; the bar window does when anything else in the bar has. Returns whether the
+/// key was used.
 pub fn bar_key(s: &mut Bar, event: &KeyEvent, _: &mut Tx) -> bool {
     let (palette_open, placing) = s
         .lens
