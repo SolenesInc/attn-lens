@@ -69,10 +69,12 @@ mod tests {
                     })
                 })
                 .collect();
-            for writer in writers {
-                writer.join().unwrap();
-            }
+            // Stop the forking threads even when a writer failed, or the scope never ends.
+            let results: Vec<_> = writers.into_iter().map(|writer| writer.join()).collect();
             stop.store(true, Ordering::Relaxed);
+            for result in results {
+                result.unwrap();
+            }
         });
     }
 }
