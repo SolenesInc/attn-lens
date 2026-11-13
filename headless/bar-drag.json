@@ -194,37 +194,52 @@
    "name": "field-then-drag"
   },
   {
-   "t": 1.64,
+   "t": 1.65,
+   "focus": false
+  },
+  {
+   "t": 1.66,
+   "type": "tap",
+   "x": 1180,
+   "y": 720
+  },
+  {
+   "t": 1.78,
+   "type": "mark",
+   "name": "field-padding"
+  },
+  {
+   "t": 1.84,
    "type": "key",
    "name": "Tab"
   },
   {
-   "t": 1.68,
+   "t": 1.88,
    "type": "mark",
    "name": "palette-at-edge"
   },
   {
-   "t": 1.7,
+   "t": 1.9,
    "type": "key",
    "name": "Escape"
   },
   {
-   "t": 1.75,
+   "t": 1.95,
    "type": "key",
    "name": "Escape"
   },
   {
-   "t": 1.8,
+   "t": 2.0,
    "type": "mark",
    "name": "closed"
   },
   {
-   "t": 1.85,
+   "t": 2.05,
    "type": "mark",
    "name": "key:capture"
   },
   {
-   "t": 1.9,
+   "t": 2.1,
    "type": "drag",
    "x": 1300,
    "y": 30,
@@ -233,55 +248,99 @@
    "dur": 0.1
   },
   {
-   "t": 2.1,
+   "t": 2.3,
    "type": "mark",
    "name": "display-2-open"
   },
   {
-   "t": 2.15,
+   "t": 2.35,
    "type": "down",
    "x": 2050,
    "y": 672
   },
   {
-   "t": 2.2,
+   "t": 2.4,
    "type": "move",
    "x": 1050,
    "y": 372
   },
   {
-   "t": 2.25,
+   "t": 2.45,
    "type": "up",
    "x": 1050,
    "y": 372
   },
   {
-   "t": 2.3,
+   "t": 2.5,
    "type": "mark",
    "name": "display-2-dragged"
   },
   {
-   "t": 2.35,
+   "t": 2.55,
    "type": "mark",
    "name": "key:voice"
   },
   {
-   "t": 2.4,
+   "t": 2.6,
    "type": "mark",
    "name": "voice:listening"
   },
   {
-   "t": 2.45,
+   "t": 2.65,
    "type": "mark",
    "name": "say:0.92:1.4:move this over there and then look at what was under it"
   },
   {
-   "t": 2.5,
+   "t": 2.7,
    "type": "mark",
    "name": "voice-dragged"
   },
   {
-   "t": 2.6,
+   "t": 2.75,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 2.8,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 2.85,
+   "type": "tap",
+   "x": 600,
+   "y": 400
+  },
+  {
+   "t": 3.0,
+   "type": "mark",
+   "name": "whole-display-1"
+  },
+  {
+   "t": 3.05,
+   "type": "down",
+   "x": 4,
+   "y": 28
+  },
+  {
+   "t": 3.1,
+   "type": "move",
+   "x": 4,
+   "y": 428
+  },
+  {
+   "t": 3.15,
+   "type": "up",
+   "x": 4,
+   "y": 428
+  },
+  {
+   "t": 3.25,
+   "type": "mark",
+   "name": "resize-uncovered"
+  },
+  {
+   "t": 3.3,
    "type": "mark",
    "name": "end"
   }

@@ -256,7 +256,8 @@ impl Surfaces {
                                 height,
                             },
                         );
-                        if was.handles[index].is_none() {
+                        // A resize holds the handles, so one it uncovered shows as it lands.
+                        if landed || was.handles[index].is_none() {
                             handle.show();
                         }
                     }

@@ -432,13 +432,16 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
             .child(chip(summary, &t))
             .child(
                 row()
+                    .key("field")
                     .grow(1.)
                     .h(CONTROL)
                     .px(10.)
                     .center_y()
                     .radius(8.)
                     .border(1., if keys_here { t.indicator } else { t.separator })
-                    .child(field),
+                    .child(field)
+                    // A press inside the border is a press on the field, not a drag.
+                    .on_press(|_: &mut Bar| {}),
             )
             .child(
                 text(if keys_here {

@@ -1627,6 +1627,13 @@ fn the_bar_drags_out_of_the_way_and_stays_on_its_display() {
         Some("Typing here")
     );
 
+    // A click in the field's padding, inside its border, takes the keys for the field:
+    // it neither drags the bar nor hands them back.
+    assert_eq!(run.focus_returned("field-padding"), ["released"]);
+    let padding = run.tree("bar", "field-padding");
+    assert_eq!(text(&padding, "keys"), Some("Typing here"));
+    assert_eq!(frame(&padding, "bar"), [512., 700., 760., 92.]);
+
     // The palette grows the bar, which rises to stay on the display.
     let palette = run.tree("bar", "palette-at-edge");
     assert!(element(&palette, "palette-label-0").is_some());
@@ -1645,4 +1652,13 @@ fn the_bar_drags_out_of_the_way_and_stays_on_its_display() {
     let voice = run.tree("bar", "voice-dragged");
     assert!(text(&voice, "segment-0").is_some_and(|words| words.starts_with("move this")));
     assert_eq!(frame(&voice, "bar"), [1288., 368., 760., 92.]);
+
+    // A whole display puts the bar over the bottom-left corner, whose handle hides. A
+    // resize that moves the bar above the area shows it again as the resize lands.
+    let whole = run.tree("bar", "whole-display-1");
+    assert!(!visible(&whole, "handle-bottom-left"));
+    let resized = run.tree("bar", "resize-uncovered");
+    assert_eq!(frame(&resized, "bar")[1], 300.);
+    assert!(visible(&resized, "handle-bottom-left"));
+    has_area_frame(&run.tree("ink", "resize-uncovered"));
 }
