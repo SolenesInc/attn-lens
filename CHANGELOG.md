@@ -69,6 +69,8 @@ Notable user-visible changes are recorded here.
 
 ### Fixed
 
+- The editor's toolbar starts after the window buttons, so close, minimize and zoom
+  no longer cover Back and the title.
 - Attn Lens: Esc, Enter and Tab in the bar work after you click away and back,
   without clicking the message field first.
 - Attn Lens's session chip cuts a long session label with "…" inside the chip and
