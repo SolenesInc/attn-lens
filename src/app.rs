@@ -516,7 +516,8 @@ pub fn run() -> Result<(), String> {
             pill::pill_view,
             None,
             OverlayOptions {
-                exclude_from_capture: true,
+                // Only so a recording of a driven check can show the pill.
+                exclude_from_capture: !std::env::args().any(|arg| arg == "--pill-in-capture"),
                 input: OverlayInput::None,
                 keys: KeyPolicy::None,
                 ..Default::default()

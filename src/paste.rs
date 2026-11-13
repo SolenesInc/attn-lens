@@ -524,6 +524,7 @@ type InputSourceRef = *const c_void;
 unsafe extern "C" {
     fn CGEventCreateKeyboardEvent(source: *mut c_void, key: u16, down: bool) -> EventRef;
     fn CGEventSetFlags(event: EventRef, flags: u64);
+    fn CGEventSetIntegerValueField(event: EventRef, field: u32, value: i64);
     fn CGEventKeyboardSetUnicodeString(event: EventRef, length: usize, text: *const u16);
     fn CGEventPost(tap: u32, event: EventRef);
 }
@@ -727,6 +728,11 @@ fn strokes(text: &str) -> Vec<Stroke> {
     strokes
 }
 
+/// Carried in each posted event's source user data, so a tool watching the keyboard,
+/// such as `tools/driver/driver.swift`, can tell Lens's paste from a person's keys.
+pub const PASTE_MARKER: i64 = 0x4c45_4e53_5056; // "LENSPV"
+const EVENT_SOURCE_USER_DATA: u32 = 42; // kCGEventSourceUserData
+
 struct KeyboardEvent(EventRef);
 
 impl KeyboardEvent {
@@ -737,7 +743,10 @@ impl KeyboardEvent {
             return Err("could not create a keyboard event".into());
         }
         // SAFETY: a valid event.
-        unsafe { CGEventSetFlags(event, flags) };
+        unsafe {
+            CGEventSetFlags(event, flags);
+            CGEventSetIntegerValueField(event, EVENT_SOURCE_USER_DATA, PASTE_MARKER);
+        }
         Ok(Self(event))
     }
 

@@ -34,12 +34,21 @@ finish() {
 }
 trap finish EXIT
 
-# Lens reads the token tools/vm/attn pairs with from its Keychain item.
-security add-generic-password -U -A -s dev.attn.lens.sender -a default -w vm-stand-in-token
-
+# Lens pairs with tools/vm/attn the way a person does: ↩ on an unpaired capture. Lens
+# then owns its Keychain item and reads it without asking; an item `security` made
+# would put a Keychain prompt in front of the first refinement.
 quit_lens
-open --env LENS_DICTATION_LOG=1 --stderr "$OUT/lens.log" "$APP" --args --automation
+security delete-generic-password -s dev.attn.lens.sender -a default >/dev/null 2>&1 || true
+open --env LENS_DICTATION_LOG=1 --stderr "$OUT/lens.log" "$APP" --args --automation --pill-in-capture
 until "$LENS" lens '{"cmd":"state"}' >/dev/null 2>&1; do sleep 0.1; done
+attn_status() { "$LENS" lens '{"cmd":"state"}' | /usr/bin/python3 -I -c 'import json,sys; print(json.load(sys.stdin)["state"]["attn"])'; }
+"$LENS" lens '{"cmd":"key","key":"capture"}' >/dev/null
+"$LENS" lens '{"cmd":"pick"}' >/dev/null
+"$LENS" lens '{"cmd":"key","key":"send"}' >/dev/null
+for _ in $(seq 100); do [ "$(attn_status)" = Ready ] && break; sleep 0.1; done
+[ "$(attn_status)" = Ready ] || { echo "FAIL Lens did not pair: $(attn_status)"; exit 1; }
+"$LENS" lens '{"cmd":"end"}' >/dev/null
+"$LENS" lens '{"cmd":"discard"}' >/dev/null
 "$LENS" lens "{\"cmd\":\"voice-wav\",\"path\":\"$WAV\"}" >/dev/null
 
 : >"$OUT/note.txt"
@@ -65,7 +74,7 @@ PY
 WATCHER=$!
 
 # It must outlast the driven run.
-screencapture -v -V 40 "$OUT/dictation.mov" &
+screencapture -v -V 50 "$OUT/dictation.mov" &
 RECORDER=$!
 
 cat >"$OUT/script.txt" <<'SCRIPT'
@@ -83,17 +92,22 @@ wait 7000
 tap ropt
 wait 400
 lens {"cmd":"state"}
-mark refining
-wait 3000
+mark stopped
+# The helper finishes the last phrase (2.2 s cold at most so far), then the stand-in
+# answers after 1 s.
+expect "state":"refining"
+expect "note":"Pasted"
 lens {"cmd":"state"}
 mark pasted
+# The outcome hides after 3 s, so the warm pill is shown from hidden too.
+wait 4000
 # Warm: ↩ while attn refines pastes the raw text, and TextEdit never sees the ↩.
 tap ropt
 wait 7500
 tap ropt
-wait 400
+expect "state":"refining"
 tap return
-wait 1500
+expect "note":"Pasted as is"
 lens {"cmd":"state"}
 mark entered
 wait 3500
@@ -126,7 +140,8 @@ def check(ok, what):
         sys.exit(1)
 d = lambda mark: states[mark]["dictation"] or {}
 check(d("recording").get("state") == "recording", "right ⌥ starts a dictation: %s" % d("recording"))
-check(d("refining").get("state") == "refining", "right ⌥ again asks attn: %s" % d("refining"))
+# A cold helper may still be finishing the last phrase 400 ms after the key.
+check(d("stopped").get("state") in ("finishing", "refining"), "right ⌥ again stops recording: %s" % d("stopped"))
 check(d("pasted").get("note") == "Pasted", "attn's text pasted: %s" % d("pasted"))
 check(d("entered").get("note") == "Pasted as is", "↩ pasted the raw text: %s" % d("entered"))
 text = (out / "textedit.txt").read_text().strip()

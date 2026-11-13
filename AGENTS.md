@@ -43,7 +43,8 @@ This file's Glance rules still apply to the code that remains.
   use a stand-in `attn`; attn's `cmd/attn/send_stack_test.go` pins the real JSON.
 - `src/lens/dictation.rs`, `pill.rs`: the voice key with no capture open: the pill,
   `attn refine`, the one paste (`src/paste.rs`, from Hex, behind `PlatformPort::paste`)
-  and the hand-over to a capture. See `docs/dictation.md`.
+  and the hand-over to a capture. See `docs/dictation.md`. `LENS_DICTATION_LOG=1`
+  prints each step's time; `--pill-in-capture` lets a recording show the pill.
 - `src/lens/deliver.rs`: what Send delivers: the timeline message, the contact
   sheets and the frames, written only from `Document::export()`.
 - `src/lens/capture.rs`: stills through Hex's capture-core (ScreenCaptureKit).
