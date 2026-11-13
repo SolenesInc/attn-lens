@@ -1,0 +1,178 @@
+{
+ "row": "Draw / Pen",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "p"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "color-mint"
+  },
+  {
+   "t": 0.88,
+   "type": "tap",
+   "key": "thickness-value"
+  },
+  {
+   "t": 1.08,
+   "type": "type",
+   "text": "12",
+   "every": 0.01
+  },
+  {
+   "t": 1.15,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.27,
+   "type": "tap",
+   "key": "opacity-dec"
+  },
+  {
+   "t": 1.47,
+   "type": "tap",
+   "key": "cleanup-smooth"
+  },
+  {
+   "t": 1.67,
+   "type": "drag",
+   "dx": 120,
+   "dy": 80,
+   "dur": 0.05,
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 1.97,
+   "type": "mark",
+   "name": "drawn"
+  },
+  {
+   "t": 2.09,
+   "type": "tap",
+   "key": "cleanup-adaptive"
+  },
+  {
+   "t": 2.39,
+   "type": "mark",
+   "name": "cleanup-changed"
+  },
+  {
+   "t": 2.51,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 2.73,
+   "type": "mark",
+   "name": "cleanup-undone"
+  },
+  {
+   "t": 2.85,
+   "type": "key",
+   "name": "v"
+  },
+  {
+   "t": 2.97,
+   "type": "key",
+   "name": "p"
+  },
+  {
+   "t": 3.19,
+   "type": "mark",
+   "name": "defaults-kept"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "drawn",
+   "marks": [
+    {
+     "tool": "Pen",
+     "color": [
+      38,
+      182,
+      144,
+      230
+     ],
+     "width": 12,
+     "style": {
+      "cleanup": "smooth"
+     },
+     "selected": true
+    }
+   ],
+   "checked": [
+    "cleanup-smooth",
+    "color-mint"
+   ],
+   "value": {
+    "thickness-field": "12",
+    "opacity-field": "90"
+   }
+  },
+  {
+   "at": "cleanup-changed",
+   "marks": [
+    {
+     "tool": "Pen",
+     "style": {
+      "cleanup": "adaptive"
+     }
+    }
+   ],
+   "checked": [
+    "cleanup-adaptive"
+   ],
+   "unchecked": [
+    "cleanup-smooth"
+   ]
+  },
+  {
+   "at": "cleanup-undone",
+   "marks": [
+    {
+     "tool": "Pen",
+     "style": {
+      "cleanup": "smooth"
+     }
+    }
+   ]
+  },
+  {
+   "at": "defaults-kept",
+   "value": {
+    "thickness-field": "12"
+   },
+   "checked": [
+    "cleanup-adaptive"
+   ]
+  }
+ ]
+}

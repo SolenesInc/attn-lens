@@ -1,715 +1,378 @@
-use super::Editor;
-use super::actions::Action;
-use super::feedback::CopyFeedback;
-use crate::{document::Tool, menus};
-use gpui::{prelude::*, *};
-pub(super) struct HoverLabel(pub(super) SharedString);
-impl Render for HoverLabel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = crate::theme::Theme::get(cx);
-        div()
-            .px_3()
-            .py_2()
-            .rounded_md()
-            .bg(rgb(theme.tooltip))
-            .text_color(rgb(theme.tooltip_text))
-            .text_xs()
-            .shadow_md()
-            .child(crate::platform::shortcut_label(&self.0))
+//! The window: toolbar over canvas and sidebar.
+use super::{
+    CopyFeedback, Editor,
+    actions::{Action, AnimationFormat},
+    icons,
+};
+use crate::document::Tool;
+use rune::{Cursor, Cx, El, Icon, PopupItem, PopupMenu, col, el, icon, row, text, tok};
+
+const TOOLS: [(Tool, &str, &Icon, &str); 11] = [
+    (
+        Tool::Select,
+        "tool-select",
+        &icons::MOUSE_POINTER_2,
+        "Select (V)",
+    ),
+    (Tool::Pen, "tool-pen", &icons::PEN_LINE, "Draw (P)"),
+    (
+        Tool::Arrow,
+        "tool-arrow",
+        &icons::ARROW_UP_RIGHT,
+        "Arrow (A)",
+    ),
+    (Tool::Rectangle, "tool-rectangle", &icons::SQUARE, "Box (R)"),
+    (Tool::Text, "tool-text", &icons::TYPE, "Text (T)"),
+    (
+        Tool::Highlight,
+        "tool-highlight",
+        &icons::HIGHLIGHTER,
+        "Highlight (H)",
+    ),
+    (
+        Tool::Pixelate,
+        "tool-pixelate",
+        &icons::GRID_2X2,
+        "Pixelate (B)",
+    ),
+    (Tool::Crop, "tool-crop", &icons::CROP, "Crop (X)"),
+    (
+        Tool::Counter,
+        "tool-counter",
+        &icons::LIST_ORDERED,
+        "Step (N)",
+    ),
+    (
+        Tool::Spotlight,
+        "tool-spotlight",
+        &icons::SCAN,
+        "Spotlight (S)",
+    ),
+    (
+        Tool::Magnifier,
+        "tool-magnifier",
+        &icons::SEARCH,
+        "Magnifier (M)",
+    ),
+];
+
+fn toolbar(s: &Editor, cx: &Cx<Editor>) -> El {
+    let t = tok::theme(cx.system_dark());
+    let button =
+        |key: &str, label: &str, glyph: &'static Icon, toggle: Option<bool>, action: Action| {
+            super::panels::controls::icon_button(cx, key, label.to_string(), glyph, toggle, action)
+        };
+    let mut tools = row()
+        .gap(2.)
+        .center_y()
+        .children(
+            s.still
+                .map(|_| capture_button(cx, "back", "‹ Back", Action::BackToCapture)),
+        )
+        .child(
+            text("attn lens")
+                .font(tok::type_::SECTION)
+                .color(t.text)
+                .px(8.),
+        )
+        .child(button(
+            "open",
+            "Open image (⌘O)",
+            &icons::FOLDER_OPEN,
+            None,
+            Action::OpenImage,
+        ))
+        .child(el().w(1.).h(22.).fill(t.separator));
+    for (tool, key, glyph, label) in TOOLS {
+        tools = tools.child(button(
+            key,
+            label,
+            glyph,
+            Some(s.tool == tool),
+            Action::SelectTool(tool),
+        ));
     }
+    tools = tools
+        .child(el().w(1.).h(22.).fill(t.separator))
+        .child(button(
+            "backdrop-button",
+            "Backdrop",
+            &icons::SQUARE,
+            Some(s.panel == super::Panel::Backdrop),
+            Action::ToggleBackdrop,
+        ))
+        .child(button(
+            "animation-button",
+            "Animation",
+            &icons::PLAY,
+            Some(s.panel == super::Panel::Animation),
+            Action::ToggleAnimationPanel,
+        ))
+        .child(button(
+            "image-tools-button",
+            "Image tools",
+            &icons::MAXIMIZE,
+            Some(s.panel == super::Panel::Image),
+            Action::ToggleImageTools,
+        ));
+    let feedback = s.copy_feedback.map(|feedback| match feedback {
+        CopyFeedback::Copied => "Copied!",
+        CopyFeedback::ReadingText => "Reading text…",
+        CopyFeedback::TextCopied => "Text copied!",
+        CopyFeedback::NoText => "No text found",
+    });
+    let zoom = if s.doc.is_some() {
+        format!("{:.0}%", (s.layout().scale * 100.).round())
+    } else {
+        "—".into()
+    };
+    let actions = row()
+        .gap(2.)
+        .center_y()
+        .child(button(
+            "undo",
+            "Undo (⌘Z)",
+            &icons::UNDO_2,
+            None,
+            Action::Undo,
+        ))
+        .child(button(
+            "redo",
+            "Redo (⇧⌘Z)",
+            &icons::REDO_2,
+            None,
+            Action::Redo,
+        ))
+        .child(button(
+            "copy",
+            "Copy image (⌘C)",
+            &icons::COPY,
+            None,
+            Action::CopyImage,
+        ))
+        .child(button(
+            "copy-ocr",
+            "Copy as OCR",
+            &icons::SCAN_TEXT,
+            None,
+            Action::CopyOcr,
+        ))
+        .child(button(
+            "save",
+            "Save PNG (⌘S)",
+            &icons::SAVE,
+            None,
+            Action::SaveImage,
+        ))
+        .child(export_menu(s, cx))
+        .child(button(
+            "zoom-out",
+            "Zoom out (⌘−)",
+            &icons::ZOOM_OUT,
+            None,
+            Action::Zoom(0.8),
+        ))
+        .child(
+            el().key("zoom-label")
+                .role("button")
+                .label("Fit to window (⌘1)")
+                .a11y_value(zoom.clone())
+                .px(4.)
+                .center()
+                .cursor(Cursor::Pointer)
+                .on_press_tx(|s: &mut Editor, tx| s.dispatch_ui(Action::Fit, tx))
+                .child(
+                    text(zoom)
+                        .font(tok::type_::LABEL)
+                        .color(t.text_secondary)
+                        .inert(),
+                ),
+        )
+        .child(button(
+            "zoom-in",
+            "Zoom in (⌘=)",
+            &icons::ZOOM_IN,
+            None,
+            Action::Zoom(1.25),
+        ))
+        .children(feedback.map(|feedback| {
+            text(feedback)
+                .key("copy-feedback")
+                .font(tok::type_::LABEL)
+                .color(t.text)
+                .px(6.)
+                .live_region(rune::LiveRegion::Polite)
+        }));
+    row()
+        .key("toolbar")
+        .w_full()
+        .h(48.)
+        .pl(8. + cx.titlebar_inset())
+        .pr(8.)
+        .center_y()
+        .justify_between()
+        .fill(t.card)
+        .child(tools)
+        .child(
+            row().gap(8.).center_y().child(actions).children(
+                s.still
+                    .map(|_| capture_button(cx, "send-capture", "Send ↩", Action::SendCapture)),
+            ),
+        )
 }
-pub(super) fn icon(name: &'static str, color: u32) -> impl IntoElement {
-    svg()
-        .path(format!("icons/{name}.svg"))
-        .size(px(18.))
-        .flex_shrink_0()
-        .text_color(rgb(color))
+
+/// A toolbar button that belongs to the capture a still came from.
+fn capture_button(cx: &Cx<Editor>, key: &str, label: &str, action: Action) -> El {
+    let t = tok::theme(cx.system_dark());
+    el().key(key)
+        .h(32.)
+        .px(10.)
+        .center()
+        .radius(8.)
+        .fill(t.control_track)
+        .cursor(Cursor::Pointer)
+        .on_press_tx(move |s: &mut Editor, tx| s.dispatch_ui(action.clone(), tx))
+        .child(
+            text(label.to_string())
+                .font(tok::type_::LABEL)
+                .color(t.text)
+                .inert(),
+        )
 }
-impl Editor {
-    pub(super) fn tool_button(&self, tool: Tool, cx: &Context<Self>) -> impl IntoElement {
-        let theme = crate::theme::Theme::get(cx);
-        let (name, key) = match tool {
-            Tool::Select => ("mouse-pointer-2", "V"),
-            Tool::Pen => ("pen-line", "P"),
-            Tool::Arrow => ("arrow-up-right", "A"),
-            Tool::Rectangle => ("square", "R"),
-            Tool::Text => ("type", "T"),
-            Tool::Highlight => ("highlighter", "H"),
-            Tool::Pixelate => ("grid-2x2", "B"),
-            Tool::Crop => ("crop", "X"),
-            Tool::Counter => ("list-ordered", "N"),
-            Tool::Spotlight => ("scan", "S"),
-            Tool::Magnifier => ("search", "M"),
-        };
-        let active = self.interaction.tool == tool;
-        let label: SharedString = match tool {
-            Tool::Spotlight => "Spotlight · S · drag a focus area".into(),
-            Tool::Magnifier => "Magnifier · M · drag from detail to lens".into(),
-            _ => format!("{} · {}", tool.label(), key).into(),
-        };
-        let button =
-            div()
-                .id(SharedString::from(format!("tool-{name}")))
-                .debug_selector(move || format!("tool-{name}"))
-                .size(px(30.))
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_md()
-                .cursor_pointer()
-                .bg(rgb(if active {
-                    theme.accent_background
-                } else {
-                    theme.chrome
-                }))
-                .hover(|s| s.bg(rgb(theme.hover)))
-                .active(|s| s.bg(rgb(theme.pressed)))
-                .child(icon(
-                    name,
-                    if active {
-                        theme.accent
-                    } else {
-                        theme.secondary
-                    },
-                ))
-                .tooltip(move |_, cx| cx.new(|_| HoverLabel(label.clone())).into())
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.dispatch_ui(Action::SelectTool { tool }, cx)
-                }));
-        self.accessible_button(tool.label(), true, Action::SelectTool { tool }, button)
-    }
-    pub(super) fn compact_button(
-        &self,
-        label: &'static str,
-        name: &'static str,
-        active: bool,
-        cx: &Context<Self>,
-        action: Action,
-    ) -> impl IntoElement {
-        let theme = crate::theme::Theme::get(cx);
-        let button = div()
-            .id(label)
-            .size(px(30.))
-            .flex_shrink_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_md()
-            .cursor_pointer()
-            .bg(rgb(if active {
-                theme.accent_background
+
+/// Export PNG, MP4 or GIF, or cancel the export running.
+fn export_menu(s: &Editor, cx: &Cx<Editor>) -> El {
+    let t = tok::theme(cx.system_dark());
+    let exporting = s.export.is_some();
+    el().key("export")
+        .role("button")
+        .label("Export")
+        .help("Export PNG / MP4 / GIF • ⌘S saves PNG")
+        .size(32., 32.)
+        .radius(7.)
+        .center()
+        .cursor(Cursor::Pointer)
+        .hover(t.hover)
+        .press(t.press)
+        .on_press_tx(move |_: &mut Editor, tx| {
+            let menu = if exporting {
+                PopupMenu::new().item(PopupItem::new("cancel", "Cancel export"))
             } else {
-                theme.chrome
-            }))
-            .hover(|s| s.bg(rgb(theme.hover)))
-            .child(icon(
-                name,
-                if active {
-                    theme.accent
-                } else {
-                    theme.secondary
-                },
-            ))
-            .tooltip(move |_, cx| cx.new(|_| HoverLabel(label.into())).into())
-            .on_click(cx.listener({
-                let action = action.clone();
-                move |this, _, _, cx| this.dispatch_ui(action.clone(), cx)
-            }));
-        self.accessible_button(crate::platform::shortcut_label(label), true, action, button)
-    }
-    pub(super) fn button(
-        &self,
-        label: &str,
-        active: bool,
-        cx: &Context<Self>,
-        action: Action,
-    ) -> impl IntoElement {
-        let theme = crate::theme::Theme::get(cx);
-        let icon_name = if label.starts_with("Area") {
-            Some("scan")
-        } else if label.starts_with("Screen") {
-            Some("monitor")
-        } else if label == "Open" {
-            Some("folder-open")
-        } else if label == "Backdrop" {
-            Some("square")
-        } else if label == "Image tools" {
-            Some("sparkles")
-        } else if label.starts_with("Paste") {
-            Some("clipboard-paste")
-        } else if label.starts_with("Rotate") {
-            Some("rotate-cw")
-        } else if label.starts_with("Copy") {
-            Some("copy")
-        } else if label.starts_with("Export MP4") {
-            Some("video")
-        } else if label == "Cancel export" {
-            Some("square")
-        } else if label.starts_with("Save") {
-            Some("save")
-        } else {
-            None
-        };
-        let button = div()
-            .id(SharedString::from(label.to_string()))
-            .px_3()
-            .py_1()
-            .h(px(32.))
-            .flex()
-            .items_center()
-            .rounded_md()
-            .cursor_pointer()
-            .text_sm()
-            .bg(rgb(if active {
-                theme.accent_background
-            } else {
-                theme.surface
-            }))
-            .text_color(rgb(if active {
-                theme.accent
-            } else {
-                theme.secondary
-            }))
-            .hover(|s| s.bg(rgb(theme.hover)))
-            .active(|s| s.bg(rgb(theme.pressed)))
-            .gap_2()
-            .when_some(icon_name, |el, name| {
-                el.child(icon(
-                    name,
-                    if active {
-                        theme.accent
-                    } else {
-                        theme.secondary
-                    },
-                ))
-            })
-            .child(crate::platform::shortcut_label(label))
-            .on_click(cx.listener({
-                let action = action.clone();
-                move |this, _, _, cx| this.dispatch_ui(action.clone(), cx)
-            }));
-        self.accessible_button(crate::platform::shortcut_label(label), true, action, button)
-    }
-    fn export_progress(&self, progress: u32, cx: &Context<Self>) -> impl IntoElement {
-        let theme = crate::theme::Theme::get(cx);
-        let progress = progress.min(100);
-        let label = format!("Exporting animation… {progress}%");
-        div()
-            .id("export-progress")
-            .debug_selector(|| "export-progress".into())
-            .h(px(56.))
-            .flex_shrink_0()
-            .px_3()
-            .flex()
-            .items_center()
-            .gap_3()
-            .border_t_1()
-            .border_color(rgb(theme.border))
-            .bg(rgb(theme.surface))
+                PopupMenu::new()
+                    .item(PopupItem::new("png", "Save PNG…"))
+                    .item(PopupItem::new("mp4", "Export MP4…"))
+                    .item(PopupItem::new("gif", "Export GIF…"))
+            };
+            tx.popup_menu(menu, "export", |s: &mut Editor, picked, tx| {
+                let action = match picked {
+                    Some("png") => Action::SaveImage,
+                    Some("mp4") => Action::Export(AnimationFormat::Mp4),
+                    Some("gif") => Action::Export(AnimationFormat::Gif),
+                    Some("cancel") => Action::CancelExport,
+                    _ => return,
+                };
+                s.dispatch_ui(action, tx);
+            });
+        })
+        .child(icon(&icons::VIDEO, 18.).color(t.text).inert())
+}
+
+/// The bar along the bottom while an animation exports.
+fn export_progress(s: &Editor, cx: &Cx<Editor>) -> Option<El> {
+    let export = s.export.as_ref()?;
+    let t = tok::theme(cx.system_dark());
+    let accent = super::live::rgba(super::live::ACCENT);
+    let track = 220.;
+    Some(
+        row()
+            .key("export-progress")
+            .role("progressbar")
+            .label(format!("Exporting {}", export.format.label()))
+            .range_value(export.percent as f64, 0., 100.)
+            .w_full()
+            .h(34.)
+            .px(12.)
+            .gap(10.)
+            .center_y()
+            .fill(t.card)
             .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(div().text_xs().child(label))
+                text(format!(
+                    "Exporting {}… {}%",
+                    export.format.label(),
+                    export.percent
+                ))
+                .key("export-percent")
+                .font(tok::type_::LABEL)
+                .color(t.text),
+            )
+            .child(
+                el().w(track)
+                    .h(4.)
+                    .radius(2.)
+                    .fill(t.control_track)
                     .child(
-                        div()
-                            .id("export-progress-track")
-                            .debug_selector(|| "export-progress-track".into())
-                            .w_full()
-                            .h(px(6.))
-                            .rounded_full()
-                            .overflow_hidden()
-                            .bg(rgb(theme.pressed))
-                            .child(
-                                div()
-                                    .id("export-progress-fill")
-                                    .debug_selector(|| "export-progress-fill".into())
-                                    .h_full()
-                                    .w(relative(progress as f32 / 100.))
-                                    .bg(rgb(theme.positive_fill)),
-                            ),
-                    ),
+                        el().w(track * export.percent as f32 / 100.)
+                            .h(4.)
+                            .radius(2.)
+                            .fill(accent),
+                    )
+                    .inert(),
             )
-            .child(
-                div()
-                    .id("export-cancel")
-                    .debug_selector(|| "export-cancel".into())
-                    .child(self.button("Cancel export", false, cx, Action::CancelExport)),
-            )
-    }
+            .child(super::panels::controls::button(
+                cx,
+                "export-cancel",
+                "Cancel export",
+                true,
+                |s: &mut Editor, tx| s.dispatch_ui(Action::CancelExport, tx),
+            )),
+    )
 }
-impl Render for Editor {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = crate::theme::Theme::get(cx);
-        let tool_target = (
-            self.options_tool(),
-            self.interaction.selected,
-            self.interaction.text_session,
-        );
-        if self.tool_picker_target != Some(tool_target)
-            || self.panels.backdrop
-            || self.panels.enhance
-            || self.panels.animation
-        {
-            self.tool_color_picker
-                .update(cx, |picker, cx| picker.close_if_open(window, cx));
-        }
-        self.tool_picker_target = Some(tool_target);
-        if !self.panels.backdrop {
-            for picker in &self.color_pickers {
-                picker.update(cx, |picker, cx| picker.close_if_open(window, cx));
+
+pub fn view(s: &Editor, cx: &mut Cx<Editor>) -> El {
+    let t = tok::theme(cx.system_dark());
+    let root = col()
+        .key("editor")
+        .instant_changes()
+        .w_full()
+        .h_full()
+        .fill(t.bg)
+        .accepts_extensions(&["png", "jpg", "jpeg"])
+        .on_drop_files(|s: &mut Editor, paths, tx| {
+            if let Some(path) = paths.first() {
+                s.dispatch_ui(Action::OpenPath(path.clone()), tx);
             }
-        }
-        if !window.is_window_active() {
-            self.viewport.space_down = false;
-            self.viewport.zoom_down = false;
-            self.end_pan();
-        }
-        for image in self.preview.retired.drain(..) {
-            let _ = window.drop_image(image);
-        }
-        let dimensions = self.document.base.dimensions();
-        let output_dimensions = self
-            .document
-            .backdrop
-            .map_or(dimensions, |b| b.dimensions(dimensions));
-        let viewport = window.viewport_size();
-        let export_height = if self.video_export.progress.is_some() {
-            56.
-        } else {
-            0.
-        };
-        let fit_zoom = ((f32::from(viewport.width) - 260. - 80.) / output_dimensions.0 as f32)
-            .min(
-                (f32::from(viewport.height)
-                    - 48.
-                    - export_height
-                    - if self.ask.open { 190. } else { 70. })
-                    / output_dimensions.1 as f32,
-            )
-            .clamp(0.01, 1.);
-        let zoom_label = format!("{:.0}%", self.viewport.zoom.unwrap_or(fit_zoom) * 100.);
-        let tools = [
-            Tool::Select,
-            Tool::Pen,
-            Tool::Arrow,
-            Tool::Rectangle,
-            Tool::Text,
-            Tool::Highlight,
-            Tool::Pixelate,
-            Tool::Crop,
-            Tool::Counter,
-            Tool::Spotlight,
-            Tool::Magnifier,
-        ];
-        let contents = div()
-            .size_full()
-            .relative()
-            .flex()
-            .flex_col()
-            .bg(rgb(theme.chrome))
-            .text_color(rgb(theme.text))
-            .font_family(crate::platform::UI_FONT)
-            .track_focus(&self.focus)
-            .key_context(if self.interaction.text_edit.is_some() {
-                "GlanceText"
-            } else {
-                "GlanceCanvas"
-            })
-            .on_action(
-                cx.listener(|this, _: &menus::Open, _, cx| this.dispatch_ui(Action::OpenImage, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &menus::Save, _, cx| this.dispatch_ui(Action::SaveImage, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &menus::Copy, _, cx| this.dispatch_ui(Action::Copy, cx)),
-            )
-            .on_action(cx.listener(|this, _: &menus::CopyRemote, _, cx| {
-                this.dispatch_ui(Action::CopyRemote, cx)
-            }))
-            .on_action(
-                cx.listener(|this, _: &menus::Paste, _, cx| this.dispatch_ui(Action::Paste, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &menus::Undo, _, cx| this.dispatch_ui(Action::Undo, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &menus::Redo, _, cx| this.dispatch_ui(Action::Redo, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &menus::Delete, _, cx| this.dispatch_ui(Action::Delete, cx)),
-            )
-            .on_action(cx.listener(|this, _: &menus::CaptureArea, _, cx| {
-                this.dispatch_ui(Action::Capture { area: true }, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::CaptureScreen, _, cx| {
-                this.dispatch_ui(Action::Capture { area: false }, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::Fit, _, cx| this.dispatch_ui(Action::Fit, cx)))
-            .on_action(cx.listener(|this, _: &menus::ActualSize, _, cx| {
-                this.dispatch_ui(Action::ActualSize, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::ZoomIn, _, cx| {
-                this.dispatch_ui(Action::Zoom { factor: 1.25 }, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::ZoomOut, _, cx| {
-                this.dispatch_ui(Action::Zoom { factor: 0.8 }, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::Select, _, cx| {
-                this.dispatch_ui(Action::SelectTool { tool: Tool::Select }, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::Pen, _, cx| {
-                this.dispatch_ui(Action::SelectTool { tool: Tool::Pen }, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::Arrow, _, cx| {
-                this.dispatch_ui(Action::SelectTool { tool: Tool::Arrow }, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::Rectangle, _, cx| {
-                this.dispatch_ui(
-                    Action::SelectTool {
-                        tool: Tool::Rectangle,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|this, _: &menus::Text, _, cx| {
-                this.dispatch_ui(Action::SelectTool { tool: Tool::Text }, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::Highlight, _, cx| {
-                this.dispatch_ui(
-                    Action::SelectTool {
-                        tool: Tool::Highlight,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|this, _: &menus::Pixelate, _, cx| {
-                this.dispatch_ui(
-                    Action::SelectTool {
-                        tool: Tool::Pixelate,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|this, _: &menus::Crop, _, cx| {
-                this.dispatch_ui(Action::SelectTool { tool: Tool::Crop }, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::Counter, _, cx| {
-                this.dispatch_ui(
-                    Action::SelectTool {
-                        tool: Tool::Counter,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|this, _: &menus::Spotlight, _, cx| {
-                this.dispatch_ui(
-                    Action::SelectTool {
-                        tool: Tool::Spotlight,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|this, _: &menus::Magnifier, _, cx| {
-                this.dispatch_ui(
-                    Action::SelectTool {
-                        tool: Tool::Magnifier,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|this, _: &menus::ExportVideo, _, cx| {
-                this.dispatch_ui(
-                    Action::ExportAnimation {
-                        format: super::actions::AnimationFormat::Mp4,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|this, _: &menus::ExportGif, _, cx| {
-                this.dispatch_ui(
-                    Action::ExportAnimation {
-                        format: super::actions::AnimationFormat::Gif,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|this, _: &menus::Backdrop, _, cx| {
-                this.dispatch_ui(Action::ToggleBackdrop, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::ImageTools, _, cx| {
-                this.dispatch_ui(Action::ToggleEnhance, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::AskGlance, window, cx| {
-                this.dispatch_ui(Action::ToggleAskGlance, cx);
-                if this.ask.open {
-                    this.ask.input.read(cx).focus(window);
-                }
-            }))
-            .on_action(cx.listener(|this, _: &menus::ChatgptAccount, _, cx| {
-                this.dispatch_ui(Action::ToggleChatgptAccountMenu, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::CopyOcr, _, cx| {
-                this.dispatch_ui(
-                    Action::CopyOcr {
-                        rectangle: None,
-                        engine: None,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(
-                cx.listener(|this, _: &menus::Help, _, cx| this.dispatch_ui(Action::Help, cx)),
-            )
-            .on_action(cx.listener(|this, _: &menus::SelectAll, _, cx| {
-                this.dispatch_ui(Action::SelectAll, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menus::Duplicate, _, cx| {
-                this.dispatch_ui(Action::DuplicateSelection, cx)
-            }))
-            .on_key_down(cx.listener(Self::key))
-            .on_key_up(cx.listener(|this, e: &KeyUpEvent, _, cx| {
-                match e.keystroke.key.as_str() {
-                    "space" => {
-                        this.viewport.space_down = false;
-                        this.end_pan();
-                    }
-                    "z" => this.viewport.zoom_down = false,
-                    _ => {}
-                }
-                cx.notify();
-            }))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, e, _, cx| this.outside_text(e, cx)),
-            )
-            .on_mouse_move(cx.listener(|this, e, _, cx| this.motion(e, cx)))
-            .on_mouse_up(
-                MouseButton::Left,
-                cx.listener(|this, e, _, cx| this.finish(e, cx)),
-            )
-            .on_mouse_up(
-                MouseButton::Right,
-                cx.listener(|this, _, _, _| this.end_pan()),
-            )
+        })
+        .on_drop_rejected(|s: &mut Editor, _, _| {
+            s.status = "Drop a PNG or JPEG image.".into();
+        })
+        .on_key_up(|s: &mut Editor, event, _| s.on_key_up(event))
+        .children(s.state_probe())
+        .child(toolbar(s, cx))
+        .child(
+            row()
+                .w_full()
+                .grow(1.)
+                .min_h(0.)
+                .child(s.canvas_view(cx))
+                .child(s.sidebar(cx)),
+        )
+        .children(export_progress(s, cx));
+    // Always there, so a message never moves the canvas under the pointer.
+    root.child(
+        row()
+            .key("status-bar")
+            .w_full()
+            .h(26.)
+            .px(12.)
+            .center_y()
+            .fill(t.card)
             .child(
-                div()
-                    .h(px(48.))
-                    .flex_shrink_0()
-                    .px_3()
-                    .flex()
-                    .items_center()
-                    .gap(px(2.))
-                    .border_b_1()
-                    .border_color(rgb(theme.divider))
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(rgb(theme.accent_fill))
-                            .mr_2()
-                            .child("attn lens"),
-                    )
-                    .child(self.compact_button(
-                        "Send to attn · ⌘↩",
-                        "arrow-up-right",
-                        false,
-                        cx,
-                        Action::SendToAttn,
-                    ))
-                    .child(self.compact_button(
-                        "Screen · ⌘⌥3",
-                        "monitor",
-                        false,
-                        cx,
-                        Action::Capture { area: false },
-                    ))
-                    .child(self.compact_button(
-                        "Open · ⌘O",
-                        "folder-open",
-                        false,
-                        cx,
-                        Action::OpenImage,
-                    ))
-                    .child(div().w(px(1.)).h(px(18.)).mx_1().bg(rgb(theme.divider)))
-                    .children(tools.into_iter().map(|tool| self.tool_button(tool, cx)))
-                    .child(div().w(px(1.)).h(px(18.)).mx_1().bg(rgb(theme.divider)))
-                    .child(self.compact_button(
-                        "Backdrop",
-                        "square",
-                        self.panels.backdrop,
-                        cx,
-                        Action::ToggleBackdrop,
-                    ))
-                    .child(self.compact_button(
-                        "Animation",
-                        "play",
-                        self.panels.animation,
-                        cx,
-                        Action::ToggleAnimationPanel,
-                    ))
-                    .child(self.compact_button(
-                        "Image tools",
-                        "sparkles",
-                        self.panels.enhance,
-                        cx,
-                        Action::ToggleEnhance,
-                    ))
-                    .child(div().flex_1())
-                    .child(self.compact_button(
-                        "Copy · ⌘C",
-                        if self.feedback.copy == Some(CopyFeedback::Copied) {
-                            "check"
-                        } else {
-                            "copy"
-                        },
-                        false,
-                        cx,
-                        Action::CopyImage,
-                    ))
-                    .child(
-                        div()
-                            .id("copy-ocr")
-                            .debug_selector(|| "copy-ocr".into())
-                            .flex_shrink_0()
-                            .child(self.compact_button(
-                                if self.chatgpt.snapshot.ocr_engine
-                                    == crate::chatgpt::OcrEngine::Chatgpt
-                                {
-                                    "Copy as OCR · ChatGPT"
-                                } else {
-                                    "Copy as OCR · Recognize text offline"
-                                },
-                                if self.feedback.copy == Some(CopyFeedback::TextCopied) {
-                                    "check"
-                                } else {
-                                    "scan-text"
-                                },
-                                false,
-                                cx,
-                                Action::CopyOcr {
-                                    rectangle: None,
-                                    engine: None,
-                                },
-                            )),
-                    )
-                    .child(
-                        div()
-                            .id("copy-remote")
-                            .debug_selector(|| "copy-remote".into())
-                            .flex_shrink_0()
-                            .child(self.compact_button(
-                                "Copy (remote) · Upload to Glance · ⌘⇧C",
-                                if matches!(self.feedback.copy, Some(CopyFeedback::LinkCopied(_))) {
-                                    "check"
-                                } else {
-                                    "cloud-upload"
-                                },
-                                false,
-                                cx,
-                                Action::CopyRemote,
-                            )),
-                    )
-                    .child(self.export_menu(cx))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_3()
-                            .text_xs()
-                            .text_color(rgb(theme.secondary))
-                            .child(
-                                div()
-                                    .id("image-size")
-                                    .child(format!(
-                                        "{}×{}",
-                                        output_dimensions.0, output_dimensions.1
-                                    ))
-                                    .tooltip(|_, cx| {
-                                        cx.new(|_| HoverLabel("Image size in pixels".into())).into()
-                                    }),
-                            )
-                            .child(div().h(px(20.)).w(px(1.)).bg(rgb(theme.divider)))
-                            .child(
-                                div()
-                                    .id("header-zoom")
-                                    .debug_selector(|| "header-zoom".into())
-                                    .min_w(px(36.))
-                                    .cursor_pointer()
-                                    .child(zoom_label)
-                                    .tooltip(|_, cx| {
-                                        cx.new(|_| HoverLabel("Zoom · ⌘+/⌘− · Click to fit".into()))
-                                            .into()
-                                    })
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.dispatch_ui(Action::Fit, cx);
-                                    })),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .id("ai-controls")
-                            .debug_selector(|| "ai-controls".into())
-                            .flex_shrink_0()
-                            .flex()
-                            .items_center()
-                            .gap(px(2.))
-                            .ml_2()
-                            .pl_2()
-                            .border_l_1()
-                            .border_color(rgb(0xe5e5ec))
-                            .child(
-                                div()
-                                    .id("chatgpt-trigger")
-                                    .debug_selector(|| "chatgpt-trigger".into())
-                                    .relative()
-                                    .child(self.compact_button(
-                                        "ChatGPT account",
-                                        "account",
-                                        self.chatgpt.menu,
-                                        cx,
-                                        Action::ToggleChatgptAccountMenu,
-                                    ))
-                                    .child(
-                                        canvas(
-                                            {
-                                                let bounds = self.chatgpt.trigger_bounds.clone();
-                                                move |rect, _, _| bounds.set(rect)
-                                            },
-                                            |_, _, _, _| {},
-                                        )
-                                        .absolute()
-                                        .size_full(),
-                                    ),
-                            )
-                            .child(self.ask_button(
-                                "Ask Glance",
-                                true,
-                                true,
-                                Action::ToggleAskGlance,
-                                cx,
-                            )),
-                    ),
-            )
-            .child(self.canvas(window, cx))
-            .when(self.ask.open, |el| el.child(self.ask_bar(cx)))
-            .when_some(self.video_export.progress, |el, progress| {
-                el.child(self.export_progress(progress, cx))
-            })
-            .when_some(self.feedback.copy, |el, feedback| {
-                el.child(self.copy_confirmation(feedback, cx))
-            });
-        let contents = contents
-            .when(self.chatgpt.menu, |el| {
-                el.child(self.chatgpt_menu(window, cx))
-            })
-            .when(self.chatgpt.snapshot.welcome_pending, |el| {
-                el.child(self.chatgpt_welcome(cx))
-            });
-        self.accessibility.root(contents)
-    }
+                text(s.status.clone())
+                    .key("status")
+                    .font(tok::type_::LABEL)
+                    .color(t.text_secondary)
+                    .truncate()
+                    .live_region(rune::LiveRegion::Polite),
+            ),
+    )
 }

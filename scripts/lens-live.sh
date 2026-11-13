@@ -1,125 +1,149 @@
-#!/usr/bin/env bash
-# Drives a real Attn Lens on a real display through the orders that once broke
-# it, using the automation socket and a stand-in `attn`:
-#   reopen      capture, close, reopen from the tile
-#   recapture   capture, close, capture again
-#   retile      capture, mark, close, reopen, close (replaces the tile window)
-#   covers      the overlay covers its whole display, menu bar included
-#   twice       a second capture while one is being taken does nothing
-#   pair-esc    pairing finished after Esc still stores the token
-#   unlisted    after attn fails to list sessions, ↩ lists them again
-#   send-esc    a send finished after Esc marks the tile sent
-# Each sequence starts its own Lens and fails on a call that stops answering
-# (HANG), a process that exits (DIED), a wrong state (WRONG) or a new crash
-# report, which is copied into the output directory.
-#
-# Needs a signed bundle with Screen Recording access (./scripts/bundle.sh debug).
-# The overlay covers the display under the pointer for a few seconds per step.
-# The token lives in the Keychain under a throwaway account, removed at the end.
-# Usage: scripts/lens-live.sh [out-dir] [app path]
-set -uo pipefail
-OUT=${1:-$(mktemp -d -t lens-live)}
-APP=${2:-$(cd "$(dirname "$0")/.." && pwd)/target/Attn Lens.app}
+#!/bin/bash
+# The driven half of the live capture check, against the installed Attn Lens: the
+# picker, pass-through to a page, the keyboard's owner, drawing with the draw key,
+# corner handles and Send. Posts real keys, so run it through
+# `scripts/lens-vm.sh live OUT`; on a real Mac, only in a window agreed with the user
+# (LENS_DRIVER_WINDOW=agreed).
+#   scripts/lens-live.sh <output dir>
+# Writes driver.log, underlay.log, outline.log, receipts.txt and capture.mov. Sent
+# frames land where the `attn` on PATH puts them. The recording leaves out the ink
+# layer, handles and pickers, as every capture does. Exits non-zero on the first
+# thing that does not hold.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+OUT="${1:?usage: lens-live.sh <output dir>}"
+APP="$HOME/Applications/Attn Lens.app"
 LENS="$APP/Contents/MacOS/AttnLens"
-INSTANCE=lens-live-$$
-FAKE="$OUT/attn"
-mkdir -p "$OUT" "$FAKE"
-trap 'security delete-generic-password -s dev.attn.lens.sender -a "$INSTANCE" >/dev/null 2>&1' EXIT
+mkdir -p "$OUT"
 
-# The stand-in answers the three calls Lens makes. Files in its folder steer it:
-# list-fails makes `send sessions` fail, sessions.json is the list, and allow
-# and deliver release a waiting `send pair` and `send <session>`.
-cat >"$FAKE/attn" <<'EOF'
-#!/bin/sh
-dir=$(dirname "$0")
-wait_for() { while [ ! -e "$dir/$1" ]; do sleep 0.1; done; }
-case "$2" in
-  sessions)
-    read -r _
-    if [ -e "$dir/list-fails" ]; then echo "send sessions: attn is not running" >&2; exit 1; fi
-    cat "$dir/sessions.json" 2>/dev/null || echo '[]' ;;
-  pair)
-    echo '{"id":"p1","name":"Attn Lens","code":"4242","requested_at":"2026-11-03T00:00:00Z"}'
-    wait_for allow
-    echo '{"sender":{"id":"s","name":"Attn Lens","created_at":"2026-11-03T00:00:00Z"},"token":"tok-live"}' ;;
-  *)
-    read -r _
-    wait_for deliver
-    echo '{"id":"cap","attachments":[]}' ;;
-esac
-EOF
-chmod +x "$FAKE/attn"
+/usr/bin/swiftc -O tools/driver/driver.swift -o "$OUT/driver"
+/usr/bin/swiftc -O tools/driver/underlay.swift -o "$OUT/underlay"
+/usr/bin/swiftc -O tools/driver/outline.swift -o "$OUT/outline"
 
-lens() { # one automation call, 10 s budget
-  perl -e 'alarm 10; exec @ARGV' "$LENS" lens "$@" 2>&1
+UNDERLAY=
+RECORDER=
+finish() {
+    # A failed run keeps its logs; its recording is lost, since screencapture
+    # cannot stop early and still save (in the VM it hangs after SIGINT).
+    [ -z "$RECORDER" ] || kill -KILL "$RECORDER" 2>/dev/null || true
+    [ -z "$UNDERLAY" ] || kill "$UNDERLAY" 2>/dev/null || true
+    osascript -e 'if application id "dev.attn.lens" is running then tell application id "dev.attn.lens" to quit' || true
 }
+trap finish EXIT
 
-run() { # run <name> <step>...; a step is "label|args"
-  local name=$1; shift
-  local log="$OUT/$name.log" stamp="$OUT/.$name.start"
-  touch "$stamp"
-  env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin:/usr/sbin:/sbin TMPDIR="$TMPDIR" \
-    RUST_BACKTRACE=1 ATTN_INSTANCE="$INSTANCE" ATTN_BIN="$FAKE/attn" \
-    "$LENS" --automation >"$OUT/$name.stderr" 2>&1 &
-  local pid=$!
-  echo "pid $pid" >"$log"
-  for _ in $(seq 1 20); do lens state >/dev/null && break; sleep 0.5; done
-  local result=PASS reply="" code
-  for step in "$@"; do
-    local label=${step%%|*} args=${step#*|}
-    case $label in
-      wait) sleep "$args"; continue ;;
-      sh) eval "$args"; echo "sh: $args" >>"$log"; continue ;;
-      expect) # expect|<python expression over d, the last reply>
-        if ! python3 -c 'import json,sys; d=json.loads(sys.argv[2]); sys.exit(0 if eval(sys.argv[1]) else 1)' "$args" "$reply"; then
-          result="WRONG: expected $args"; break
-        fi
-        continue ;;
-    esac
-    reply=$(eval lens "$args"); code=$?
-    echo "$label [$code] ${reply:0:300}" >>"$log"
-    if [ $code -eq 142 ] || [[ "$reply" == *"temporarily unavailable"* ]]; then result="HANG at $label"; break; fi
-    if ! kill -0 $pid 2>/dev/null; then result="DIED at $label"; break; fi
-  done
-  kill -0 $pid 2>/dev/null && kill -9 $pid # the Lens this run started, and only it
-  wait $pid 2>/dev/null
-  sleep 3 # ReportCrash writes the report shortly after the process ends
-  local reports
-  reports=$(find ~/Library/Logs/DiagnosticReports -name "AttnLens-*.ips" -newer "$stamp")
-  if [ -n "$reports" ]; then
-    echo "$reports" | while read -r r; do cp "$r" "$OUT/$name-$(basename "$r")"; done
-    [ "$result" = PASS ] && result="CRASHED"
-    result="$result (crash report in $OUT)"
-  fi
-  echo "$name: $result"
-  [ "$result" = PASS ]
-}
+osascript -e 'if application id "dev.attn.lens" is running then tell application id "dev.attn.lens" to quit' \
+    -e 'repeat while application id "dev.attn.lens" is running' -e 'delay 0.1' -e 'end repeat'
+open "$APP" --args --automation
+until "$LENS" lens '{"cmd":"state"}' >/dev/null 2>&1; do sleep 0.1; done
 
-CLOSE="overlay '{\"type\":\"close\"}'"
-SEND="overlay '{\"type\":\"send\"}'"
-MARK="overlay '{\"type\":\"add_mark\",\"tool\":\"arrow\",\"points\":[[900,300],[700,200]]}'"
-SESSIONS='[{"agent":"claude","id":"s1","label":"local","state":"idle"}]'
-failed=0
-run reopen "capture|capture" "wait|2" "close|$CLOSE" "wait|2" "reopen|reopen" "wait|2" "state|state" || failed=1
-run recapture "capture|capture" "wait|2" "close|$CLOSE" "wait|2" "capture2|capture" "wait|2" "state|state" || failed=1
-run retile "capture|capture" "wait|2" "mark|$MARK" "close|$CLOSE" "wait|3" "reopen|reopen" "wait|2" \
-  "close2|$CLOSE" "wait|3" "state|state" || failed=1
-run covers "capture|capture" "wait|2" "state|state" \
-  "expect|d['overlay']['frame'] == [0, 0] + d['overlay']['display']" || failed=1
-run twice "capture|capture" "capture2|capture" "expect|d['started'] is False" "wait|2" "state|state" \
-  "expect|d['overlay'] is not None" || failed=1
-run pair-esc "capture|capture" "wait|2" "send|$SEND" "wait|1" "state|state" \
-  "expect|'4242' in d['overlay']['status']" "close|$CLOSE" "sh|touch $FAKE/allow" "wait|2" \
-  "sh|security find-generic-password -s dev.attn.lens.sender -a $INSTANCE >/dev/null && echo stored >$FAKE/stored" \
-  "capture2|capture" "wait|2" "state|state" "expect|d['overlay']['status'] == 'Ready'" || failed=1
-[ -e "$FAKE/stored" ] || { echo "pair-esc: WRONG: the token was not in the Keychain"; failed=1; }
-run unlisted "sh|touch $FAKE/list-fails" "capture|capture" "wait|2" "state|state" \
-  "expect|d['overlay']['status'].startswith('Unlisted')" \
-  "sh|rm $FAKE/list-fails; echo '$SESSIONS' >$FAKE/sessions.json" "send|$SEND" "wait|1" "state|state" \
-  "expect|d['overlay']['status'] == 'Ready' and d['overlay']['target'] == 's1'" || failed=1
-run send-esc "capture|capture" "wait|2" "send|$SEND" "state|state" \
-  "expect|d['overlay']['status'] == 'Sending'" "close|$CLOSE" "wait|1" "state|state" \
-  "expect|d['tile'] == {'sent_to': None}" "sh|touch $FAKE/deliver" "wait|2" "state|state" \
-  "expect|d['overlay'] is None and d['tile'] == {'sent_to': 'local'}" || failed=1
-echo "logs: $OUT"
-exit $failed
+# The page sits under the whole area, in global top-left points.
+"$OUT/underlay" 60 60 800 500 >"$OUT/underlay.log" &
+UNDERLAY=$!
+until grep -q ready "$OUT/underlay.log"; do sleep 0.1; done
+
+# It must outlast the driven run, which waits for it to finish and save.
+screencapture -v -V "${LENS_RECORD_SECONDS:-60}" "$OUT/capture.mov" &
+RECORDER=$!
+
+cat >"$OUT/script.txt" <<'SCRIPT'
+mark start
+watch-window Attn Lens
+tap rcmd
+await-window
+expect "picking":[
+tap esc
+expect "picking":null
+watch-window Attn Lens
+tap rcmd
+await-window
+expect "picking":[
+# A person points at the corner before pressing; a press the instant the picker
+# shows lands a point or two off.
+move 100 150
+wait 100
+drag 100 150 600 450 10 16
+expect "rect":[100.0,150.0,500.0,300.0]
+expect "bar":true
+expect "keys":"Bar"
+mark pick-done
+
+click 200 250
+wait 200
+scroll -40
+wait 200
+drag 150 250 450 250 10 16
+wait 200
+expect "input":"None"
+mark passed-through
+
+chord cmd+opt c
+expect "keys":"Bar"
+tap h
+tap i
+expect "message":"hi"
+mark typed
+
+down fn
+expect "input":"All"
+# The ink layer takes the pointer on Rune's next loop turn, which nothing outside
+# Lens can see; 30 ms was not enough on the VM under load. The real fn-to-ink time
+# is measured on the real Mac (C14, C15), not here.
+wait 300
+drag 200 200 400 200 8 16
+expect "marks":1
+wait 30
+down shift
+drag 200 300 300 380 8 16
+expect "marks":2
+up shift
+up fn
+expect "input":"None"
+mark drawn
+
+tap rcmd
+expect "cause":"hotkey"
+mark still
+
+drag 592 442 642 482 8 16
+expect "rect":[100.0,150.0,550.0,340.0]
+mark handle-moved
+# The top-left corner moves the area's origin, under the window that owns the drag.
+wait 100
+drag 108 158 88 148 8 16
+expect "rect":[80.0,140.0,570.0,350.0]
+mark top-left-moved
+
+lens {"cmd":"state"}
+chord cmd+opt return
+expect "state":"sent"
+expect "capture":null
+mark sent
+lens {"cmd":"state"}
+SCRIPT
+
+"$OUT/driver" --front "Attn Lens" --front underlay "$OUT/script.txt" | tee "$OUT/driver.log"
+wait "$RECORDER"
+RECORDER=
+
+# Each line the page must have heard while the draw key was up.
+for heard in click scroll selected; do
+    grep -q "underlay $heard" "$OUT/underlay.log" || {
+        echo "The page never heard: $heard" >&2
+        exit 1
+    }
+done
+# Drawing and typing in the bar must not reach the page.
+if grep -q "underlay typed" "$OUT/underlay.log"; then
+    echo "Typing meant for the bar reached the page." >&2
+    exit 1
+fi
+
+# Real ScreenCaptureKit stills, sent through the stand-in attn: no outline in any.
+sent="$(ls -td "$HOME/lens-check/sent"/*/ | head -1)"
+"$OUT/outline" "$sent"/*.png | tee "$OUT/outline.log"
+
+{
+    grep 'window-visible' "$OUT/driver.log"
+    grep ' mark ' "$OUT/driver.log"
+} >"$OUT/receipts.txt"
+cat "$OUT/receipts.txt"

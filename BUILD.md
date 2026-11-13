@@ -1,112 +1,87 @@
-# Building Glance
+# Building Attn Lens
 
-For a ready-to-run app, use the [release downloads](https://github.com/modem-dev/glance-desktop/releases/latest).
-The instructions below build from source using Rust and Cargo.
+Attn Lens builds on macOS 15 or later with Rust and Cargo. Development is verified
+on Apple Silicon.
 
-## macOS
+## Requirements
 
-Requires macOS 12+, Xcode Command Line Tools, and stable Rust from
-[rustup](https://rustup.rs/). Development is verified on Apple Silicon.
-The bundle includes AVFoundation video helpers and an offline Vision OCR helper.
+- Xcode Command Line Tools (`xcode-select --install`), for `swiftc` and the macOS SDK
+- Stable Rust from [rustup](https://rustup.rs/)
+- CMake, for the speech helper
+
+## Install from a checkout
 
 ```sh
-xcode-select --install # If Command Line Tools are missing.
-git clone https://github.com/modem-dev/glance-desktop.git
-cd glance-desktop
-./scripts/bundle.sh
+git clone https://github.com/SolenesInc/attn-lens.git
+cd attn-lens
+scripts/install.sh
 ```
 
-The first build creates a persistent local signing identity. If it stops with
-a certificate-trust message, review the setup script, run it once, and rebuild:
+`scripts/install.sh` builds a release bundle, replaces
+`~/Applications/Attn Lens.app`, quits the running copy and opens the new one. It
+signs with this Mac's Apple Development identity unless `GLANCE_CODESIGN_IDENTITY`
+names another, and refuses ad-hoc signing.
+
+## Build a bundle
+
+```sh
+./scripts/bundle.sh          # release
+./scripts/bundle.sh debug    # faster
+open "target/Attn Lens.app"
+```
+
+The bundle is `Attn Lens.app`, its executable `AttnLens`, its bundle id
+`dev.attn.lens`. It holds the video and OCR helpers from `native/` and the speech
+helper from `speech/`.
+
+`cargo run --locked` is useful for UI iteration; run a bundle build once first to
+compile the native helpers. Capture permissions need the signed bundle.
+
+## Signing
+
+macOS ties Screen Recording and Microphone grants to the signing identity, so
+every build should use the same one. With no identity named, the first build
+creates a persistent local one in
+`~/Library/Application Support/Glance/Signing` (`GLANCE_SIGNING_DIR` names another
+location); keep that directory across rebuilds. If the build stops with a
+certificate-trust message, review the setup script, run it once, and rebuild:
 
 ```sh
 ./scripts/trust-local-signing.sh
 ./scripts/bundle.sh
 ```
 
-This adds user-Keychain trust for the development certificate for code signing.
-The certificate and keychain live in
-`~/Library/Application Support/Glance/Signing`; keep that directory across rebuilds.
+This adds user-Keychain trust for the development certificate, for code signing
+only.
 
-Launch the bundle directly:
-
-```sh
-open target/Glance.app
-```
-
-To make it available through Spotlight or Raycast, link it into your Applications folder:
-
-```sh
-mkdir -p ~/Applications
-ln -s "$(pwd)/target/Glance.app" ~/Applications/Glance.app
-open ~/Applications/Glance.app
-```
-
-If that destination already exists, choose whether to keep it or replace it before
-creating the link. Rebuilding updates the linked app; quit and reopen to use it.
-
-### Capture permissions
-
-On first capture, grant Glance **Screen Recording** in **System Settings →
-Privacy & Security** (called **Screen & System Audio Recording** on newer macOS),
-then quit and reopen. On macOS 12, use **System Preferences → Security & Privacy → Privacy**.
-Use the same bundle path and signing identity for later builds.
-
-If capture fails despite an enabled grant, quit Glance, remove its entry with **−**,
-add your linked `Glance.app` with **+**, enable access, and reopen.
-Switching signing identities may require this again.
-
-### Build modes and signing
-
-Use `./scripts/bundle.sh debug` for a faster bundle. `cargo run --locked` is useful
-for UI iteration; run the bundle build once to compile the native video and OCR helpers.
-The packaged app gives capture permissions a consistent identity.
-
-To use an existing code-signing certificate:
+To use an existing certificate:
 
 ```sh
 GLANCE_CODESIGN_IDENTITY="Your code-signing certificate name" ./scripts/bundle.sh
 ```
 
-Keep the same certificate across builds. For an isolated packaging check, use a
-separate destination and ad-hoc signing:
+For an isolated packaging check, use a separate destination and ad-hoc signing:
 
 ```sh
-GLANCE_BUNDLE_DEST="$(pwd)/target/packaging-check/Glance.app" \
+GLANCE_BUNDLE_DEST="$(pwd)/target/packaging-check/Attn Lens.app" \
   GLANCE_CODESIGN_IDENTITY=- ./scripts/bundle.sh debug
 ```
 
-Ad-hoc signing can invalidate capture grants after rebuilding. Keep packaging
-checks separate from your installed app. Local development signing and release
-notarization are separate processes; see [release procedures](docs/development.md#releases).
+Ad-hoc signing invalidates capture grants on rebuild. Do not replace an installed
+app with an ad-hoc bundle.
 
-## Omarchy / Arch Linux
+## Permissions
 
-Install stable Rust through rustup, or use Arch's Rust package with these dependencies:
+On first capture, grant Attn Lens **Screen Recording** in **System Settings →
+Privacy & Security** (called **Screen & System Audio Recording** on newer macOS),
+then quit and reopen it. Use the same bundle path and signing identity for later
+builds.
 
-```sh
-sudo pacman -S --needed base-devel rust clang cmake \
-  fontconfig freetype2 libx11 libxcb libxkbcommon libxkbcommon-x11 \
-  wayland vulkan-icd-loader xdg-utils ttf-dejavu grim slurp wl-clipboard zenity ffmpeg
-git clone https://github.com/modem-dev/glance-desktop.git
-cd glance-desktop
-./scripts/package-linux.sh
-cd target/dist
-makepkg
-sudo pacman -U ./glance-desktop-*.pkg.tar.zst
-```
-
-Run `makepkg` as your normal user. The generated PKGBUILD verifies the archive's
-SHA-256 and installs both video helpers beside the executable. Local packaging
-uses the host architecture; published packages target x86_64.
-A working Vulkan GPU driver is required.
-
-For UI iteration, run `cargo run --locked`. Copy `native/linux/glance-video-*`
-to `target/` once to enable video helpers in Cargo builds.
-See the [Omarchy guide](docs/linux.md) for capture bindings and runtime troubleshooting.
+If capture fails despite an enabled grant, quit Lens, remove its entry with **−**,
+add the app with **+**, enable access, and reopen it.
 
 ## Checks
 
 Run the checks in [CONTRIBUTING.md](CONTRIBUTING.md#make-a-pull-request).
-[Development](docs/development.md) covers hooks, CI, and releases;
-[QA](QA.md) covers desktop acceptance and opt-in media tests.
+[Development](docs/development.md) covers hooks, CI and releases;
+[QA](QA.md) covers desktop acceptance and opt-in tests.

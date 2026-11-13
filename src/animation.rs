@@ -1,14 +1,9 @@
 //! Looping backdrops. Shader effects share a Metal renderer; foreground stays cached.
 use crate::backdrop::Backdrop;
-use gpui::{
-    Bounds, Pixels, Rgba, Window, linear_color_stop, linear_gradient, point, px, quad, rgb, size,
-};
 use image::{Pixel, RgbaImage};
 use std::f32::consts::TAU;
 mod entrance;
 pub use entrance::{AnimationControl, Entrance, ImageAnimation};
-mod composition_preview;
-pub use composition_preview::CompositionPreview;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -82,9 +77,6 @@ fn color(hex: u32) -> [u8; 3] {
 }
 fn mix(a: [u8; 3], b: [u8; 3], t: f32) -> [u8; 3] {
     std::array::from_fn(|i| (a[i] as f32 * (1. - t) + b[i] as f32 * t).round() as u8)
-}
-fn hex(c: [u8; 3]) -> u32 {
-    (c[0] as u32) << 16 | (c[1] as u32) << 8 | c[2] as u32
 }
 fn random(i: usize) -> f32 {
     let mut x = (i as u32).wrapping_mul(747796405).wrapping_add(2891336453);
@@ -218,86 +210,6 @@ fn soft_coverage(x: f32, y: f32) -> f32 {
     let bottom = table[(yi + 1) * N + xi] * (1. - tx) + table[(yi + 1) * N + xi + 1] * tx;
     top * (1. - ty) + bottom * ty
 }
-mod preview;
-pub use preview::Preview;
-pub fn paint(
-    b: Backdrop,
-    phase: f32,
-    bounds: Bounds<Pixels>,
-    radius: Pixels,
-    preview: &mut Preview,
-    playing: bool,
-    window: &mut Window,
-) {
-    if b.motion.uses_shader() {
-        if b.motion == Motion::Nebula {
-            // Keep space dark while the first worker frame is being prepared.
-            window.paint_quad(quad(
-                bounds,
-                px(0.),
-                rgb(0x070c1d),
-                px(0.),
-                rgb(0),
-                Default::default(),
-            ));
-        }
-        preview.paint(b, phase, bounds, radius, playing, window);
-        if b.motion != Motion::Nebula {
-            return;
-        }
-    }
-    let s = scene(b, phase);
-    if !b.motion.uses_shader() {
-        window.paint_quad(quad(
-            bounds,
-            px(0.),
-            linear_gradient(
-                180.,
-                linear_color_stop(rgb(hex(s.top)), 0.),
-                linear_color_stop(rgb(hex(s.bottom)), 1.),
-            ),
-            px(0.),
-            rgb(0),
-            Default::default(),
-        ));
-    }
-    let w = f32::from(bounds.size.width);
-    let h = f32::from(bounds.size.height);
-    let unit = w.min(h);
-    for d in s.discs {
-        let r = d.r * unit;
-        let c = rgb(hex(d.color));
-        if d.soft {
-            // GPUI's Metal shadow shader supplies continuous Gaussian blur.
-            let core = r * 0.45;
-            window.paint_shadows(
-                Bounds::new(
-                    bounds.origin + point(px(d.x * w - core), px(d.y * h - core)),
-                    size(px(core * 2.), px(core * 2.)),
-                ),
-                px(core).into(),
-                &[gpui::BoxShadow {
-                    color: Rgba { a: d.alpha, ..c }.into(),
-                    offset: point(px(0.), px(0.)),
-                    blur_radius: px(r * 0.18),
-                    spread_radius: px(0.),
-                }],
-            );
-            continue;
-        }
-        window.paint_quad(quad(
-            Bounds::new(
-                bounds.origin + point(px(d.x * w - r), px(d.y * h - r)),
-                size(px(r * 2.), px(r * 2.)),
-            ),
-            px(r),
-            Rgba { a: d.alpha, ..c },
-            px(0.),
-            c,
-            Default::default(),
-        ));
-    }
-}
 
 /// A constant foreground/shadow layer, reused by every exported frame.
 pub struct Renderer {
@@ -310,34 +222,53 @@ pub struct Renderer {
     transparent_background: bool,
 }
 impl Renderer {
-    pub fn new(source: &RgbaImage, mut b: Backdrop, max_edge: Option<u32>) -> Self {
-        let dimensions = b.dimensions(source.dimensions());
-        let source = b.extend_edges(source);
+    pub fn new(source: &RgbaImage, b: Backdrop, max_edge: Option<u32>) -> Self {
+        Self::build(source.dimensions(), Some(source), b, max_edge)
+    }
+
+    /// The background, colours and shadow for an image of `source` size, without the
+    /// image: the editor draws the image itself, over this layer.
+    pub fn backdrop(source: (u32, u32), b: Backdrop, max_edge: Option<u32>) -> Self {
+        Self::build(source, None, b, max_edge)
+    }
+
+    fn build(
+        source_size: (u32, u32),
+        source: Option<&RgbaImage>,
+        mut b: Backdrop,
+        max_edge: Option<u32>,
+    ) -> Self {
+        let dimensions = b.dimensions(source_size);
         let (w, h) = max_edge.map_or(dimensions, |cap| b.format.video_dimensions(dimensions, cap));
         let scale = (w as f32 / dimensions.0 as f32)
             .min(h as f32 / dimensions.1 as f32)
             .min(1.);
-        let source = if scale < 1. {
-            std::borrow::Cow::Owned(crate::enhance::resize(
-                &source,
-                (
-                    (source.width() as f32 * scale).round().max(1.) as u32,
-                    (source.height() as f32 * scale).round().max(1.) as u32,
-                ),
-                false,
-            ))
+        let extended = b.image_dimensions(source_size);
+        let size = if scale < 1. {
+            (
+                (extended.0 as f32 * scale).round().max(1.) as u32,
+                (extended.1 as f32 * scale).round().max(1.) as u32,
+            )
         } else {
-            source
+            extended
         };
+        let source = source.map(|source| {
+            let source = b.extend_edges(source);
+            if scale < 1. {
+                std::borrow::Cow::Owned(crate::enhance::resize(&source, size, false))
+            } else {
+                source
+            }
+        });
         b.padding = (b.padding as f32 * scale).round() as u32;
         b.inner_radius = (b.inner_radius as f32 * scale).round() as u32;
         b.shadow = (b.shadow as f32 * scale).round() as u32;
         let mut foreground = RgbaImage::new(w, h);
-        let frame = crate::backdrop::Frame::centered((w, h), source.dimensions());
+        let frame = crate::backdrop::Frame::centered((w, h), size);
         let (left, top) = frame.origin;
         let (left_f, top_f) = (left as f32, top as f32);
-        let sw = source.width() as f32;
-        let sh = source.height() as f32;
+        let sw = size.0 as f32;
+        let sh = size.1 as f32;
         for (x, y, p) in foreground.enumerate_pixels_mut() {
             let px = x as f32 + 0.5;
             let py = y as f32 + 0.5;
@@ -358,7 +289,12 @@ impl Renderer {
                     (0.22 * (-2. * (d / (blur * 0.6)).powi(2)).exp() * 255.).round() as u8,
                 ]);
             }
-            if x >= left && y >= top && x < left + source.width() && y < top + source.height() {
+            if let Some(source) = &source
+                && x >= left
+                && y >= top
+                && x < left + size.0
+                && y < top + size.1
+            {
                 let mut src = *source.get_pixel(x - left, y - top);
                 src[3] = (src[3] as f32
                     * crate::backdrop::coverage(crate::backdrop::distance(
@@ -402,23 +338,17 @@ impl Renderer {
         renderer.transparent_background = document.backdrop.is_none();
         renderer
     }
-    fn prepare_preview(&self) {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        if self.image_animation.enabled() {
-            // Warm the GPU's first dispatch behind the loading overlay.
-            let _ = entrance::gpu_preview_warmup(
-                &self.foreground,
-                self.image_animation.effect,
-                self.image_bounds,
-            );
-        }
-    }
     pub fn frame(&self, phase: f32) -> RgbaImage {
+        self.compose(phase, phase)
+    }
+    /// A frame with the entrance at phase `entrance` and the background at `phase`, so
+    /// a still can show the image revealed over the moving background as it is now.
+    pub fn compose(&self, entrance: f32, phase: f32) -> RgbaImage {
         let foreground = entrance::render_foreground(
             &self.foreground,
             self.image_animation,
             self.image_bounds,
-            phase * self.image_animation.seconds as f32,
+            entrance * self.image_animation.seconds as f32,
         );
         let s = scene(self.b, phase);
         let mut out = if self.b.motion.uses_shader() {

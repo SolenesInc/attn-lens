@@ -246,6 +246,7 @@ mod visual_qa {
             width: 2.,
             curve: None,
             text: String::new(),
+            drawn: None,
         });
         d.commit(crate::document::Mark {
             style: Default::default(),
@@ -255,6 +256,7 @@ mod visual_qa {
             width: 15.,
             curve: None,
             text: "2".into(),
+            drawn: None,
         });
         d.backdrop = Some(crate::backdrop::Backdrop {
             motion: crate::animation::Motion::Lava,
@@ -281,6 +283,7 @@ mod visual_qa {
         assert!(
             crate::video::encode(
                 &d,
+                &crate::video::encoder_path().unwrap(),
                 &dir.join("focus-demo.mp4"),
                 0.,
                 &AtomicBool::new(false),

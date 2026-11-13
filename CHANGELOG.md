@@ -6,28 +6,82 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
-- **Attn Lens**: ⌘⌥2 freezes the display under the pointer and opens an ink
-  layer with a Send bar. Drag for arrows, ⇧drag for boxes, ⌥T for labels, type a
-  message and press ↩ to send to an attn session, local or on an outpost. Tab
-  opens a palette of sessions grouped by host plus Copy, Save and Edit; ⌘E opens
-  the editor, and the editor's ⌘↩ sends from there. Lens pairs with attn once and
-  keeps the token in the Keychain. A sent or closed capture stays in a corner
-  tile you can reopen.
-- Missing Screen Recording access opens System Settings with a tile of the app
-  to drag into the list (from Hex, MIT).
-- Terminal commands for the running, opt-in editor: inspect, import, crop,
-  resize, annotate, change settings and export using shared UI/MCP validation.
-  Commands return JSON, expose help and schemas, and preserve native undo,
-  revision checks and safe exports. Plain `glance` still opens the editor.
+- **Attn Lens** dictation: with no capture open, right ⌥ (tap, or hold) dictates
+  into the app in front. A pill above the Dock shows the words, attn refines them
+  through `attn refine`, and the text pastes once at the cursor with the clipboard
+  put back. ↩ pastes the raw text at once, Esc cancels; a failed, late or
+  unreachable refinement pastes the raw text and says why. Right ⌘ during a
+  dictation turns it into a capture's voice. The Dock menu has Copy Last Dictation.
+
+- A capture's stills open in the editor from Edit or a thumbnail. Back returns to
+  the same live capture with the edit kept and undoable, and Send works from the
+  editor. After Send the capture shrinks to a corner tile that leaves after 5 s,
+  stays while hovered and reopens on click; after Esc its tile stays.
+- Attn Lens's Send now delivers one message with a timeline of stills, marks and
+  spoken words in time order, a numbered contact sheet per six stills, and every
+  still as a full-resolution PNG. One still with no speech sends one PNG and a
+  short message.
+- The editor is back on Rune: every tool and option, selection, undo, resize,
+  rotate and smart upscale, the color picker with Pick from screen, Copy as OCR,
+  inline text with input methods, native menus and accessibility. Images past 8192
+  pixels view downscaled and still save at full size. Pan with Space-drag or the
+  middle button; right-drag no longer pans.
+- The editor's Backdrop and Animation panels are back on Rune: formats, padding,
+  corners, shadow, solid, gradient and moving backgrounds, entrance effects with
+  Hold or Exit, playback, and GIF and MP4 export with progress and Cancel.
+- **Attn Lens**: a tap of right ⌘ alone, the capture key, opens a crosshair over the live screen: drag for an area,
+  click for the whole display, ↩ for the last area, Esc to cancel. The area stays
+  outlined for the whole capture, its corners adjust it, and the page under it
+  keeps working. Hold fn and drag to draw: a lone straight drag is an arrow, any other
+  stays freehand, strokes in quick succession stay as written, and ⇧ makes a box; the bar's tool row sets highlight, label or
+  counter for the next stroke. Type a message in the bar, or click the page to give
+  it the keys and ⌘⌥C to take them back. The capture key takes a still, × drops one, Tab opens a
+  palette of sessions, and ↩ or ⌘⌥↩ sends to an attn session, local or on an
+  outpost. Lens pairs with attn once and keeps the token in the Keychain.
+- Ink fades on its own when the screen moves under it: a scroll, a click, a window
+  switch, or most of the area changing. Clicks and window switches each take a still
+  first, and a send takes one more if the screen moved after the last.
+- Voice in Attn Lens: during a capture, tap right ⌥ to talk and again to stop, or
+  hold it and talk until you let go. What you say is transcribed on this Mac,
+  phrase by phrase, each with the time it was spoken. A key pressed with right ⌘
+  or right ⌥ (right ⌘+C, right ⌥+e) is left to the app in front. The first voice
+  downloads the speech model (731 MB) with its progress in the bar, which then
+  shows the model loading, the microphone starting and listening. Send waits for
+  the sentence you are finishing. Missing Microphone access opens System Settings.
+- Missing Screen Recording access opens System Settings at launch and on the capture key,
+  with a tile of the app to drag into the list (from Hex, MIT). The guide says Lens
+  is being set up, lists each access with why it is needed, and ends with quitting
+  and reopening Lens. Missing Accessibility, which the capture, voice and draw keys
+  need, opens the same guide at the Accessibility list.
 - The editor interface follows the system’s light or dark appearance, including
   changes while Glance is running. Image content and exported media keep their colors.
 
 ### Changed
 
+- Attn Lens now runs on Rune instead of GPUI. A tap of right ⌘ replaces ⌘⌥2 and starts a capture
+  of the display under the pointer; a Dock click opens the editor. The in-place
+  overlay and the full editor return in later changes.
+- Removed Ask Glance, glance.sh share links, the MCP server and the terminal commands.
 - Stills are taken in-process through ScreenCaptureKit instead of the
   `screencapture` tool, which avoids macOS 26's private window picker consent.
   The area selector is gone; crop in the editor. Requires macOS 15.
 - The app is Attn Lens (`dev.attn.lens`), and no window opens at launch.
+
+### Fixed
+
+- Sending from the editor, like every other way a capture ends, gives the keyboard
+  back to the app you were in, so you can keep typing without a click.
+- The editor's toolbar starts after the window buttons, so close, minimize and zoom
+  no longer cover Back and the title.
+- Attn Lens: Esc, Enter and Tab in the bar work after you click away and back,
+  without clicking the message field first.
+- Attn Lens's session chip cuts a long session label with "…" inside the chip and
+  keeps the host readable. The Tab palette shows states in words ("waiting for
+  you", "needs approval") and an outpost's name, or "outpost" and a short id
+  when attn has no name for it, instead of raw states and the full id.
+- The app menu reads "Attn Lens", from the bundle, rather than the executable's name.
+- Attn Lens: a drag started right after the area picker appears now always registers,
+  and captures no longer keep about 10 MB of memory each after they close.
 
 ## [0.5.0] - 2026-10-07
 

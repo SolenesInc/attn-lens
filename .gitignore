@@ -11,3 +11,4 @@
 *.p12
 *.pfx
 *.pem
+/speech/target

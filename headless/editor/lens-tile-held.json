@@ -1,0 +1,222 @@
+{
+ "row": "a lens sampled off the UI thread, and only when its source moves",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "mark",
+   "name": "jobs:hold"
+  },
+  {
+   "t": 0.68,
+   "type": "key",
+   "name": "m"
+  },
+  {
+   "t": 0.8,
+   "type": "down",
+   "x": 360,
+   "y": 381
+  },
+  {
+   "t": 0.92,
+   "type": "move",
+   "x": 390,
+   "y": 401
+  },
+  {
+   "t": 1.04,
+   "type": "move",
+   "x": 420,
+   "y": 421
+  },
+  {
+   "t": 1.16,
+   "type": "mark",
+   "name": "jobs:next"
+  },
+  {
+   "t": 1.38,
+   "type": "mark",
+   "name": "sampling"
+  },
+  {
+   "t": 1.5,
+   "type": "mark",
+   "name": "jobs:next"
+  },
+  {
+   "t": 1.72,
+   "type": "mark",
+   "name": "sampled"
+  },
+  {
+   "t": 1.84,
+   "type": "move",
+   "x": 450,
+   "y": 431
+  },
+  {
+   "t": 2.06,
+   "type": "mark",
+   "name": "lens-moved"
+  },
+  {
+   "t": 2.18,
+   "type": "up",
+   "x": 450,
+   "y": 431
+  },
+  {
+   "t": 2.3,
+   "type": "mark",
+   "name": "jobs:drain"
+  },
+  {
+   "t": 2.42,
+   "type": "key",
+   "name": "v"
+  },
+  {
+   "t": 2.54,
+   "type": "down",
+   "x": 450,
+   "y": 431
+  },
+  {
+   "t": 2.66,
+   "type": "move",
+   "x": 460,
+   "y": 441
+  },
+  {
+   "t": 2.78,
+   "type": "mark",
+   "name": "jobs:drain"
+  },
+  {
+   "t": 2.9,
+   "type": "move",
+   "x": 470,
+   "y": 451
+  },
+  {
+   "t": 3.02,
+   "type": "mark",
+   "name": "jobs:next"
+  },
+  {
+   "t": 3.24,
+   "type": "mark",
+   "name": "one-behind"
+  },
+  {
+   "t": 3.36,
+   "type": "mark",
+   "name": "jobs:next"
+  },
+  {
+   "t": 3.58,
+   "type": "mark",
+   "name": "caught-up"
+  },
+  {
+   "t": 3.7,
+   "type": "up",
+   "x": 470,
+   "y": 451
+  }
+ ],
+ "asserts": [
+  {
+   "at": "sampling",
+   "state": {
+    "lens": {
+     "shown": false,
+     "sampling": true
+    }
+   },
+   "absent": [
+    "lens"
+   ]
+  },
+  {
+   "at": "sampled",
+   "state": {
+    "lens": {
+     "shown": true,
+     "sampling": false,
+     "behind": false
+    }
+   },
+   "rect": {
+    "lens": [
+     360,
+     361,
+     120,
+     120
+    ]
+   }
+  },
+  {
+   "at": "lens-moved",
+   "state": {
+    "lens": {
+     "sampling": false,
+     "behind": false
+    }
+   },
+   "rect": {
+    "lens": [
+     390,
+     371,
+     120,
+     120
+    ]
+   }
+  },
+  {
+   "at": "one-behind",
+   "state": {
+    "lens": {
+     "shown": true,
+     "sampling": true,
+     "behind": true
+    }
+   },
+   "present": [
+    "lens"
+   ]
+  },
+  {
+   "at": "caught-up",
+   "state": {
+    "lens": {
+     "shown": true,
+     "sampling": false,
+     "behind": false
+    }
+   }
+  }
+ ]
+}

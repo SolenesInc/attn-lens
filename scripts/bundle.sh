@@ -6,6 +6,8 @@ MODE="${1:-release}"
 export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-15.0}"
 VERSION="$(sed -n '/^\[package\]/,/^\[/s/^version = "\([^"]*\)".*/\1/p' Cargo.toml)"
 if [ "$MODE" = "release" ]; then cargo build --release --locked; else cargo build --locked; fi
+# The speech helper links Metal and runs as a child of the app (D9 on the plan).
+cargo build --release --locked --manifest-path speech/Cargo.toml
 APP_DEST="${GLANCE_BUNDLE_DEST:-$(pwd)/target/Attn Lens.app}"
 mkdir -p "$(pwd)/target" "$(dirname "$APP_DEST")"
 BUILD_DIR="$(mktemp -d "$(pwd)/target/.glance-bundle.XXXXXX")"
@@ -30,12 +32,16 @@ iconutil -c icns target/Glance.iconset -o "$APP/Contents/Resources/$ICON_NAME"
 cp target/glance-ocr "$APP/Contents/MacOS/glance-ocr"
 cp target/glance-video-frame "$APP/Contents/MacOS/glance-video-frame"
 cp target/glance-video-encoder "$APP/Contents/MacOS/glance-video-encoder"
+cp "${CARGO_TARGET_DIR:-speech/target}/release/attn-speech" "$APP/Contents/MacOS/attn-speech"
+mkdir -p "$APP/Contents/Resources/speech-licenses"
+cp speech/LICENSES/* "$APP/Contents/Resources/speech-licenses/"
 cp assets/gpui/LICENSE-APACHE "$APP/Contents/Resources/GPUI-LICENSE"
+cp assets/rune/LICENSE "$APP/Contents/Resources/Rune-LICENSE"
 cp assets/lucide/LICENSE "$APP/Contents/Resources/Lucide-LICENSE"
 cp assets/fonts/LICENSE "$APP/Contents/Resources/Roboto-LICENSE"
 cp LICENSE "$APP/Contents/Resources/LICENSE"
 cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
-cp "${CARGO_TARGET_DIR:-target}/$MODE/glance" "$APP/Contents/MacOS/AttnLens"
+cp "${CARGO_TARGET_DIR:-target}/$MODE/attn-lens" "$APP/Contents/MacOS/AttnLens"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -51,6 +57,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSScreenCaptureUsageDescription</key><string>Attn Lens captures your screen so you can mark it up and send it to an agent.</string>
+<key>NSMicrophoneUsageDescription</key><string>Attn Lens transcribes what you say during a capture, on this Mac, and sends the words with it.</string>
 </dict></plist>
 PLIST
 /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile $ICON_NAME" "$APP/Contents/Info.plist"

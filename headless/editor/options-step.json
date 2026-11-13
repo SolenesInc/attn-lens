@@ -1,0 +1,144 @@
+{
+ "row": "Step",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "n"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "color-white"
+  },
+  {
+   "t": 0.88,
+   "type": "tap",
+   "key": "next-number-value"
+  },
+  {
+   "t": 1.08,
+   "type": "type",
+   "text": "7",
+   "every": 0.01
+  },
+  {
+   "t": 1.14,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.26,
+   "type": "tap",
+   "key": "badge-diameter-value"
+  },
+  {
+   "t": 1.46,
+   "type": "type",
+   "text": "72",
+   "every": 0.01
+  },
+  {
+   "t": 1.53,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.65,
+   "type": "tap",
+   "x": 360,
+   "y": 381
+  },
+  {
+   "t": 1.85,
+   "type": "tap",
+   "x": 420,
+   "y": 381
+  },
+  {
+   "t": 2.15,
+   "type": "mark",
+   "name": "placed"
+  },
+  {
+   "t": 2.27,
+   "type": "tap",
+   "key": "number-value"
+  },
+  {
+   "t": 2.47,
+   "type": "type",
+   "text": "42",
+   "every": 0.01
+  },
+  {
+   "t": 2.54,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 2.76,
+   "type": "mark",
+   "name": "renumbered"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "placed",
+   "marks": [
+    {
+     "tool": "Step",
+     "text": "7",
+     "width": 10,
+     "color": [
+      255,
+      255,
+      255,
+      255
+     ]
+    },
+    {
+     "tool": "Step",
+     "text": "8"
+    }
+   ],
+   "value": {
+    "number-field": "8"
+   }
+  },
+  {
+   "at": "renumbered",
+   "marks": [
+    {
+     "tool": "Step",
+     "text": "7"
+    },
+    {
+     "tool": "Step",
+     "text": "42"
+    }
+   ]
+  }
+ ]
+}

@@ -1,714 +1,363 @@
-//! The single entry point for application actions. Triggers only construct data.
-use super::{
-    Editor,
-    actions::{Action, ActionReceipt, AnimationFormat, Panel},
-};
+//! The single entry point for editor actions. Triggers only construct data.
+use super::{CopyFeedback, Editor, Message, NumberDraft, Operation, Panel, actions::Action};
 use crate::{
-    animation::Motion,
-    backdrop::{Control, PRESETS},
-    document::{Tool, actions::DocumentAction},
+    animation::{AnimationControl, Motion},
+    backdrop::{Backdrop, PRESETS},
+    document::{Document, Tool, actions::DocumentAction, actions::Selection},
+    style::Style,
 };
-use gpui::{Bounds, ClipboardItem, Context, point, px, size};
+use rune::{FileDialogOptions, Tx};
+use std::time::Duration;
+
+/// How long a Copied! confirmation stays in the toolbar.
+const FEEDBACK: Duration = Duration::from_secs(2);
 
 impl Editor {
-    /// UI adapters surface rejected actions in the status line.
-    pub(super) fn dispatch_ui(&mut self, action: Action, cx: &mut Context<Self>) {
-        if let Err(error) = self.dispatch(action, cx) {
-            self.feedback.status = error;
-            cx.notify();
+    /// For triggers with nowhere else to report: a refusal lands in the status line.
+    pub(crate) fn dispatch_ui(&mut self, action: Action, tx: &mut Tx) {
+        self.commit_number(tx);
+        if let Err(error) = self.dispatch(action, tx) {
+            self.status = error;
         }
+        self.follow_backdrop_picker();
+        self.request_frame();
     }
-    pub(crate) fn dispatch(
-        &mut self,
-        action: Action,
-        cx: &mut Context<Self>,
-    ) -> Result<ActionReceipt, String> {
-        if matches!(action, Action::Edit { .. })
-            && (self.interaction.text_edit.is_some() || self.interaction.gesture.is_active())
-        {
-            return Err(
-                "Finish the current text edit or gesture before editing the document.".into(),
-            );
-        }
-        if let Action::ApplyPreparedDocument { revision, .. } = &action
-            && (*revision != self.preview.revision
-                || self.interaction.gesture.is_active()
-                || self.interaction.text_edit.is_some())
-        {
-            return Err("Editor changed during operation. Read state and retry.".into());
-        }
-        let editing_text = self.interaction.text_edit.is_some();
-        let contextual_text = editing_text
+
+    pub(crate) fn dispatch(&mut self, action: Action, tx: &mut Tx) -> Result<(), String> {
+        validate(&action)?;
+        if self.still.is_some()
             && matches!(
                 action,
-                Action::Copy
-                    | Action::Cut
-                    | Action::Paste
-                    | Action::Undo
-                    | Action::Redo
-                    | Action::Delete
-                    | Action::SelectAll
-            );
-        if self.is_busy()
-            && !contextual_text
-            && !matches!(
-                action,
-                Action::Show
-                    | Action::CancelExport
-                    | Action::RevealExport
-                    | Action::Help
-                    | Action::Quit
-                    | Action::ClosePanel { .. }
-                    | Action::Cancel
-                    | Action::ToggleAskGlance
-                    | Action::CancelAskGlance
-                    | Action::ToggleChatgptAccountMenu
-                    | Action::SignOutChatgpt
-                    | Action::CancelChatgptSignIn
-                    | Action::ManageChatgptUsage
+                Action::OpenImage | Action::OpenPath(_) | Action::PasteImage
             )
         {
-            return Err("Editor is busy. Wait for the current operation to finish.".into());
+            return Err("This window is editing a still. Go Back to the capture first.".into());
         }
-        // Resolve revision-scoped selection IDs before committing text or canceling gestures.
-        let selection_indices = if let Action::SelectAnnotations { ids } = &action {
-            if self.interaction.text_edit.is_some() {
-                return Err("Finish the current text edit before selecting annotation IDs".into());
-            }
-            if ids.len() > 500 {
-                return Err("Maximum 500 selected annotations".into());
-            }
-            Some(
-                ids.iter()
-                    .map(|id| {
-                        let (revision, index) = id.split_once(':').ok_or("Invalid object id")?;
-                        let revision: u64 = revision.parse().map_err(|_| "Invalid revision")?;
-                        let index: usize = index.parse().map_err(|_| "Invalid index")?;
-                        if revision != self.preview.revision || index >= self.document.marks.len() {
-                            return Err("Stale object id; call get_document again".to_string());
-                        }
-                        Ok(index)
-                    })
-                    .collect::<Result<Vec<_>, String>>()?,
-            )
-        } else {
-            None
-        };
-        // Validate before committing text or canceling a gesture.
-        match &action {
-            Action::SetAskGlancePrompt { prompt }
-                if prompt.len() > crate::chatgpt::agent::MAX_PROMPT =>
-            {
-                return Err("Ask Glance prompts must be at most 8,000 bytes.".into());
-            }
-            Action::AskGlance { prompt } => {
-                crate::chatgpt::agent::validate_prompt(prompt)?;
-                if self.chatgpt.busy || !self.chatgpt.snapshot.can_infer() {
-                    return Err(
-                        "Continue with ChatGPT and choose a model to use Ask Glance.".into(),
-                    );
-                }
-                if self.interaction.text_edit.is_some() || self.interaction.gesture.is_active() {
-                    return Err(
-                        "Finish your annotation text or gesture before using Ask Glance.".into(),
-                    );
-                }
-            }
-            Action::CopyOcr { rectangle, engine } => {
-                crate::ocr::validate_rectangle(self.document.base.dimensions(), *rectangle)?;
-                if engine.unwrap_or(self.chatgpt.snapshot.ocr_engine)
-                    == crate::chatgpt::OcrEngine::Chatgpt
-                {
-                    if self.chatgpt.busy {
-                        return Err("Wait for the current ChatGPT account operation".into());
-                    }
-                    if !self.chatgpt.snapshot.can_infer() {
-                        return Err(
-                            "Continue with ChatGPT and choose an available model first".into()
-                        );
-                    }
-                }
-                if self.interaction.text_edit.is_some() || self.interaction.gesture.is_active() {
-                    return Err(
-                        "Finish the current annotation text or gesture before extracting text"
-                            .into(),
-                    );
-                }
-            }
-            Action::ToggleChatgptPicker { .. } if self.chatgpt.busy => {
-                return Err("Wait for the current ChatGPT account operation".into());
-            }
-            Action::ToggleChatgptPicker {
-                picker: super::chatgpt::Picker::Model,
-            } if (!self.ask.open
-                && self.chatgpt.snapshot.ocr_engine != crate::chatgpt::OcrEngine::Chatgpt)
-                || !self.chatgpt.snapshot.can_infer() =>
-            {
-                return Err(
-                    "Open Ask Glance or choose ChatGPT OCR before opening the model picker".into(),
-                );
-            }
-            Action::ChatgptSignIn { .. }
-            | Action::SelectChatgptAccount { .. }
-            | Action::SetChatgptModel { .. }
-            | Action::SetOcrEngine { .. }
-            | Action::SignOutChatgpt
-            | Action::DismissChatgptWelcome
-                if self.chatgpt.busy =>
-            {
-                return Err(
-                    "Wait for the current ChatGPT account operation or cancel sign-in".into(),
-                );
-            }
-            Action::ChatgptSignIn {
-                account_id: Some(id),
-            }
-            | Action::SelectChatgptAccount { account_id: id }
-                if !self.chatgpt.snapshot.accounts.iter().any(|a| &a.id == id) =>
-            {
-                return Err("Unknown ChatGPT account".into());
-            }
-            Action::SetChatgptModel { model }
-                if !self
-                    .chatgpt
-                    .snapshot
-                    .models
-                    .iter()
-                    .any(|m| &m.slug == model) =>
-            {
-                return Err("Choose a model available to this ChatGPT account".into());
-            }
-            Action::SetOcrEngine {
-                engine: crate::chatgpt::OcrEngine::Chatgpt,
-            } if !self.chatgpt.snapshot.can_infer() => {
-                return Err("Continue with ChatGPT and choose an available model first".into());
-            }
-            Action::SignOutChatgpt | Action::DismissChatgptWelcome
-                if self.chatgpt.snapshot.active_account.is_none() =>
-            {
-                return Err("No ChatGPT account selected".into());
-            }
-            Action::RandomizeMotion { .. }
-                if self
-                    .document
-                    .backdrop
-                    .or(self.panels.backdrop_disabled)
-                    .is_none_or(|b| b.motion == Motion::Still) =>
-            {
-                return Err("Choose a backdrop motion before randomizing it.".into());
-            }
-            Action::SetStrokeWidth { width }
-                if !width.is_finite() || !(0.5..=64.).contains(width) =>
-            {
-                return Err("Stroke width must be 0.5..64".into());
-            }
-            Action::SelectRegion { rectangle, .. }
-                if ![rectangle.0, rectangle.1, rectangle.2, rectangle.3]
-                    .iter()
-                    .all(|n| n.is_finite())
-                    || rectangle.2 < 0.
-                    || rectangle.3 < 0. =>
-            {
-                return Err(
-                    "Selection rectangle must have finite coordinates and nonnegative dimensions"
-                        .into(),
-                );
-            }
-            Action::SetAppearance { style } => style.validate()?,
-            Action::SampleToolColor { .. }
-            | Action::PickToolScreenColor
-            | Action::BeginToolColorSampling
-                if matches!(
-                    self.options_tool(),
-                    Tool::Select | Tool::Crop | Tool::Pixelate
-                ) =>
-            {
-                return Err("Select an annotation or a tool with a color option".into());
-            }
-            Action::SetImageAnimation { animation } => animation.validate()?,
-            Action::SelectEntrance { effect } => {
-                let mut animation = self.document.image_animation;
-                if !animation.enabled() {
-                    animation.seconds = self.document.animation_seconds();
-                }
-                animation.effect = *effect;
-                animation.validate()?;
-            }
-            Action::SetAnimationControl { control, value } => {
-                let mut animation = self.document.image_animation;
-                let (min, max, _) = control.range(animation);
-                if !(min..=max).contains(value) {
-                    return Err("Animation control out of range".into());
-                }
-                control.set(&mut animation, *value);
-                animation.validate()?;
-            }
-            Action::SeekAnimation { seconds }
-                if !seconds.is_finite()
-                    || !(0. ..=self.document.animation_seconds() as f32).contains(seconds) =>
-            {
-                return Err("Preview time must lie within the clip".into());
-            }
-            Action::BeginAnimationAdjustment {
-                track, position, ..
-            } if ![track.0, track.1, track.2, track.3, position.0, position.1]
-                .iter()
-                .all(|n| n.is_finite())
-                || track.2 <= 0.
-                || track.3 <= 0. =>
-            {
-                return Err("Invalid animation slider bounds".into());
-            }
-            Action::SetMagnifierZoom { zoom }
-                if !zoom.is_finite() || !(1.5..=4.).contains(zoom) =>
-            {
-                return Err("Magnification must be 1.5..4".into());
-            }
-            Action::SetCounterNumber { number } if !(1..=999).contains(number) => {
-                return Err("Step number must be 1..999".into());
-            }
-            Action::SetCropRatio { ratio: Some(ratio) }
-                if !ratio.is_finite() || !(0.1..=10.).contains(ratio) =>
-            {
-                return Err("Crop ratio must be 0.1..10".into());
-            }
-            Action::Resize { scale, .. } | Action::SetResizeScale { scale }
-                if !scale.is_finite() || !(0.1..=4.).contains(scale) =>
-            {
-                return Err("Resize scale must be 0.1..4".into());
-            }
-            Action::Zoom { factor } | Action::ZoomAt { factor, .. }
-                if !factor.is_finite() || *factor <= 0. =>
-            {
-                return Err("Zoom factor must be positive and finite".into());
-            }
-            Action::ZoomAt { anchor, .. }
-            | Action::NudgeSelection { delta: anchor, .. }
-            | Action::PanBy { delta: anchor }
-                if !anchor.0.is_finite() || !anchor.1.is_finite() =>
-            {
-                return Err("Coordinates must be finite".into());
-            }
-            Action::SetBackdropPreset { preset } if *preset >= PRESETS.len() => {
-                return Err("Invalid backdrop preset".into());
-            }
-            Action::SetBackdropColor { stop, .. }
-            | Action::SampleBackdropColor { stop, .. }
-            | Action::PickBackdropScreenColor { stop }
-            | Action::BeginBackdropColorSampling { stop }
-                if *stop > 1 =>
-            {
-                return Err("Backdrop color stop must be 0 or 1".into());
-            }
-            Action::SampleBackdropColor {
-                position: (x, y), ..
-            }
-            | Action::SampleToolColor { position: (x, y) }
-                if *x >= self.document.base.width() || *y >= self.document.base.height() =>
-            {
-                return Err("Sample position must be inside the source image".into());
-            }
-            Action::SetBackdrop { backdrop: Some(b) } => {
-                if b.preset >= PRESETS.len()
-                    || b.padding > 512
-                    || b.inner_radius > 256
-                    || b.inside_padding > 512
-                    || b.shadow > 128
-                    || !(2..=15).contains(&b.seconds)
-                {
-                    return Err("Backdrop values out of range".into());
-                }
-                let mut animation = self.document.image_animation;
-                animation.seconds = b.seconds;
-                animation.validate()?;
-            }
-            Action::SetBackdropControl { control, value } => {
-                if *value < control.min() || *value > control.max() {
-                    return Err("Backdrop control value out of range".into());
-                }
-                if *control == Control::Duration {
-                    let mut animation = self.document.image_animation;
-                    animation.seconds = *value;
-                    animation.validate()?;
-                }
-            }
-            Action::BeginBackdropAdjustment {
-                track, position, ..
-            } if ![track.0, track.1, track.2, track.3, position.0, position.1]
-                .iter()
-                .all(|n| n.is_finite())
-                || track.2 <= 0.
-                || track.3 <= 0. =>
-            {
-                return Err("Invalid slider bounds".into());
-            }
-            _ => {}
-        }
-        if !matches!(
+        let needs_image = !matches!(
             action,
-            Action::BeginBackdropColorSampling { .. }
-                | Action::SampleBackdropColor { .. }
-                | Action::BeginToolColorSampling
-                | Action::SampleToolColor { .. }
+            Action::OpenImage
+                | Action::OpenPath(_)
+                | Action::PasteImage
+                | Action::Cancel
+                | Action::Help
+                | Action::Quit
+                | Action::SelectTool(_)
+                | Action::SetRgb(_)
+                | Action::SetOpacity(_)
+                | Action::SetStrokeWidth(_)
+                | Action::SetAppearance(_)
+                | Action::SetMagnifierZoom(_)
+                | Action::SetCounterNumber(_)
+                | Action::SetCropRatio(_)
+                | Action::ToggleImageTools
+                | Action::ToggleColorPicker
+                | Action::PickScreenColor
+                | Action::SetResizeScale(_)
+                | Action::ToggleSmartResize
+        );
+        let needs_image =
+            needs_image && !matches!(action, Action::ClosePanel | Action::CancelExport);
+        if needs_image && self.doc.is_none() {
+            return Err("Open an image first.".into());
+        }
+        self.check_against_document(&action)?;
+        let harmless_while_busy = matches!(
+            action,
+            Action::Quit
+                | Action::Help
+                | Action::Cancel
                 | Action::Fit
                 | Action::ActualSize
-                | Action::Zoom { .. }
+                | Action::Zoom(_)
                 | Action::ZoomAt { .. }
-                | Action::PanBy { .. }
-                | Action::Show
-                | Action::CommitText
-        ) {
-            self.panels.sampling_color = None;
-            self.panels.sampling_tool_color = false;
+                | Action::PanBy(_)
+                | Action::CancelExport
+                | Action::TogglePlayback
+                | Action::ReplayAnimation
+                | Action::SeekAnimation(_)
+                | Action::ClosePanel
+        );
+        if self.is_busy() && !harmless_while_busy {
+            return Err("Editor is busy. Wait for the current operation to finish.".into());
         }
-        let previous_operation = self.operations.active.as_ref().map(|op| op.id);
         match action {
-            Action::Edit { edit } => self.edit_document(edit, cx)?,
-            Action::ApplyPreparedDocument {
-                document, replace, ..
-            } => {
-                self.document = *document;
-                self.set_selection(
-                    self.document
-                        .marks
-                        .len()
-                        .checked_sub(1)
-                        .into_iter()
-                        .collect(),
-                );
-                self.interaction.tool = Tool::Select;
-                if replace {
-                    self.viewport.zoom = None;
-                    self.viewport.pan = (0., 0.);
+            Action::OpenImage => {
+                self.commit_text(tx);
+                self.status = "Choose a PNG or JPEG…".into();
+                let options = FileDialogOptions {
+                    title: "Open an image".into(),
+                    ..Default::default()
                 }
-                self.playback.position = 0.;
-                self.playback.epoch = std::time::Instant::now();
-                self.preview.mark_count = usize::MAX;
-                self.changed();
-            }
-            Action::Show => crate::platform::show_editor(cx),
-            Action::Capture { area } => self.capture(area, cx)?,
-            Action::SendToAttn => {
-                self.commit_text(cx);
-                #[cfg(target_os = "macos")]
-                {
-                    let document = self.document.render_snapshot();
-                    cx.defer(move |cx| crate::lens::send_from_editor(&document, cx));
-                }
-                #[cfg(not(target_os = "macos"))]
-                return Err("Send to attn needs macOS".into());
-            }
-            Action::OpenImage => self.open(cx),
-            Action::OpenPath { path } => self.open_path(path, cx),
-            Action::SaveImage => self.export(true, cx),
-            Action::CopyImage => self.export(false, cx),
-            Action::CopyRemote => self.copy_remote(cx),
-            Action::PasteImage => self.paste_image(cx),
-            Action::CopyOcr { rectangle, engine } => {
-                self.cancel_gesture();
-                let rectangle =
-                    crate::ocr::validate_rectangle(self.document.base.dimensions(), rectangle)?;
-                let engine = engine.unwrap_or(self.chatgpt.snapshot.ocr_engine);
-                let revision = self.preview.revision;
-                let image = self.document.base.clone();
-                let id = self
-                    .start_operation(super::jobs::OperationKind::Ocr)
-                    .ok_or("Editor is busy")?;
-                self.extraction = None;
-                self.feedback.status = if engine == crate::chatgpt::OcrEngine::Chatgpt {
-                    "Reading text with ChatGPT · Using ChatGPT plan…"
-                } else {
-                    "Reading text locally…"
-                }
-                .into();
-                self.set_copy_feedback(Some(super::feedback::CopyFeedback::ReadingText), cx);
-                let runtime = self.chatgpt.runtime.clone();
-                if engine == crate::chatgpt::OcrEngine::Chatgpt {
-                    self.chatgpt.inference_cancel =
-                        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                }
-                let cancel = self.chatgpt.inference_cancel.clone();
-                let account = self
-                    .chatgpt
-                    .snapshot
-                    .active_account
-                    .clone()
-                    .unwrap_or_default();
-                let model = self.chatgpt.snapshot.model.clone().unwrap_or_default();
-                #[cfg(not(test))]
-                let recognize = crate::ocr::extract;
-                #[cfg(test)]
-                let recognize = self.recognize_text;
-                self.spawn_operation(id, move || {
-                    let result = if engine == crate::chatgpt::OcrEngine::Chatgpt {
-                        runtime
-                            .lock()
-                            .map_err(|_| "ChatGPT account service stopped".to_string())
-                            .and_then(|mut service| {
-                                service.recognize(&image, rectangle, &account, &model, &cancel)
-                            })
-                    } else {
-                        recognize(&image, Some(rectangle))
-                    };
-                    let result = if engine == crate::chatgpt::OcrEngine::Chatgpt
-                        && cancel.load(std::sync::atomic::Ordering::Relaxed)
-                    {
-                        Err("ChatGPT OCR canceled".into())
-                    } else {
-                        result
-                    };
-                    super::jobs::OperationResult::ExtractedText {
-                        revision,
-                        rectangle,
-                        result,
-                        engine,
-                    }
+                .filter("Images", &["png", "jpg", "jpeg"]);
+                tx.open_file(options, |s: &mut Editor, result, tx| match result {
+                    Ok(Some(path)) => s.dispatch_ui(Action::OpenPath(path), tx),
+                    Ok(None) => s.status.clear(),
+                    Err(error) => s.status = error.to_string(),
                 });
             }
-            Action::ToggleAskGlance => {
-                if self.ask.open {
-                    self.cancel_ask(cx);
+            Action::OpenPath(path) => {
+                self.commit_text(tx);
+                let id = self.start(Operation::Load);
+                let mailbox = self.mailbox.clone();
+                self.port.run(Box::new(move || {
+                    let result = crate::platform::load(&path).map(fresh);
+                    mailbox.post(Message::Replaced { id, result });
+                }));
+            }
+            Action::PasteImage => {
+                self.commit_text(tx);
+                let id = self.start(Operation::Paste);
+                let (mailbox, port) = (self.mailbox.clone(), self.port.clone());
+                self.port.run(Box::new(move || {
+                    let result = port.clipboard_image().map(fresh);
+                    mailbox.post(Message::Replaced { id, result });
+                }));
+            }
+            Action::SaveImage => {
+                self.commit_text(tx);
+                let options = FileDialogOptions {
+                    title: "Save annotated screenshot".into(),
+                    file_name: Some(format!("Screenshot {}.png", timestamp())),
+                    directory: crate::platform::pictures_folder(),
+                    ..Default::default()
                 }
-                self.ask.open = !self.ask.open;
-                self.chatgpt.menu = false;
-                self.chatgpt.picker = None;
+                .filter("PNG", &["png"]);
+                self.status = "Choose where to save…".into();
+                tx.save_file(options, |s: &mut Editor, result, _| match result {
+                    Ok(Some(path)) => s.save_to(path),
+                    Ok(None) => s.status.clear(),
+                    Err(error) => s.status = error.to_string(),
+                });
             }
-            Action::SetAskGlancePrompt { prompt } => {
-                self.ask
-                    .input
-                    .update(cx, |input, cx| input.set_text(&prompt, cx));
-                self.ask.prompt = prompt;
+            Action::CopyImage => {
+                self.commit_text(tx);
+                let id = self.start(Operation::Copy);
+                self.status = "Copying…".into();
+                let document = self.doc().render_snapshot();
+                let phase = self.export_phase();
+                let (mailbox, port) = (self.mailbox.clone(), self.port.clone());
+                self.port.run(Box::new(move || {
+                    let result = port.copy_image(document.export_frame(phase.0, phase.1));
+                    mailbox.post(Message::Copied { id, result });
+                }));
             }
-            Action::AskGlance { prompt } => self.start_ask(prompt, cx)?,
-            Action::CancelAskGlance => self.cancel_ask(cx),
-            Action::CopyAskGlanceAnswer => {
-                if self.ask.answer.is_empty() {
-                    return Err("Ask Glance has no answer to copy.".into());
-                }
-                cx.write_to_clipboard(ClipboardItem::new_string(self.ask.answer.clone()));
+            Action::CopyOcr => {
+                self.commit_text(tx);
+                self.cancel_gesture();
+                let id = self.start(Operation::Ocr);
+                self.status = "Reading text locally…".into();
+                self.copy_feedback = Some(CopyFeedback::ReadingText);
+                let image = self.doc().base.clone();
+                let revision = self.revision;
+                let (mailbox, port) = (self.mailbox.clone(), self.port.clone());
+                self.port.run(Box::new(move || {
+                    let text = port.ocr(&image, None);
+                    mailbox.post(Message::Recognized { id, revision, text });
+                }));
             }
-            Action::ToggleChatgptAccountMenu => {
-                self.chatgpt.menu = !self.chatgpt.menu;
-                self.chatgpt.picker = None;
+            Action::Undo | Action::Redo => {
+                self.commit_text(tx);
+                self.cancel_gesture();
+                self.edit(
+                    if action == Action::Undo {
+                        DocumentAction::Undo
+                    } else {
+                        DocumentAction::Redo
+                    },
+                    tx,
+                );
             }
-            Action::ToggleChatgptPicker { picker } => self.toggle_chatgpt_picker(picker, cx),
-            Action::ChatgptSignIn { account_id } => {
-                self.chatgpt_job(super::chatgpt::Job::SignIn(account_id), cx)?
+            Action::Delete => {
+                self.cancel_gesture();
+                let deletions = self.selected_indices();
+                self.edit(
+                    DocumentAction::EditAnnotations {
+                        updates: vec![],
+                        additions: vec![],
+                        deletions,
+                        remember: true,
+                    },
+                    tx,
+                );
             }
-            Action::CancelChatgptSignIn => {
-                if self.chatgpt.signing_in {
-                    self.chatgpt
-                        .cancel
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                    self.chatgpt.status = "Canceling ChatGPT sign-in…".into();
-                }
+            Action::DuplicateSelection => {
+                self.cancel_gesture();
+                let additions = self
+                    .selected_indices()
+                    .into_iter()
+                    .map(|index| {
+                        let mut mark = self.doc().marks[index].clone();
+                        mark.translate(10., 10.);
+                        mark.drawn = None;
+                        mark
+                    })
+                    .collect();
+                self.edit(
+                    DocumentAction::EditAnnotations {
+                        updates: vec![],
+                        additions,
+                        deletions: vec![],
+                        remember: true,
+                    },
+                    tx,
+                );
             }
-            Action::SelectChatgptAccount { account_id } => {
-                self.chatgpt_job(super::chatgpt::Job::Account(account_id), cx)?
-            }
-            Action::SignOutChatgpt => {
-                self.cancel_ask(cx);
-                self.chatgpt
-                    .inference_cancel
-                    .store(true, std::sync::atomic::Ordering::Relaxed);
-                self.chatgpt_job(super::chatgpt::Job::SignOut, cx)?;
-            }
-            Action::SetOcrEngine { engine } => {
-                self.chatgpt_job(super::chatgpt::Job::Engine(engine), cx)?
-            }
-            Action::SetChatgptModel { model } => {
-                self.chatgpt_job(super::chatgpt::Job::Model(model), cx)?
-            }
-            Action::ManageChatgptUsage => cx.open_url("https://chatgpt.com/settings/usage"),
-            Action::DismissChatgptWelcome => self.chatgpt_job(super::chatgpt::Job::Welcome, cx)?,
-            Action::Copy
-            | Action::Cut
-            | Action::Paste
-            | Action::Undo
-            | Action::Redo
-            | Action::Delete
-            | Action::SelectAll
-                if contextual_text =>
-            {
-                let edit = self.interaction.text_edit.as_mut().unwrap();
-                match action {
-                    Action::Copy | Action::Cut => {
-                        let range = edit.buffer.selection();
-                        if !range.is_empty() {
-                            cx.write_to_clipboard(ClipboardItem::new_string(
-                                edit.buffer.text()[range].into(),
-                            ));
-                            if matches!(action, Action::Cut) {
-                                edit.replace_text("");
-                            }
-                        }
-                    }
-                    Action::Paste => {
-                        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-                            edit.replace_text(&text);
-                        }
-                    }
-                    Action::Undo | Action::Redo => {
-                        edit.buffer.history(matches!(action, Action::Redo))
-                    }
-                    Action::Delete => edit.buffer.delete(false),
-                    Action::SelectAll => edit.buffer.select_all(),
-                    _ => unreachable!(),
-                }
-                edit.caret_on = true;
-            }
-            Action::Copy => self.export(false, cx),
-            Action::Cut => return Err("Cut requires an active text edit".into()),
-            Action::Paste => self.paste_image(cx),
-            Action::Undo => self.history(false, cx),
-            Action::Redo => self.history(true, cx),
-            Action::Delete => self.delete_selected(cx),
-            Action::DuplicateSelection => self.duplicate_selected(cx),
             Action::SelectAll => {
-                self.commit_text(cx);
+                self.commit_text(tx);
                 self.cancel_gesture();
-                self.interaction.tool = Tool::Select;
-                self.panels.animation = false;
-                self.set_selection((0..self.document.marks.len()).collect());
+                self.tool = Tool::Select;
+                self.set_selection((0..self.doc().marks.len()).collect());
             }
-            Action::SelectAnnotations { .. } => {
-                self.commit_text(cx);
+            Action::SelectTool(tool) => {
+                self.commit_text(tx);
                 self.cancel_gesture();
-                self.interaction.tool = Tool::Select;
-                self.panels.animation = false;
-                self.set_selection(selection_indices.unwrap());
+                self.set_selection(vec![]);
+                self.status.clear();
+                self.tool = tool;
+                self.panel = Panel::Tool;
+                self.picker.open = false;
             }
-            Action::SelectRegion {
-                rectangle,
-                additive,
-            } => {
-                self.commit_text(cx);
+            Action::SetRgb(rgb) => {
+                self.color_option()?;
+                self.prepare_option_edit(tx);
+                self.defaults[self.options_tool().index()].color[..3].copy_from_slice(&rgb);
+                let remember = !self.picker.continuing;
+                self.update_selected(remember, |mark| mark.color[..3].copy_from_slice(&rgb), tx);
+                if !self.picker.continuing {
+                    self.picker.sync(rgb);
+                }
+            }
+            Action::SetOpacity(alpha) => {
+                self.color_option()?;
+                self.prepare_option_edit(tx);
+                self.defaults[self.options_tool().index()].color[3] = alpha;
+                self.update_selected(true, |mark| mark.color[3] = alpha, tx);
+            }
+            Action::SetStrokeWidth(width) => {
+                self.prepare_option_edit(tx);
+                self.defaults[self.options_tool().index()].width = width;
+                self.update_selected(true, |mark| mark.width = width, tx);
+            }
+            Action::SetAppearance(style) => {
+                self.prepare_option_edit(tx);
+                self.defaults[self.options_tool().index()].style = style;
+                self.update_selected(true, |mark| mark.style = style, tx);
+            }
+            Action::SetMagnifierZoom(zoom) => {
+                if self.options_tool() != Tool::Magnifier {
+                    return Err("Choose a magnifier first".into());
+                }
                 self.cancel_gesture();
-                self.interaction.tool = Tool::Select;
-                self.panels.animation = false;
-                self.select_region(rectangle, additive);
+                self.defaults[Tool::Magnifier.index()].magnification = zoom;
+                self.update_primary(|mark| mark.text = zoom.to_string(), tx);
             }
-            Action::SelectTool { tool } => self.set_tool(tool, cx),
-            Action::SetColor { color } => {
-                self.interaction.color = color;
-                self.apply_style(true, cx);
-            }
-            Action::SampleToolColor { position: (x, y) } => {
-                let pixel = self.document.base.get_pixel(x, y).0;
-                let mut color = self.tool_settings().color;
-                color[..3].copy_from_slice(&pixel[..3]);
-                self.interaction.color = color;
-                self.apply_style(true, cx);
-                self.panels.sampling_tool_color = false;
-            }
-            Action::BeginToolColorSampling => {
-                self.commit_text(cx);
+            Action::SetCounterNumber(number) => {
+                if self.options_tool() != Tool::Counter {
+                    return Err("Choose a step first".into());
+                }
                 self.cancel_gesture();
-                self.panels.sampling_color = None;
-                self.panels.sampling_tool_color = true;
-                self.feedback.status =
-                    "Click a pixel in the image to pick its color • Escape to cancel".into();
+                if self.selected.is_empty() {
+                    self.next_counter = Some(number);
+                } else {
+                    self.update_primary(|mark| mark.text = number.to_string(), tx);
+                }
             }
-            Action::PickToolScreenColor => self.pick_screen_color(None, cx)?,
-            Action::SetStrokeWidth { width } => {
-                self.interaction.width = width;
-                self.apply_style(false, cx);
-            }
-            Action::SetAppearance { style } => self.set_appearance(style, cx)?,
-            Action::SetMagnifierZoom { zoom } => self.set_magnifier_zoom(zoom, cx)?,
-            Action::SetCounterNumber { number } => self.set_counter_number(number, cx)?,
-            Action::SetCropRatio { ratio } => self.interaction.crop_ratio = ratio,
-            Action::AddLinePoint => self.line_point(false, cx)?,
-            Action::StraightenLine => self.line_point(true, cx)?,
-            Action::CycleStrokeWidth => {
-                self.interaction.width = match self.interaction.width as u32 {
-                    3 => 5.,
-                    5 => 9.,
-                    _ => 3.,
-                };
-                self.apply_style(false, cx);
-            }
-            Action::CycleMagnifierZoom => {
-                let next = match self.tool_settings().magnification as u32 {
-                    2 => 3.,
-                    3 => 4.,
-                    _ => 2.,
-                };
-                self.set_magnifier_zoom(next, cx)?;
-            }
+            Action::SetCropRatio(ratio) => self.crop_ratio = ratio,
+            Action::AddLinePoint => self.line_points(false, tx)?,
+            Action::StraightenLine => self.line_points(true, tx)?,
             Action::NudgeSelection { delta, remember } => {
                 self.cancel_gesture();
-                self.update_selected(remember, |mark| mark.translate(delta.0, delta.1), cx)?;
+                self.update_selected(remember, |mark| mark.translate(delta.0, delta.1), tx);
             }
-
             Action::Fit | Action::ActualSize => {
-                self.viewport.zoom = matches!(action, Action::ActualSize).then_some(1.);
-                self.viewport.pan = (0., 0.);
+                self.zoom = (action == Action::ActualSize).then_some(1.);
+                self.pan = (0., 0.);
             }
-            Action::Zoom { factor } => self.change_zoom(factor, cx),
-            Action::ZoomAt { factor, anchor } => self.zoom_at(factor, anchor, cx),
-            Action::PanBy { delta } => {
-                self.viewport.pan.0 += delta.0;
-                self.viewport.pan.1 += delta.1;
+            Action::Zoom(factor) => {
+                self.zoom_at(factor, (self.canvas.0 * 0.5, self.canvas.1 * 0.5));
             }
-            Action::ToggleBackdrop => self.toggle_backdrop(cx),
-            Action::ToggleEnhance => self.toggle_enhance(cx),
-            Action::ToggleAnimationPanel => self.toggle_animation_panel(cx),
-            Action::ClosePanel { panel } => {
-                self.panels.popup = None;
-                self.panels.sampling_color = None;
-                self.panels.sampling_tool_color = false;
-                match panel {
-                    Panel::Backdrop => self.panels.backdrop = false,
-                    Panel::Enhance => self.panels.enhance = false,
-                    Panel::Animation => self.panels.animation = false,
-                }
+            Action::ZoomAt { factor, anchor } => self.zoom_at(factor, anchor),
+            Action::PanBy(delta) => {
+                self.pan.0 += delta.0;
+                self.pan.1 += delta.1;
             }
-            Action::SetResizeScale { scale } => self.panels.resize_scale = scale,
-            Action::ToggleSmartResize => self.panels.resize_smart = !self.panels.resize_smart,
-            Action::ApplyResize => self.resize_image(false, cx),
-            Action::Resize { scale, smart } => {
-                self.panels.resize_scale = scale;
-                self.panels.resize_smart = smart;
-                self.resize_image(false, cx);
-            }
-            Action::Rotate => self.resize_image(true, cx),
-            Action::SetBackdrop { backdrop } => {
-                self.commit_text(cx);
-                self.cancel_gesture();
-                if let Some(b) = backdrop {
-                    self.backdrop_style(|current| *current = b, cx);
-                } else if self.document.backdrop.is_some() {
-                    self.edit_document(DocumentAction::SetBackdrop { backdrop: None }, cx)?;
-                    self.feedback.status = "Backdrop removed • ⌘Z to restore".into();
-                    self.panels.backdrop = false;
-                }
-            }
-            Action::SetBackdropFormat { format } => self.backdrop_style(|b| b.format = format, cx),
-            Action::ToggleBackdropEnabled => {
-                self.commit_text(cx);
-                self.cancel_gesture();
-                let current = self.document.backdrop;
-                let backdrop = if current.is_some() {
-                    None
-                } else {
-                    let mut b = self.panels.backdrop_disabled.unwrap_or_default();
-                    if self.document.image_animation.enabled() {
-                        b.seconds = self.document.animation_seconds();
-                    }
-                    Some(b)
+            Action::ToggleImageTools => {
+                self.commit_text(tx);
+                self.panel = match self.panel {
+                    Panel::Image => Panel::Tool,
+                    _ => Panel::Image,
                 };
-                self.edit_document(DocumentAction::SetBackdrop { backdrop }, cx)?;
-                self.panels.backdrop_disabled = current;
+                self.picker.open = false;
+            }
+            Action::ToggleBackdrop => {
+                self.commit_text(tx);
+                self.cancel_gesture();
+                self.picker.open = false;
+                if self.panel == Panel::Backdrop {
+                    self.panel = Panel::Tool;
+                    return Ok(());
+                }
+                self.panel = Panel::Backdrop;
+                if self.doc().backdrop.is_none() {
+                    self.backdrop_style(true, |_| {}, tx);
+                    self.status = "Backdrop added • style it in the panel • ⌘Z to undo".into();
+                }
+            }
+            Action::ToggleAnimationPanel => {
+                self.commit_text(tx);
+                self.cancel_gesture();
+                self.picker.open = false;
+                if self.panel == Panel::Animation {
+                    self.panel = Panel::Tool;
+                } else {
+                    self.panel = Panel::Animation;
+                    self.set_selection(vec![]);
+                    self.replay();
+                }
+            }
+            Action::ClosePanel => {
+                self.commit_text(tx);
+                self.picker.open = false;
+                self.panel = Panel::Tool;
+            }
+            Action::ToggleBackdropEnabled => {
+                self.commit_text(tx);
+                self.cancel_gesture();
+                let current = self.doc().backdrop;
+                let backdrop = match current {
+                    Some(_) => None,
+                    None => {
+                        let mut b = self.backdrop_off.unwrap_or_default();
+                        if self.doc().image_animation.enabled() {
+                            b.seconds = self.doc().animation_seconds();
+                        }
+                        Some(b)
+                    }
+                };
+                self.edit(
+                    DocumentAction::SetBackdrop {
+                        backdrop,
+                        remember: true,
+                    },
+                    tx,
+                );
+                if current.is_some() {
+                    self.backdrop_off = current;
+                }
+            }
+            Action::SetBackdropFormat(format) => {
+                self.backdrop_style(true, |b| b.format = format, tx)
             }
             Action::SetBackdropFill { gradient } => self.backdrop_style(
+                true,
                 |b| {
                     b.gradient = gradient;
                     b.motion = Motion::Still;
                 },
-                cx,
+                tx,
             ),
-            Action::SelectMotion { motion } => self.backdrop_style(
+            Action::SelectMotion(motion) => self.backdrop_style(
+                true,
                 |b| {
                     if b.motion != motion
                         && b.colors.is_none()
@@ -719,225 +368,666 @@ impl Editor {
                     b.motion = motion;
                     b.gradient = true;
                 },
-                cx,
+                tx,
             ),
-            Action::RandomizeMotion { seed } => self.backdrop_style(
+            Action::RandomizeMotion(seed) => self.backdrop_style(
+                true,
                 |b| {
                     b.seed = seed.unwrap_or_else(|| {
-                        loop {
-                            let candidate = rand::random::<u32>();
-                            if candidate != 0 && candidate != b.seed {
-                                break candidate;
-                            }
-                        }
+                        // RandomState is seeded randomly; hashing the old seed gives a new one.
+                        let random = std::collections::hash_map::RandomState::new();
+                        (1u64..)
+                            .map(|salt| {
+                                std::hash::BuildHasher::hash_one(&random, (b.seed, salt)) as u32
+                            })
+                            .find(|candidate| *candidate != 0 && *candidate != b.seed)
+                            .expect("a fresh seed")
                     });
                 },
-                cx,
+                tx,
             ),
-            Action::SetBackdropPreset { preset } => self.backdrop_style(
+            Action::SetBackdropPreset(preset) => self.backdrop_style(
+                true,
                 |b| {
                     b.preset = preset;
                     b.colors = None;
                 },
-                cx,
+                tx,
             ),
-            Action::SetBackdropColor { stop, rgb } => {
-                self.backdrop_style(|b| b.set_color(stop, rgb), cx)
-            }
-            Action::SampleBackdropColor {
+            Action::SetBackdropColor {
                 stop,
-                position: (x, y),
+                rgb,
+                remember,
             } => {
-                let pixel = self.document.base.get_pixel(x, y).0;
-                self.backdrop_style(|b| b.set_color(stop, [pixel[0], pixel[1], pixel[2]]), cx);
-                self.panels.sampling_color = None;
-                self.panels.sampling_tool_color = false;
-            }
-            Action::BeginBackdropColorSampling { stop } => {
-                self.commit_text(cx);
-                self.cancel_gesture();
-                self.panels.sampling_color = Some(stop);
-                self.panels.sampling_tool_color = false;
-                self.feedback.status =
-                    "Click a pixel in the image to pick its color • Escape to cancel".into();
-            }
-            Action::PickBackdropScreenColor { stop } => {
-                self.pick_backdrop_screen_color(stop, cx)?
-            }
-            Action::SetBackdropControl { control, value } => {
-                let phase = self.animation_phase();
-                let adjusting = matches!(
-                    self.interaction.gesture,
-                    super::state::Gesture::AdjustingBackdrop(..)
-                );
-                if !adjusting {
-                    self.commit_text(cx);
-                    self.cancel_gesture();
-                    self.document.remember();
-                }
-                let enabling = self.document.backdrop.is_none();
-                let previous_padding = self.document.backdrop.map_or(0, |b| b.inside_padding);
-                let b = self.document.backdrop.get_or_insert_with(|| {
-                    self.panels.backdrop_disabled.take().unwrap_or_default()
-                });
-                let previous = *b;
-                control.set(b, value);
-                let changed = enabling || previous != *b;
-                let padding_changed = previous_padding != b.inside_padding;
-                if control == Control::Duration {
-                    self.document.image_animation.seconds = b.seconds;
-                    self.playback.position = phase * b.seconds as f32;
-                    self.playback.epoch = std::time::Instant::now();
-                }
-                if changed {
-                    self.preview.revision += 1;
-                    if padding_changed {
-                        self.schedule_preview();
-                    }
+                self.backdrop_style(remember, |b| b.set_color(stop, rgb), tx);
+                if !self.picker.continuing {
+                    self.picker.sync(rgb);
                 }
             }
-            Action::BeginBackdropAdjustment {
+            Action::EditBackdropColor(stop) => {
+                let same = self.picker.open && self.picker.stop == Some(stop);
+                self.picker.open = !same;
+                self.picker.stop = Some(stop);
+                let hex = self.current_backdrop().colors()[stop];
+                self.picker
+                    .sync([(hex >> 16) as u8, (hex >> 8) as u8, hex as u8]);
+            }
+            Action::SetBackdropControl {
                 control,
-                track,
-                position,
-            } => {
-                self.commit_text(cx);
-                self.cancel_gesture();
-                self.document.remember();
-                if self.document.backdrop.is_none() {
-                    self.preview.revision += 1;
-                }
-                let previous_padding = self.document.backdrop.map_or(0, |b| b.inside_padding);
-                self.document.backdrop.get_or_insert_with(|| {
-                    self.panels.backdrop_disabled.take().unwrap_or_default()
-                });
-                self.interaction.gesture = super::state::Gesture::AdjustingBackdrop(
-                    control,
-                    Bounds::new(
-                        point(px(track.0), px(track.1)),
-                        size(px(track.2), px(track.3)),
-                    ),
-                );
-                self.backdrop_slider_move(point(px(position.0), px(position.1)), cx);
-                if previous_padding != self.document.backdrop.map_or(0, |b| b.inside_padding) {
-                    self.schedule_preview();
-                }
-            }
-            Action::TogglePlayback => self.toggle_animation(cx),
-            Action::ReplayAnimation => self.replay_animation(cx),
-            Action::SeekAnimation { seconds } => {
+                value,
+                remember,
+            } => self.backdrop_style(remember, |b| control.set(b, value), tx),
+            Action::TogglePlayback => self.toggle_playback(),
+            Action::ReplayAnimation => self.replay(),
+            Action::SeekAnimation(seconds) => {
                 self.playback.position = seconds;
-                self.playback.epoch = std::time::Instant::now();
-                self.playback.paused = true;
-                self.playback.seek = self.playback.seek.wrapping_add(1);
+                self.playback.playing = false;
             }
-            Action::SelectEntrance { effect } => {
-                self.commit_text(cx);
+            Action::SelectEntrance(effect) => {
+                self.commit_text(tx);
                 self.cancel_gesture();
-                let mut animation = self.document.image_animation;
+                let mut animation = self.doc().image_animation;
                 if !animation.enabled() {
-                    animation.seconds = self.document.animation_seconds();
+                    animation.seconds = self.doc().animation_seconds();
                 }
                 animation.effect = effect;
-                self.edit_document(DocumentAction::SetImageAnimation { animation }, cx)?;
-                self.panels.animation = true;
-                self.panels.backdrop = false;
-                self.panels.enhance = false;
-                self.set_selection(Vec::new());
-                self.replay_animation(cx);
-            }
-            Action::SetImageAnimation { animation } => {
-                self.commit_text(cx);
-                self.cancel_gesture();
-                self.edit_document(DocumentAction::SetImageAnimation { animation }, cx)?;
-            }
-            Action::SetAnimationControl { control, value } => {
-                if control == crate::animation::AnimationControl::Time {
-                    self.playback.position = value as f32 / 1000.;
-                    self.playback.paused = true;
-                    self.playback.seek = self.playback.seek.wrapping_add(1);
-                } else {
-                    let mut animation = self.document.image_animation;
-                    control.set(&mut animation, value);
-                    if matches!(
-                        self.interaction.gesture,
-                        super::state::Gesture::AdjustingAnimation(..)
-                    ) {
-                        if self.document.image_animation != animation {
-                            self.document.image_animation = animation;
-                            if let Some(b) = &mut self.document.backdrop {
-                                b.seconds = animation.seconds;
-                            }
-                            self.preview.revision += 1;
-                            self.replay_animation(cx);
-                        }
-                    } else {
-                        self.commit_text(cx);
-                        self.cancel_gesture();
-                        self.edit_document(DocumentAction::SetImageAnimation { animation }, cx)?;
-                    }
-                }
-            }
-            Action::BeginAnimationAdjustment {
-                control,
-                track,
-                position,
-            } => {
-                self.commit_text(cx);
-                self.cancel_gesture();
-                if control != crate::animation::AnimationControl::Time {
-                    self.document.remember();
-                }
-                self.interaction.gesture = super::state::Gesture::AdjustingAnimation(
-                    control,
-                    Bounds::new(
-                        point(px(track.0), px(track.1)),
-                        size(px(track.2), px(track.3)),
-                    ),
+                self.edit(
+                    DocumentAction::SetImageAnimation {
+                        animation,
+                        remember: true,
+                    },
+                    tx,
                 );
-                self.animation_slider_move(point(px(position.0), px(position.1)), cx);
+                self.panel = Panel::Animation;
+                self.picker.open = false;
+                self.set_selection(vec![]);
+                self.replay();
             }
-            Action::ExportAnimation { format } => match format {
-                AnimationFormat::Mp4 => self.export_video(cx),
-                AnimationFormat::Gif => self.export_gif(cx),
-            },
-            Action::CancelExport => self.cancel_video(cx),
-            Action::RevealExport => {
-                if let Some(path) = &self.video_export.last_video {
-                    cx.reveal_path(path);
+            Action::SetAnimationExit(exit) => {
+                let animation = crate::animation::ImageAnimation {
+                    exit,
+                    ..self.doc().image_animation
+                };
+                self.edit(
+                    DocumentAction::SetImageAnimation {
+                        animation,
+                        remember: true,
+                    },
+                    tx,
+                );
+                self.replay();
+            }
+            Action::SetAnimationControl {
+                control: AnimationControl::Time,
+                value,
+                ..
+            } => {
+                self.playback.position = value as f32 / 1000.;
+                self.playback.playing = false;
+            }
+            Action::SetAnimationControl {
+                control,
+                value,
+                remember,
+            } => {
+                let mut animation = self.doc().image_animation;
+                control.set(&mut animation, value);
+                self.edit(
+                    DocumentAction::SetImageAnimation {
+                        animation,
+                        remember,
+                    },
+                    tx,
+                );
+                self.replay();
+            }
+            Action::Export(format) => self.export_animation(format, tx),
+            Action::CancelExport => {
+                if !self.cancel_export() {
+                    return Err("No export is running".into());
                 }
             }
-            Action::CommitText => self.commit_text(cx),
+            Action::ToggleColorPicker => {
+                self.picker.open = !(self.picker.open && self.picker.stop.is_none());
+                self.picker.stop = None;
+                let color = self.tool_settings().color;
+                self.picker.sync([color[0], color[1], color[2]]);
+            }
+            Action::SetResizeScale(scale) => self.resize_scale = scale,
+            Action::ToggleSmartResize => self.resize_smart = !self.resize_smart,
+            Action::ApplyResize => {
+                let (scale, smart) = (self.resize_scale, self.resize_smart);
+                self.commit_text(tx);
+                self.cancel_gesture();
+                self.edit(DocumentAction::Resize { scale, smart }, tx);
+            }
+            Action::Rotate => {
+                self.commit_text(tx);
+                self.cancel_gesture();
+                self.edit(DocumentAction::Rotate, tx);
+            }
+            Action::PickScreenColor | Action::PickBackdropScreenColor(_) => {
+                self.picker.stop = match action {
+                    Action::PickBackdropScreenColor(stop) => Some(stop),
+                    _ => None,
+                };
+                self.commit_text(tx);
+                let id = self.start(Operation::ColorSample);
+                self.status = "Pick a screen color • Escape to cancel".into();
+                let mailbox = self.mailbox.clone();
+                self.port.pick_color(std::sync::Arc::new(move |color| {
+                    mailbox.post(Message::ColorSampled { id, color });
+                }));
+            }
             Action::Cancel => {
-                self.panels.sampling_color = None;
-                self.panels.sampling_tool_color = false;
-                if self.ask.running.is_some() {
-                    self.cancel_ask(cx);
-                } else if self.ask.open {
-                    self.ask.open = false;
-                } else if self.video_export.cancel.is_some() {
-                    self.cancel_video(cx);
-                } else if self.interaction.text_edit.take().is_some() {
-                    self.feedback.status = "Text canceled".into();
+                if self.cancel_export() {
+                } else if self.text.take().is_some() {
+                    self.status = "Text canceled".into();
+                } else if self.picker.open {
+                    self.picker.open = false;
                 } else {
                     self.cancel_gesture();
-                    self.set_selection(Vec::new());
+                    self.set_selection(vec![]);
                 }
             }
             Action::Help => {
-                cx.open_url("https://github.com/modem-dev/glance-desktop/blob/main/docs/usage.md")
+                if let Err(error) =
+                    tx.open_url("https://github.com/SolenesInc/attn-lens/blob/main/docs/usage.md")
+                {
+                    self.status = error.to_string();
+                }
             }
-            Action::Quit => cx.quit(),
+            Action::Quit => tx.quit(),
+            Action::BackToCapture | Action::SendCapture => {
+                if self.still.is_none() {
+                    return Err("No capture is being edited.".into());
+                }
+                self.commit_text(tx);
+                self.cancel_gesture();
+                self.leave_still(action == Action::SendCapture);
+            }
         }
-        cx.notify();
-        Ok(ActionReceipt {
-            revision: self.preview.revision,
-            operation_id: self
-                .operations
-                .active
-                .as_ref()
-                .filter(|op| Some(op.id) != previous_operation)
-                .map(|op| op.id.value()),
-        })
+        Ok(())
     }
+
+    fn color_option(&self) -> Result<(), String> {
+        if matches!(
+            self.options_tool(),
+            Tool::Select | Tool::Crop | Tool::Pixelate
+        ) {
+            return Err("Select an annotation or a tool with a color option".into());
+        }
+        Ok(())
+    }
+
+    /// What only the open document can rule out.
+    fn check_against_document(&self, action: &Action) -> Result<(), String> {
+        let Some(doc) = &self.doc else {
+            return Ok(());
+        };
+        match action {
+            Action::RandomizeMotion(_) if self.current_backdrop().motion == Motion::Still => {
+                Err("Choose a backdrop motion before randomizing it.".into())
+            }
+            Action::SeekAnimation(seconds) => {
+                let clip = doc.animation_seconds() as f32;
+                if seconds.is_finite() && (0. ..=clip).contains(seconds) {
+                    Ok(())
+                } else {
+                    Err(format!("Preview time must be 0..{clip} s, got {seconds}"))
+                }
+            }
+            Action::SetAnimationControl { control, value, .. } => {
+                let (min, max, _) = control.range(doc.image_animation);
+                if (min..=max).contains(value) {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "{} must be {min}..{max}, got {value}",
+                        control.label()
+                    ))
+                }
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// The backdrop the panel shows: the document's, or the one turned off.
+    pub(crate) fn current_backdrop(&self) -> Backdrop {
+        self.doc
+            .as_ref()
+            .and_then(|doc| doc.backdrop)
+            .or(self.backdrop_off)
+            .unwrap_or_default()
+    }
+
+    /// Changes the backdrop, turning it on if it was off.
+    fn backdrop_style(&mut self, remember: bool, change: impl FnOnce(&mut Backdrop), tx: &mut Tx) {
+        if remember {
+            self.commit_text(tx);
+            self.cancel_gesture();
+        }
+        let mut b = self.current_backdrop();
+        if self.doc().image_animation.enabled() {
+            b.seconds = self.doc().animation_seconds();
+        }
+        change(&mut b);
+        self.edit(
+            DocumentAction::SetBackdrop {
+                backdrop: Some(b),
+                remember,
+            },
+            tx,
+        );
+    }
+
+    fn prepare_option_edit(&mut self, tx: &mut Tx) {
+        self.commit_text(tx);
+        self.cancel_gesture();
+    }
+
+    fn zoom_at(&mut self, factor: f32, anchor: (f32, f32)) {
+        if self.gesture.is_active() {
+            return;
+        }
+        let center = (self.canvas.0 * 0.5, self.canvas.1 * 0.5);
+        if let Some((zoom, pan)) = crate::navigation::anchored_zoom(
+            self.zoom.unwrap_or(self.layout().scale),
+            self.pan,
+            center,
+            anchor,
+            factor,
+        ) {
+            self.zoom = Some(zoom);
+            self.pan = pan;
+        }
+    }
+
+    pub(crate) fn start(&mut self, operation: Operation) -> u64 {
+        self.next_operation += 1;
+        self.operation = Some((self.next_operation, operation));
+        self.next_operation
+    }
+
+    fn save_to(&mut self, path: std::path::PathBuf) {
+        let path = match crate::platform::checked_export_path(path, "png") {
+            Ok(path) => path,
+            Err(error) => {
+                self.status = error;
+                return;
+            }
+        };
+        let id = self.start(Operation::Save);
+        self.status = "Saving…".into();
+        let document = self.doc().render_snapshot();
+        let phase = self.export_phase();
+        let mailbox = self.mailbox.clone();
+        self.port.run(Box::new(move || {
+            let result = crate::platform::save_png(&document.export_frame(phase.0, phase.1), &path)
+                .map(|()| path);
+            mailbox.post(Message::Saved { id, result });
+        }));
+    }
+
+    /// Applies an edit; a refusal goes to the status line. An edit that replaces the
+    /// image works on a copy off the UI thread and lands with its raster through
+    /// [`Message::Replaced`].
+    pub(crate) fn edit(&mut self, edit: DocumentAction, _tx: &mut Tx) {
+        let replaces_image = match edit {
+            DocumentAction::Crop { .. }
+            | DocumentAction::Resize { .. }
+            | DocumentAction::Rotate => true,
+            DocumentAction::Undo => self.doc().undo_replaces_image(),
+            DocumentAction::Redo => self.doc().redo_replaces_image(),
+            _ => false,
+        };
+        if replaces_image {
+            let id = self.start(Operation::Transform);
+            self.status = match edit {
+                DocumentAction::Crop { .. } => "Cropping…",
+                _ => "Working…",
+            }
+            .into();
+            let mut document = self.doc().clone();
+            let mailbox = self.mailbox.clone();
+            self.port.run(Box::new(move || {
+                let result = edit.apply(&mut document).map(|_| {
+                    let rendered = super::preview::render(&document);
+                    (Box::new(document), rendered)
+                });
+                mailbox.post(Message::Replaced { id, result });
+            }));
+            return;
+        }
+        match edit.apply(self.doc_mut()) {
+            Ok(outcome) => {
+                match outcome.selection {
+                    Selection::Keep => {}
+                    Selection::Clear => self.set_selection(vec![]),
+                    Selection::Select(index) => self.set_selection(vec![index]),
+                    Selection::SelectMany(indices) => self.set_selection(indices),
+                }
+                if outcome.reset_view {
+                    self.zoom = None;
+                    self.pan = (0., 0.);
+                }
+                if outcome.changed {
+                    self.changed();
+                }
+            }
+            Err(error) => self.status = error,
+        }
+    }
+
+    fn update_selected(
+        &mut self,
+        remember: bool,
+        mut update: impl FnMut(&mut crate::document::Mark),
+        tx: &mut Tx,
+    ) {
+        let updates: Vec<_> = self
+            .selected_indices()
+            .into_iter()
+            .map(|index| {
+                let mut mark = self.doc().marks[index].clone();
+                update(&mut mark);
+                (index, mark)
+            })
+            .collect();
+        if updates.is_empty() {
+            return;
+        }
+        self.edit(
+            DocumentAction::EditAnnotations {
+                updates,
+                additions: vec![],
+                deletions: vec![],
+                remember,
+            },
+            tx,
+        );
+    }
+
+    fn update_primary(&mut self, update: impl FnOnce(&mut crate::document::Mark), tx: &mut Tx) {
+        let Some(&index) = self.selected.last() else {
+            return;
+        };
+        let mut mark = self.doc().marks[index].clone();
+        update(&mut mark);
+        self.edit(DocumentAction::UpdateAnnotation { index, mark }, tx);
+    }
+
+    fn line_points(&mut self, straighten: bool, tx: &mut Tx) -> Result<(), String> {
+        let index = self
+            .selected
+            .last()
+            .copied()
+            .filter(|i| {
+                self.doc()
+                    .marks
+                    .get(*i)
+                    .is_some_and(|m| m.tool == Tool::Arrow)
+            })
+            .ok_or("Select a line to edit its points")?;
+        self.cancel_gesture();
+        let mut mark = self.doc().marks[index].clone();
+        let end = *mark.points.last().unwrap();
+        if straighten {
+            mark.points = vec![mark.points[0], end];
+        } else {
+            if mark.points.len() >= 32 {
+                return Err("Maximum 32 line points".into());
+            }
+            if mark.curve.is_some() {
+                mark.points = vec![mark.points[0], crate::arrow::at(&mark, 0.5), end];
+            } else {
+                let longest = mark
+                    .points
+                    .windows(2)
+                    .enumerate()
+                    .max_by(|(_, a), (_, b)| {
+                        (a[1].0 - a[0].0)
+                            .hypot(a[1].1 - a[0].1)
+                            .total_cmp(&(b[1].0 - b[0].0).hypot(b[1].1 - b[0].1))
+                    })
+                    .map_or(0, |(i, _)| i);
+                let (a, b) = (mark.points[longest], mark.points[longest + 1]);
+                mark.points
+                    .insert(longest + 1, ((a.0 + b.0) * 0.5, (a.1 + b.1) * 0.5));
+            }
+        }
+        mark.curve = None;
+        self.edit(DocumentAction::UpdateAnnotation { index, mark }, tx);
+        Ok(())
+    }
+
+    /// Finishes the label being typed. An empty one is discarded.
+    pub(crate) fn commit_text(&mut self, tx: &mut Tx) {
+        let Some(draft) = self.text.take() else {
+            return;
+        };
+        if self.text_edit.text.trim().is_empty() {
+            self.status = "Empty label discarded".into();
+            return;
+        }
+        let mut mark = draft.mark;
+        mark.text = self.text_edit.text.replace(['\n', '\r'], " ");
+        self.status = "Text label added".into();
+        self.edit(DocumentAction::AddAnnotation { mark }, tx);
+    }
+
+    /// Applies the number being typed, if it parses within limits.
+    pub(crate) fn commit_number(&mut self, tx: &mut Tx) {
+        let Some(NumberDraft { label }) = self.number.take() else {
+            return;
+        };
+        let limits = super::panels::number_limits(label);
+        match super::panels::parse_number(&self.number_edit.text, limits) {
+            Some(value) => {
+                let action = self.number_action(label, value);
+                self.dispatch_ui(action, tx);
+            }
+            None => {
+                self.status = format!(
+                    "{label} must be a number from {} to {}.",
+                    limits.0, limits.1
+                );
+            }
+        }
+    }
+
+    pub(crate) fn number_action(&self, label: &str, value: f32) -> Action {
+        let settings = self.tool_settings();
+        match label {
+            "Thickness" => Action::SetStrokeWidth(value),
+            "Font size" => Action::SetStrokeWidth(value / 7.),
+            "Block size" => Action::SetStrokeWidth(value / 4.),
+            "Badge diameter" => Action::SetStrokeWidth(value / 7.2),
+            "Lens diameter" => Action::SetStrokeWidth(value / 24.),
+            "Number" | "Next number" => Action::SetCounterNumber(value.round() as u32),
+            "Dim surroundings" => Action::SetAppearance(Style {
+                dim: value / 100.,
+                ..settings.style
+            }),
+            "Corner radius" => Action::SetAppearance(Style {
+                radius: value,
+                ..settings.style
+            }),
+            "Opacity" | "Intensity" => Action::SetOpacity((value / 100. * 255.).round() as u8),
+            _ => unreachable!("registered numeric field {label}"),
+        }
+    }
+
+    /// Takes in what a worker finished.
+    pub(crate) fn receive(&mut self, message: Message, tx: &mut Tx) {
+        self.take_in(message, tx);
+        if self.is_busy() {
+            return;
+        }
+        match self.deferred.take() {
+            Some(super::Deferred::Open(still, document)) => self.open_still(still, *document, tx),
+            Some(super::Deferred::Leave { send }) => self.leave_for_key(send, tx),
+            None => {}
+        }
+    }
+
+    fn take_in(&mut self, message: Message, tx: &mut Tx) {
+        let id = match &message {
+            Message::Preview(_)
+            | Message::Frame(_)
+            | Message::ExportProgress { .. }
+            | Message::LensSource { .. }
+            | Message::LensTile { .. } => None,
+            Message::Replaced { id, .. }
+            | Message::Saved { id, .. }
+            | Message::Copied { id, .. }
+            | Message::Recognized { id, .. }
+            | Message::ColorSampled { id, .. }
+            | Message::Exported { id, .. } => Some(*id),
+        };
+        let operation = self.operation.map(|(_, operation)| operation);
+        if let Some(id) = id {
+            if self.operation.is_none_or(|(active, _)| active != id) {
+                return;
+            }
+            self.operation = None;
+            self.status.clear();
+        }
+        match message {
+            Message::Preview(rendered) => self.receive_preview(rendered),
+            Message::Frame(frame) => self.receive_frame(*frame),
+            Message::ExportProgress { id, percent } => self.receive_progress(id, percent),
+            Message::Exported { result, .. } => self.receive_export(result),
+            Message::LensSource { request, image } => {
+                if request == self.lens_request {
+                    self.live_source = Some(image);
+                    self.refresh_lens();
+                }
+            }
+            Message::LensTile { request, key, tile } => self.receive_lens_tile(request, key, tile),
+            Message::Replaced { result, .. } => match result {
+                Ok((document, rendered)) => {
+                    if operation == Some(Operation::Load) || operation == Some(Operation::Paste) {
+                        self.text = None;
+                        self.next_counter = None;
+                    }
+                    self.install(*document, rendered);
+                }
+                Err(error) => self.status = error,
+            },
+            Message::Saved { result, .. } => match result {
+                Ok(path) => self.status = format!("Saved {}", path.display()),
+                Err(error) => self.status = error,
+            },
+            Message::Copied { result, .. } => match result {
+                Ok(()) => {
+                    self.status = "Copied to clipboard".into();
+                    self.confirm(CopyFeedback::Copied, tx);
+                }
+                Err(error) => self.status = error,
+            },
+            Message::Recognized { revision, text, .. } => {
+                self.copy_feedback = None;
+                if revision != self.revision {
+                    self.status = "Image changed during text extraction; extract again".into();
+                    return;
+                }
+                match text {
+                    Ok(text) if text.trim().is_empty() => {
+                        self.status = "No text found".into();
+                        self.confirm(CopyFeedback::NoText, tx);
+                    }
+                    Ok(text) => match self.port.copy_text(&text) {
+                        Ok(()) => {
+                            self.status = "Text copied!".into();
+                            self.confirm(CopyFeedback::TextCopied, tx);
+                        }
+                        Err(error) => self.status = error,
+                    },
+                    Err(error) => self.status = error,
+                }
+            }
+            Message::ColorSampled { color, .. } => match color {
+                Ok(Some(rgb)) => {
+                    let action = self.picked(rgb, true);
+                    self.dispatch_ui(action, tx);
+                }
+                Ok(None) => {}
+                Err(error) => self.status = error,
+            },
+        }
+    }
+
+    fn confirm(&mut self, feedback: CopyFeedback, tx: &mut Tx) {
+        self.copy_feedback = Some(feedback);
+        self.feedback_until = self.now + FEEDBACK.as_secs_f64();
+        tx.wake_after(FEEDBACK);
+    }
+}
+
+/// A just-opened image as a document with its raster.
+fn fresh(image: image::RgbaImage) -> (Box<Document>, super::preview::Rendered) {
+    let document = Document::new(image);
+    let rendered = super::preview::render(&document);
+    (Box::new(document), rendered)
+}
+
+/// Rejected here, before any state changes.
+fn validate(action: &Action) -> Result<(), String> {
+    match action {
+        Action::SetStrokeWidth(width) if !width.is_finite() || !(0.5..=64.).contains(width) => {
+            Err("Stroke width must be 0.5..64".into())
+        }
+        Action::SetAppearance(style) => style.validate(),
+        Action::SetMagnifierZoom(zoom) if !zoom.is_finite() || !(1.5..=4.).contains(zoom) => {
+            Err("Magnification must be 1.5..4".into())
+        }
+        Action::SetCounterNumber(number) if !(1..=999).contains(number) => {
+            Err("Step number must be 1..999".into())
+        }
+        Action::SetCropRatio(Some(ratio)) if !ratio.is_finite() || !(0.1..=10.).contains(ratio) => {
+            Err("Crop ratio must be 0.1..10".into())
+        }
+        Action::SetResizeScale(scale) if !scale.is_finite() || !(0.1..=4.).contains(scale) => {
+            Err("Resize scale must be 0.1..4".into())
+        }
+        Action::Zoom(factor) | Action::ZoomAt { factor, .. }
+            if !factor.is_finite() || *factor <= 0. =>
+        {
+            Err("Zoom factor must be positive and finite".into())
+        }
+        Action::SetBackdropPreset(preset) if *preset >= PRESETS.len() => Err(format!(
+            "Backdrop palette must be 0..{}, got {preset}",
+            PRESETS.len() - 1
+        )),
+        Action::SetBackdropColor { stop, .. }
+        | Action::EditBackdropColor(stop)
+        | Action::PickBackdropScreenColor(stop)
+            if *stop > 1 =>
+        {
+            Err("Backdrop color stop must be 0 or 1".into())
+        }
+        Action::SetBackdropControl { control, value, .. }
+            if !(control.min()..=control.max()).contains(value) =>
+        {
+            Err(format!(
+                "{} must be {}..{}, got {value}",
+                control.label(),
+                control.min(),
+                control.max()
+            ))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Local time with filename-safe separators, like macOS screenshots.
+pub(crate) fn timestamp() -> String {
+    std::process::Command::new("date")
+        .arg("+%Y-%m-%d at %H.%M.%S")
+        .output()
+        .ok()
+        .and_then(|out| String::from_utf8(out.stdout).ok())
+        .map(|time| time.trim().to_string())
+        .unwrap_or_default()
 }

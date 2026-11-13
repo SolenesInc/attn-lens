@@ -14,6 +14,9 @@ unsafe extern "C" {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Permission {
     ScreenRecording,
+    Microphone,
+    /// The capture, voice and draw keys: the key engine's event taps need it.
+    Accessibility,
 }
 
 impl Permission {
@@ -21,6 +24,8 @@ impl Permission {
     const fn code(self) -> i32 {
         match self {
             Self::ScreenRecording => 1,
+            Self::Microphone => 2,
+            Self::Accessibility => 3,
         }
     }
 }

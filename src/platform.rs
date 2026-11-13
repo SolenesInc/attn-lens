@@ -1,5 +1,5 @@
 use image::{ImageReader, RgbaImage};
-use std::{path::PathBuf, process::Command};
+use std::path::{Path, PathBuf};
 mod color_sampler;
 pub use color_sampler::sample_screen_color;
 pub fn load(path: &std::path::Path) -> Result<RgbaImage, String> {
@@ -18,71 +18,61 @@ pub fn load(path: &std::path::Path) -> Result<RgbaImage, String> {
         .map(|i| i.to_rgba8())
         .map_err(|e| e.to_string())
 }
-#[cfg(target_os = "macos")]
-#[link(name = "CoreGraphics", kind = "framework")]
-unsafe extern "C" {
-    fn CGPreflightScreenCaptureAccess() -> bool;
-    fn CGRequestScreenCaptureAccess() -> bool;
-}
-/// Called only when the user requests capture, before hiding the editor.
-#[cfg(target_os = "macos")]
-pub fn screen_capture_permission() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    unsafe {
-        if CGPreflightScreenCaptureAccess() {
-            return Ok(());
+/// Writes a PNG through a scratch file beside the destination, so a failed write leaves
+/// any existing file as it was. A link is written through to its file, and an existing
+/// file keeps its permissions; a new one gets the umask's, like any other new file.
+pub fn save_png(image: &RgbaImage, path: &std::path::Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let path = match std::fs::canonicalize(path) {
+        Ok(target) => target,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            if std::fs::symlink_metadata(path).is_ok() {
+                return Err(format!(
+                    "{} links to a file that does not exist.",
+                    path.display()
+                ));
+            }
+            path.to_path_buf()
         }
-        // Let macOS present its normal permission request for a first-time grant.
-        let _ = CGRequestScreenCaptureAccess();
-        if CGPreflightScreenCaptureAccess() {
-            return Ok(());
-        }
-    }
-    Err("macOS is not authorizing this Attn Lens build to record the screen. Open System Settings → Privacy & Security → Screen & System Audio Recording. If Attn Lens is already enabled, quit it, remove its entry with −, add Attn Lens.app with +, enable it, then reopen. Rebuilding an ad-hoc signed app can invalidate an older permission.".into())
-}
-/// Captures the display under the pointer in-process through ScreenCaptureKit.
-/// `area` no longer opens an interactive selection: crop in the editor instead.
-/// `screencapture -i` added macOS 26's private-window-picker consent.
-#[cfg(target_os = "macos")]
-pub fn capture(_area: bool) -> Result<Option<RgbaImage>, String> {
-    // Let the hidden editor leave the screen first.
-    std::thread::sleep(std::time::Duration::from_millis(250));
-    crate::lens::capture::screenshot(crate::lens::capture::display_under_pointer()).map(Some)
-}
-#[cfg(target_os = "macos")]
-fn dialog(script: &str) -> Result<Option<PathBuf>, String> {
-    let output = Command::new("/usr/bin/osascript")
-        .args(["-e", script])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        let error = String::from_utf8_lossy(&output.stderr);
-        return if error.contains("-128") {
-            Ok(None)
-        } else {
-            Err(error.trim().to_string())
-        };
-    }
-    let path = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
-    Ok(Some(PathBuf::from(path.trim_end())))
-}
-#[cfg(target_os = "macos")]
-pub fn open() -> Result<Option<RgbaImage>, String> {
-    match dialog(
-        "POSIX path of (choose file with prompt \"Open an image in Glance\" of type {\"public.png\", \"public.jpeg\"})",
-    )? {
-        Some(path) => load(&path).map(Some),
-        None => Ok(None),
-    }
-}
-pub fn save(image: RgbaImage) -> Result<Option<PathBuf>, String> {
-    let Some(path) = export_destination(ExportFormat::Png)? else {
-        return Ok(None);
+        Err(error) => return Err(error.to_string()),
     };
-    image
-        .save_with_format(&path, image::ImageFormat::Png)
+    let folder = path
+        .parent()
+        .filter(|folder| !folder.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    // Created 0666 less the umask, as `open` would create the file itself.
+    let scratch = tempfile::Builder::new()
+        .prefix(".attn-lens-")
+        .suffix(".png")
+        .permissions(std::fs::Permissions::from_mode(0o666))
+        .tempfile_in(folder)
         .map_err(|e| e.to_string())?;
-    Ok(Some(path))
+    if let Ok(existing) = std::fs::metadata(&path) {
+        std::fs::set_permissions(scratch.path(), existing.permissions())
+            .map_err(|e| e.to_string())?;
+    }
+    image
+        .write_to(
+            &mut std::io::BufWriter::new(scratch.as_file()),
+            image::ImageFormat::Png,
+        )
+        .map_err(|e| e.to_string())?;
+    scratch.persist(&path).map_err(|e| e.error.to_string())?;
+    Ok(())
+}
+/// Where a Save dialog starts.
+pub fn pictures_folder() -> Option<PathBuf> {
+    home_folder("Pictures")
+}
+
+/// Where an MP4's Save dialog starts.
+pub fn movies_folder() -> Option<PathBuf> {
+    home_folder("Movies")
+}
+
+fn home_folder(name: &str) -> Option<PathBuf> {
+    let folder = PathBuf::from(std::env::var_os("HOME")?).join(name);
+    folder.is_dir().then_some(folder)
 }
 #[cfg(target_os = "macos")]
 pub fn copy(image: RgbaImage) -> Result<(), String> {
@@ -116,45 +106,10 @@ pub fn clipboard_image() -> Result<RgbaImage, String> {
     .ok_or_else(|| "Invalid clipboard image.".into())
 }
 
-enum ExportFormat {
-    Png,
-    Gif,
-    Mp4,
-}
-
-#[cfg(target_os = "macos")]
-fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
-    let (prompt, name, extension, folder) = match format {
-        ExportFormat::Png => ("Save annotated screenshot", "Screenshot", "png", "pictures"),
-        ExportFormat::Gif => (
-            "Export animated backdrop GIF",
-            "Animated Screenshot",
-            "gif",
-            "pictures",
-        ),
-        ExportFormat::Mp4 => (
-            "Export animated backdrop video",
-            "Animated Screenshot",
-            "mp4",
-            "movies",
-        ),
-    };
-    // Use local time and filename-safe separators, like macOS screenshots.
-    // All interpolated values are constants, never user-provided filenames.
-    let script = format!(
-        r#"set timestamp to do shell script "/bin/date '+%Y-%m-%d at %H.%M.%S'"
-set exportName to "{name} " & timestamp & ".{extension}"
-POSIX path of (choose file name with prompt "{prompt}" default name exportName default location (path to {folder} folder))"#
-    );
-    dialog(&script)?
-        .map(|path| checked_export_path(path, extension))
-        .transpose()
-}
-
 // Changing a save-dialog path can bypass its overwrite confirmation.
 // An explicitly chosen filename may be replaced; an appended extension must
 // never turn an unconfirmed choice into a replacement (including symlinks).
-fn checked_export_path(mut path: PathBuf, extension: &str) -> Result<PathBuf, String> {
+pub fn checked_export_path(mut path: PathBuf, extension: &str) -> Result<PathBuf, String> {
     if path.extension().is_none() {
         path.set_extension(extension);
         match std::fs::symlink_metadata(&path) {
@@ -168,13 +123,6 @@ fn checked_export_path(mut path: PathBuf, extension: &str) -> Result<PathBuf, St
     Ok(path)
 }
 
-pub fn animation_destination(gif: bool) -> Result<Option<PathBuf>, String> {
-    export_destination(if gif {
-        ExportFormat::Gif
-    } else {
-        ExportFormat::Mp4
-    })
-}
 #[cfg(target_os = "macos")]
 const SYSTEM_ANNOTATION_FONT: &str = "Arial";
 #[cfg(target_os = "linux")]
@@ -231,16 +179,6 @@ pub fn annotation_font_family() -> &'static str {
     annotation_font_data().family
 }
 
-pub fn key_binding(key: &str) -> String {
-    if cfg!(target_os = "linux") {
-        key.replace("cmd-", "ctrl-")
-    } else {
-        key.into()
-    }
-}
-pub fn command_pressed(modifiers: gpui::Modifiers) -> bool {
-    modifiers.platform || (cfg!(target_os = "linux") && modifiers.control)
-}
 pub fn shortcut_label(label: &str) -> String {
     if cfg!(target_os = "linux") {
         label
@@ -251,98 +189,59 @@ pub fn shortcut_label(label: &str) -> String {
         label.into()
     }
 }
-pub fn show_editor(cx: &mut gpui::App) {
-    #[cfg(target_os = "macos")]
-    cx.activate(true);
-    #[cfg(target_os = "linux")]
-    for handle in cx.windows() {
-        let _ = handle.update(cx, |_, window, _| window.activate_window());
-    }
-}
-pub fn hide_editor(cx: &mut gpui::App) {
-    #[cfg(target_os = "macos")]
-    cx.hide();
-    #[cfg(target_os = "linux")]
-    // A toolbar listener already holds the current window. Defer so the
-    // window is available again before issuing the compositor request.
-    cx.defer(|cx| {
-        for handle in cx.windows() {
-            let _ = handle.update(cx, |_, window, _| window.minimize_window());
-        }
-    });
-}
-
-pub enum Startup {
-    Demo,
-    Image(RgbaImage),
-    Exit,
-}
-pub fn startup_image(args: impl Iterator<Item = String>) -> Result<Startup, String> {
-    let mut args = args;
-    let mut request = None;
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--automation" => {}
-            "--help" | "-h" => {
-                println!(
-                    "Glance {}\nUsage: glance [desktop] [--open PATH | --capture-area | --capture-screen] [--automation]\n       glance COMMAND [--flag VALUE]\n       glance --mcp\nRun glance --help for terminal commands.",
-                    env!("CARGO_PKG_VERSION")
-                );
-                return Ok(Startup::Exit);
-            }
-            "--open" | "--capture-area" | "--capture-screen" => {
-                if request.is_some() {
-                    return Err("Choose only one startup image or capture action".into());
-                }
-                request = Some((
-                    arg.clone(),
-                    if arg == "--open" {
-                        Some(args.next().ok_or("--open requires a path")?)
-                    } else {
-                        None
-                    },
-                ));
-            }
-            _ if arg.starts_with("-psn_") => {} // Older Finder launch argument.
-            _ => return Err(format!("Unknown argument: {arg}. Use --help.")),
-        }
-    }
-    match request {
-        None => Ok(Startup::Demo),
-        Some((action, Some(path))) if action == "--open" => {
-            load(std::path::Path::new(&path)).map(Startup::Image)
-        }
-        Some((action, _)) => {
-            screen_capture_permission()?;
-            Ok(capture(action == "--capture-area")?.map_or(Startup::Exit, Startup::Image))
-        }
-    }
-}
 
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::{capture, clipboard_image, copy, open, permission as screen_capture_permission};
-#[cfg(target_os = "linux")]
-fn export_destination(format: ExportFormat) -> Result<Option<PathBuf>, String> {
-    linux::destination(format)
+pub use linux::{clipboard_image, copy};
+/// The native helper `name` beside the app's executable, as `scripts/bundle.sh`
+/// places it, or in `target/`, where `scripts/bundle.sh` and CI build it.
+pub fn native_helper(name: &str) -> Option<PathBuf> {
+    let beside = std::env::current_exe().ok()?.with_file_name(name);
+    let built = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(name);
+    [beside, built].into_iter().find(|path| path.is_file())
 }
+
 #[cfg(test)]
 mod tests {
     use super::checked_export_path;
+
     #[test]
-    fn startup_rejects_missing_or_conflicting_image_arguments() {
-        for args in [
-            vec!["--open"],
-            vec!["--capture-area", "--capture-screen"],
-            vec!["--unknown"],
-        ] {
-            assert!(super::startup_image(args.into_iter().map(str::to_string)).is_err());
-        }
-        assert!(matches!(
-            super::startup_image(vec!["--automation".to_string()].into_iter()).unwrap(),
-            super::Startup::Demo
-        ));
+    fn saving_keeps_the_destination_mode_and_writes_through_links() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let dir = tempfile::tempdir().unwrap();
+        let image = image::RgbaImage::from_pixel(3, 2, image::Rgba([1, 2, 3, 255]));
+        let mode =
+            |path: &std::path::Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+
+        let existing = dir.path().join("existing.png");
+        std::fs::write(&existing, "old").unwrap();
+        std::fs::set_permissions(&existing, std::fs::Permissions::from_mode(0o644)).unwrap();
+        super::save_png(&image, &existing).unwrap();
+        assert_eq!(mode(&existing), 0o644);
+        assert_eq!(image::open(&existing).unwrap().width(), 3);
+
+        // A new file gets what any other new file in this folder gets.
+        let reference = dir.path().join("reference");
+        std::fs::write(&reference, "").unwrap();
+        let new = dir.path().join("new.png");
+        super::save_png(&image, &new).unwrap();
+        assert_eq!(mode(&new), mode(&reference));
+
+        let target = dir.path().join("target.png");
+        std::fs::write(&target, "old").unwrap();
+        let link = dir.path().join("link.png");
+        symlink(&target, &link).unwrap();
+        super::save_png(&image, &link).unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(image::open(&target).unwrap().width(), 3);
     }
     #[test]
     fn missing_or_invalid_system_fonts_render_with_the_embedded_fallback() {
@@ -385,6 +284,7 @@ mod tests {
             color: [0, 0, 0, 255],
             width: 4.,
             text: "Glance".into(),
+            drawn: None,
         });
         assert!(
             document.render(None).pixels().any(|pixel| pixel[0] < 128),

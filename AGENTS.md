@@ -1,22 +1,83 @@
 # Working on Attn Lens
 
-Attn Lens captures the screen, marks it up in place, and sends it to an attn
-agent session through the `attn` CLI. It is a fork of Glance, whose editor it
-keeps; the rest of this file describes Glance's rules, which still apply.
+Attn Lens captures part of the live screen, marks it up in place, and sends it to
+an attn agent session through the `attn` CLI. It is a fork of Glance; the rest of
+this file describes Glance's rules, which still apply to the code that remains.
 
 ## Lens entry points
 
-- `src/lens/mod.rs`: the ⌘⌥2 global shortcut, overlay and corner-tile lifecycle.
-- `src/lens/overlay.rs`: the in-place Send surface. Pointer, keys and automation
-  all dispatch `overlay::Action`; add new behavior there, not in input handlers.
+Lens is being rebuilt on Rune. `s-24857n` in the attn garden holds the plan. Glance's
+GPUI code is at `git show a64f4fb:src/...`, the reference for behavior being ported.
+This file's Glance rules still apply to the code that remains.
+
+- `src/app.rs`: the Rune app and its windows. A Dock app (⌘Q quits, a Dock click
+  opens the editor). When `rune::tooling::is_headless()` is true, overlays are hosted
+  as ordinary windows; that is the only branch on the platform.
+- `src/platform_port.rs`: `PlatformPort`, everything the UI asks of the machine.
+  `platform_port/mac.rs` is real; `platform_port/fake.rs` is driven by script marks.
+- `src/keys/`: the capture key (right ⌘ tapped), the voice key (right ⌥ tapped or
+  held) and the draw key (fn), ported from Hex's key engine. `mod.rs` is the
+  platform-free tap-or-hold machine and its tests; `tap.rs` is macOS's event taps,
+  which need Accessibility. `LENS_KEYS_LOG=1` prints each decision. ⌘⌥C and ⌘⌥↩
+  stay Carbon hotkeys in `mac.rs`.
+- `src/editor/`: the editor window. Every toolbar, menu, key and gesture reaches
+  `Editor::dispatch` in `dispatch.rs`. `gesture.rs` is the pointer on the canvas;
+  `preview.rs` renders the raster off the UI thread; `live.rs` paints marks not yet
+  in it. `stage.rs` renders the backdrop behind the image, and whole frames while
+  the Animation panel plays, on the port's `Lane` (one thread on the Mac, so Metal
+  keeps its thread-local state); `export.rs` runs GIF and MP4 export. In scripts,
+  MP4 goes through the stand-in encoder `tests/video-encoder`. `tests/editor.rs` runs `headless/editor/*.json`, one script per row of
+  `TOOL_OPTIONS.md` and the tables in `docs/usage.md`; each holds its assertions.
+- `src/lens/mod.rs`: `Lens`, the state every window and the socket read. Each change
+  wakes the windows, because a Rune window does not redraw from another's change.
+- `src/lens/session.rs`: Capture, Still, Segment, HostTime.
+- `src/lens/select.rs`, `ink.rs`, `bar.rs`: the area picker, the ink layer and the bar.
+  `app.rs` hosts the picker, the ink layer and the four corner handles as `Surface`s.
+  The ink layer takes the pointer only while the draw key is held; the handles are
+  small windows of their own, below the menu bar, that hold still during a resize.
+- `src/lens/tile.rs`: the corner tile a closed capture shrinks to. While the editor
+  holds a still (`State::editing`), the live surfaces hide and the watch stops;
+  `EditorCall` is how Lens reaches the editor, and `Editor::leave_still` gives it back.
 - `src/lens/attn.rs`: the only contract with attn: `attn send sessions`, `attn
-  send pair` and `attn send <session>` JSON, plus the Keychain token. Its tests
+  send pair`, `attn send <session>` and `attn refine` JSON, plus the Keychain token. Its tests
   use a stand-in `attn`; attn's `cmd/attn/send_stack_test.go` pins the real JSON.
+- `src/lens/dictation.rs`, `pill.rs`: the voice key with no capture open: the pill,
+  `attn refine`, the one paste (`src/paste.rs`, from Hex, behind `PlatformPort::paste`)
+  and the hand-over to a capture. See `docs/dictation.md`. `LENS_DICTATION_LOG=1`
+  prints each step's time; `--pill-in-capture` lets a recording show the pill.
+- `src/lens/deliver.rs`: what Send delivers: the timeline message, the contact
+  sheets and the frames, written only from `Document::export()`.
 - `src/lens/capture.rs`: stills through Hex's capture-core (ScreenCaptureKit).
+- `src/lens/watch.rs`: macOS's `PlatformPort::watch`. `LENS_WATCH_LOG=1` prints each
+  event, and `--ink-in-capture` lets a recording of a driven check show the ink.
+- `src/lens/voice.rs`: voice. It runs `speech/` (attn's speech helper, protocol 3)
+  as a child, feeds it the microphone (`voice/mic.rs`) or, through the socket's
+  `voice-wav`, a WAV, and puts each phrase on the capture clock. `speech/` is its
+  own crate, built by `scripts/bundle.sh`; `speech/tests/segments.rs` and
+  `tests/voice.rs` check phrase times against `speech/tests/fixtures` (opt in with
+  the models, as their headers say). `scripts/lens-vm.sh voice OUT` drives it in the VM.
+- `src/lens/automation.rs`: the development socket. Launch with `--automation`, then
+  `AttnLens lens '{"cmd":"state"}'`; the module's header lists the requests.
+- `tools/driver/driver.swift`: posts synthetic keys and drags. Run it in the VM below;
+  on a real Mac only in a window agreed with the user. It stops if real input arrives.
+- `scripts/lens-vm.sh`: a macOS VM (Tart) for driven checks, so no key reaches this Mac.
+  `setup` once, then `push` to install this checkout signed ad hoc, `driver SCRIPT` to run
+  a driver script in the VM's GUI session, `check OUT` to run `scripts/lens-mac-check.sh`
+  and `live OUT` to run `scripts/lens-live.sh`, both against the stand-in `tools/vm/attn`,
+  `editor OUT` to run `scripts/lens-editor-check.sh` (menus, Copy as OCR, Pick from screen,
+  scroll and zoom, light and dark, read through `tools/driver/ax.swift`),
+  `tile OUT` to run `scripts/lens-tile.sh` (tile hover and click, and Back not counted as a change),
+  `switch OUT` to run `scripts/lens-switch.sh` (draw, ⌘Tab, draw, ⌘Tab, draw: fn read while another app is in front),
+  `keys OUT` to run `scripts/lens-keys.sh` (right ⌘ and right ⌥ alone and in chords with TextEdit, and the Accessibility guide),
+  `dictation OUT` to run `scripts/lens-dictation.sh` (dictation into TextEdit with focus and clipboard kept, and its timings),
+  `c16 OUT` to run `scripts/lens-c16.sh` (the 60 s drawing, voice and stills capture; `scripts/lens-c16-linux.sh`
+  is its headless Linux half), and `stop` when done: it holds 8 GB. `tools/vm/`
+  grants the VM's permissions without a click. Nothing of this Mac's goes in: no shared
+  folders, Keychain, tokens or signing identity. Speed budgets and the feel of drawing
+  stay on the real Mac; VM numbers do not count for them.
+- `headless/`: Rune scripts, asserted by `tests/headless.rs`. Assert on trees, read with
+  `--window KEY --tree out.json --at mark:NAME`, not only on snapshots.
 - `src/permission_guide.rs`, `native/permission_guide.m`: from Hex (MIT).
-- Lens automation: launch with `--automation`, then `AttnLens lens capture`,
-  `lens state`, `lens overlay '<action JSON>'`. The overlay is not an MCP surface;
-  agents send to sessions with `attn send` directly.
 - Sign dev bundles with a stable identity (`GLANCE_CODESIGN_IDENTITY`): an
   ad-hoc rebuild silently invalidates the Screen Recording grant.
 - `scripts/install.sh` builds this checkout, replaces
@@ -24,40 +85,24 @@ keeps; the rest of this file describes Glance's rules, which still apply.
   It signs with this Mac's Apple Development identity unless
   `GLANCE_CODESIGN_IDENTITY` names another, and refuses ad-hoc. It replaces the
   user's installed app, so run it only when asked to install.
-- `vendor/gpui` is GPUI 0.2.2 with three macOS window fixes, each marked
-  `Attn Lens:` in `src/platform/mac/window.rs`: the key-status handler releases
-  its state lock before `resignKeyWindow` re-enters it (without this, Lens hangs
-  on reopening a capture); `PopUp` windows opened with `focus: false` use a
-  panel class that never becomes key (the corner tile); and pop-ups keep their
-  frame instead of being pushed below the menu bar (the overlay covers the whole
-  display). Drop the vendored copy once upstream GPUI has all three.
-- `scripts/lens-live.sh` drives a signed Lens on the real display through the
-  window and send orders that once broke it, against a stand-in `attn`. Run it
-  after changing window lifecycle, pairing, sending or GPUI.
 
 # Glance
 
-Glance is a native macOS and experimental Omarchy screenshot editor in Rust/GPUI. It edits one document,
-exports PNG/GIF/MP4, shares images through glance.sh, and offers opt-in local MCP
-control. Use Cargo and the existing Rust tooling; do not add a JavaScript toolchain.
+Glance was a native macOS screenshot editor. Its image model remains: one document,
+exported to PNG, GIF and MP4. Use Cargo and the existing Rust tooling; do not add a
+JavaScript toolchain.
 
 ## Entry points and architecture
 
-- `src/main.rs`: startup and window creation.
-- `src/editor/actions.rs` and `dispatch.rs`: common typed application actions;
-  toolbar, menus, shortcuts, gestures, and MCP use this path.
 - `src/document.rs` and `document/actions.rs`: image model, validated edits, undo.
-- `src/editor/input.rs`, `view.rs`, `canvas.rs`, `panels/`: input and native UI.
-- `src/editor/jobs.rs`: workers, operation IDs, stale-result rejection.
-- `src/animation/preview.rs`, `preview/quality.rs`, `src/shaders/motion.metal`:
-  worker-rendered shader previews, adaptive quality, periodic motion effects.
-- `src/platform.rs`: platform capture, dialogs, fonts, and clipboard; Linux lives in `src/platform/linux.rs`.
-- `src/glance.rs`: encrypted remote-sharing protocol.
-- `src/mcp.rs`, `src/automation.rs`, `src/editor/automation.rs`: stdio MCP and IPC.
-- `native/`: AVFoundation/FFmpeg helpers. `scripts/bundle.sh`: macOS packaging;
-  `scripts/package-linux.sh`: Linux archive and Arch package recipe.
+- `src/arrow.rs`, `backdrop.rs`, `effects.rs`, `style.rs`, `selection.rs`,
+  `navigation.rs`: mark geometry and raster painting, free of any UI toolkit.
+- `src/animation.rs`, `src/motion_shader.rs`, `src/shaders/motion.metal`: backdrops
+  and entrance animation for export.
+- `src/platform.rs`: dialogs, fonts, and clipboard; Linux lives in `src/platform/linux.rs`.
+- `native/`: AVFoundation/FFmpeg helpers. `scripts/bundle.sh`: macOS packaging.
 
-See `docs/architecture.md` for details and `docs/usage.md` for current behavior.
+See `docs/usage.md` for the editor's behavior.
 `PLAN.md` is historical; do not use its early scope as the current feature list.
 
 ## Working rules
@@ -78,31 +123,13 @@ See `docs/architecture.md` for details and `docs/usage.md` for current behavior.
   Keep export scratch files beside the destination for atomic rename. Never use
   predictable PID/counter paths or truncate an unreserved temporary file.
 - Preserve the exact filename confirmed by a save dialog. An appended extension
-  must not silently replace an existing file or symlink. MCP exports create new
-  destinations and must keep rejecting existing files.
+  must not silently replace an existing file or symlink. Automation exports create new
+  destinations and must reject existing files.
 - Treat automation media inputs as local files: reject URLs and special files,
   bound actual reads, and disable network protocols in media helpers. Pass
   arguments directly to processes; never interpolate them into shell scripts.
 - Check dependency advisories during security reviews. Distinguish affected
   versions from reachable vulnerable APIs; record evidence and upstream limits.
-
-## MCP parity
-
-- Every user-facing command or editable setting needs a semantic MCP path through
-  the shared application/document actions, plus state read-back where relevant.
-  Implement UI and MCP support in the same change.
-- Update `src/mcp.rs` discovery/schema and `mcp/README.md` with action, parameter,
-  annotation, or export changes. A serializable Rust action alone is not enough:
-  the published MCP schema must accept and describe it.
-- Keep `src/mcp/contract_tests.rs` passing. It compares Serde's action inventory
-  with the published schema and validates a complete round-trip payload for every
-  exposed action. Add parameterized fixtures for new actions and behavior tests
-  through the bridge/shared dispatcher for changed semantics, including state,
-  undo and revision conflicts where applicable.
-- Internal prepared results and pointer gestures may stay unexposed; record a
-  reason and semantic alternative in the contract test's explicit exclusions.
-  Prefer revision-scoped document tools over raw annotation indices. Never expose
-  worker completion actions or require fabricated input events for parity.
 
 ## Validation
 
@@ -117,7 +144,7 @@ For CI/isolated packaging checks, set `GLANCE_CODESIGN_IDENTITY=-` to avoid
 certificate trust setup. Ad-hoc bundles have unstable capture permissions;
 do not replace a user's installed app with one as part of validation.
 
-Tests use GPUI's virtual platform. Check `QA.md` for manual desktop verification.
+Check `QA.md` for manual desktop verification.
 Ignored tests are opt-in and may write media, use native helpers, benchmark, or
 upload to production; read the test before explicitly running it.
 

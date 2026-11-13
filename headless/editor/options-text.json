@@ -1,0 +1,133 @@
+{
+ "row": "Text",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "t"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "color-blue"
+  },
+  {
+   "t": 0.88,
+   "type": "tap",
+   "key": "font-size-value"
+  },
+  {
+   "t": 1.08,
+   "type": "type",
+   "text": "70",
+   "every": 0.01
+  },
+  {
+   "t": 1.15,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.27,
+   "type": "tap",
+   "x": 340,
+   "y": 361
+  },
+  {
+   "t": 1.47,
+   "type": "type",
+   "text": "label",
+   "every": 0.01
+  },
+  {
+   "t": 1.67,
+   "type": "mark",
+   "name": "typing"
+  },
+  {
+   "t": 1.79,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 2.01,
+   "type": "mark",
+   "name": "placed"
+  },
+  {
+   "t": 2.13,
+   "type": "tap",
+   "key": "opacity-dec"
+  },
+  {
+   "t": 2.43,
+   "type": "mark",
+   "name": "opacity"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "typing",
+   "present": [
+    "text-editor"
+   ]
+  },
+  {
+   "at": "placed",
+   "marks": [
+    {
+     "tool": "Text",
+     "text": "label",
+     "width": 10,
+     "color": [
+      76,
+      141,
+      255,
+      255
+     ]
+    }
+   ],
+   "text": {
+    "status": "Text label added"
+   }
+  },
+  {
+   "at": "opacity",
+   "marks": [
+    {
+     "tool": "Text",
+     "color": [
+      76,
+      141,
+      255,
+      230
+     ]
+    }
+   ],
+   "value": {
+    "font-size-field": "70"
+   }
+  }
+ ]
+}

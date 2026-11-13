@@ -1,475 +1,388 @@
-use super::actions::Action;
-use super::state::Layout;
-use super::{Editor, text_input};
-use crate::{
-    animation, arrow,
-    document::{Mark, Tool},
-    drawing, effects,
+//! The canvas: the raster, live marks on top, then selection and text being typed.
+use super::{
+    Editor,
+    actions::Action,
+    gesture::Gesture,
+    live::{ACCENT, rgba},
+    preview::MAX_VIEW_SIDE,
 };
-use gpui::{prelude::*, *};
-impl Editor {
-    pub(super) fn canvas(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let self_revision = self.preview.revision;
-        let image = self.preview.image.clone();
-        let preview_padding = self.preview.inside_padding;
-        let text_entity = cx.entity();
-        let overlays: Vec<Mark> = self
-            .document
-            .marks
-            .iter()
-            .enumerate()
-            .skip(self.preview.mark_count)
-            .map(|(index, mark)| {
-                self.interaction
-                    .gesture
-                    .moved_mark(index)
-                    .unwrap_or(mark)
-                    .clone()
-            })
-            .chain(self.interaction.gesture.draft().cloned())
-            .collect();
-        self.prepare_lens(&overlays);
-        let live_lens = self.preview.lens.clone();
-        let selected_indices = self.selected_indices();
-        let selected_marks: Vec<Mark> = selected_indices
-            .iter()
-            .filter_map(|index| {
-                self.interaction
-                    .gesture
-                    .moved_mark(*index)
-                    .or_else(|| self.document.marks.get(*index))
-                    .cloned()
-            })
-            .collect();
-        let selected_mark = (selected_marks.len() == 1).then(|| selected_marks[0].clone());
-        let selection_bounds: Vec<_> = selected_marks
-            .iter()
-            .filter(|mark| {
-                selected_marks.len() > 1
-                    || !matches!(mark.tool, Tool::Arrow | Tool::Magnifier | Tool::Spotlight)
-            })
-            .map(Mark::bounds)
-            .collect();
-        let marquee = if let super::state::Gesture::Selecting {
-            origin, current, ..
-        } = self.interaction.gesture
-        {
-            Some((
-                origin.0.min(current.0),
-                origin.1.min(current.1),
-                origin.0.max(current.0),
-                origin.1.max(current.1),
-            ))
-        } else {
-            None
-        };
-        let canvas_bounds = self.viewport.canvas_bounds.clone();
-        let layout = self.viewport.layout.clone();
-        let dimensions = self.document.base.dimensions();
-        let backdrop = self.document.backdrop;
-        let composition_preview = self.playback.composition_preview.clone();
-        let composition = self.panels.animation && self.document.image_animation.enabled();
-        let composition_source = composition.then(|| {
-            composition_preview
-                .borrow_mut()
-                .source(&self.document, self_revision)
-        });
-        self.sync_preview_preparation(self.preview_preparing());
-        let clip_time = self.clip_time();
-        let seek = self.playback.seek;
-        if !composition {
-            composition_preview.borrow_mut().clear(window);
-        }
-        let motion_preview = self.playback.motion_preview.clone();
-        if composition {
-            motion_preview.borrow_mut().suspend();
-        } else if !backdrop.is_some_and(|b| b.motion.uses_shader()) {
-            motion_preview.borrow_mut().clear(window);
-        }
-        let animation_phase = self.animation_phase();
-        let animation_playing =
-            !self.playback.paused && !self.is_busy() && window.is_window_active();
-        if animation_playing
-            && (if composition {
-                clip_time < self.document.animation_seconds() as f32
-            } else {
-                backdrop.is_some_and(|b| b.motion != animation::Motion::Still)
-            })
-        {
-            window.request_animation_frame();
-        }
-        let output_dimensions = backdrop.map_or(dimensions, |b| b.dimensions(dimensions));
-        let zoom = self.viewport.zoom;
-        let pan = self.viewport.pan;
-        div()
-            .relative()
-            .on_scroll_wheel(cx.listener(|this, e, _, cx| this.scroll(e, cx)))
-            .on_drop(cx.listener(|this, files: &ExternalPaths, _, cx| {
-                if let Some(path) = files.paths().first() {
-                    this.dispatch_ui(Action::OpenPath { path: path.clone() }, cx);
-                }
-            }))
-            .flex()
-            .flex_1()
-            .min_h_0()
-            .overflow_hidden()
-            .cursor(
-                if self.panels.sampling_color.is_some() || self.panels.sampling_tool_color {
-                    CursorStyle::Crosshair
-                } else if self.viewport.space_down {
-                    CursorStyle::OpenHand
-                } else if self.interaction.tool == Tool::Select {
-                    CursorStyle::Arrow
-                } else {
-                    CursorStyle::Crosshair
-                },
-            )
-            .on_mouse_down(MouseButton::Left, cx.listener(Self::begin))
-            .on_mouse_down(
-                MouseButton::Right,
-                cx.listener(|this, e: &MouseDownEvent, _, cx| this.begin_pan(e.position, cx)),
-            )
-            .child(
-                self.accessibility.element(
-                    canvas(
-                        move |bounds, _, _| bounds,
-                        move |bounds, _, window, cx| {
-                            canvas_bounds.set(bounds);
-                            window.paint_quad(fill(
-                                bounds,
-                                rgb(crate::theme::Theme::get(cx).workspace),
-                            ));
-                            let fit = ((f32::from(bounds.size.width) - 80.)
-                                / output_dimensions.0 as f32)
-                                .min(
-                                    (f32::from(bounds.size.height) - 70.)
-                                        / output_dimensions.1 as f32,
-                                )
-                                .clamp(0.01, 1.);
-                            let scale = zoom.unwrap_or(fit);
-                            let w = dimensions.0 as f32 * scale;
-                            let h = dimensions.1 as f32 * scale;
+use crate::{
+    arrow,
+    document::{Mark, Tool},
+    navigation::Layout,
+};
+use rune::{
+    Cursor, Cx, El, Key, PointerButton, Shape, TextStyle, canvas, col, el, text, text_input, tok,
+};
 
-                            let x = f32::from(bounds.origin.x)
-                                + (f32::from(bounds.size.width) - w) / 2.
-                                + pan.0;
-                            let y = f32::from(bounds.origin.y)
-                                + (f32::from(bounds.size.height) - h) / 2.
-                                + pan.1;
-                            layout.set(Layout {
-                                x,
-                                y,
-                                scale,
-                                width: dimensions.0 as f32,
-                                height: dimensions.1 as f32,
-                            });
-                            let image_bounds = Bounds::new(point(px(x), px(y)), size(px(w), px(h)));
-                            let inside = backdrop.map_or(0., |b| b.inside_padding as f32 * scale);
-                            let padded_bounds = image_bounds.dilate(px(inside));
-                            let preview_bounds =
-                                image_bounds.dilate(px(preview_padding as f32 * scale));
-                            let framing = backdrop.map(|b| b.layout(dimensions));
-                            let frame_bounds = framing.map_or(image_bounds, |frame| {
-                                Bounds::new(
-                                    point(
-                                        px(x - frame.origin.0 as f32 * scale),
-                                        px(y - frame.origin.1 as f32 * scale),
-                                    ),
-                                    size(
-                                        px(frame.dimensions.0 as f32 * scale),
-                                        px(frame.dimensions.1 as f32 * scale),
-                                    ),
-                                )
-                            });
-                            if let Some(document) = &composition_source {
-                                window.paint_quad(fill(
-                                    frame_bounds,
-                                    document.animation_backdrop().background(),
-                                ));
-                                motion_preview.borrow().paint_cached(
-                                    document.animation_backdrop(),
-                                    frame_bounds,
-                                    window,
-                                );
-                                composition_preview.borrow_mut().paint(
-                                    clip_time,
-                                    seek,
-                                    frame_bounds,
-                                    animation_playing
-                                        && clip_time < document.animation_seconds() as f32,
-                                    window,
-                                );
-                                let preparing =
-                                    !composition_preview.borrow().ready_for(self_revision, seek);
-                                if preparing {
-                                    paint_preparing(frame_bounds.intersect(&bounds), window, cx);
-                                }
-                                text_entity.update(cx, |editor, cx| {
-                                    if editor.playback.preparing != preparing {
-                                        editor.sync_preview_preparation(preparing);
-                                        cx.notify();
-                                    }
-                                });
-                                return;
-                            }
-                            if let Some(b) = backdrop {
-                                window.paint_quad(quad(
-                                    frame_bounds,
-                                    px(0.),
-                                    b.background(),
-                                    px(0.),
-                                    rgb(0xffffff),
-                                    Default::default(),
-                                ));
-                                if b.motion != animation::Motion::Still {
-                                    window.with_content_mask(
-                                        Some(ContentMask {
-                                            bounds: frame_bounds.intersect(&bounds),
-                                        }),
-                                        |window| {
-                                            animation::paint(
-                                                b,
-                                                animation_phase,
-                                                frame_bounds,
-                                                px(0.),
-                                                &mut motion_preview.borrow_mut(),
-                                                animation_playing,
-                                                window,
-                                            )
-                                        },
-                                    );
-                                }
-                                if b.shadow > 0 {
-                                    window.with_content_mask(
-                                        Some(ContentMask {
-                                            bounds: frame_bounds.intersect(&bounds),
-                                        }),
-                                        |window| {
-                                            window.paint_shadows(
-                                                padded_bounds,
-                                                px(b.inner_radius as f32 * scale).into(),
-                                                &[BoxShadow {
-                                                    color: rgba(0x00000038).into(),
-                                                    offset: point(
-                                                        px(0.),
-                                                        px(b.shadow as f32 * scale * 0.25),
-                                                    ),
-                                                    blur_radius: px(b.shadow as f32 * scale),
-                                                    spread_radius: px(0.),
-                                                }],
-                                            );
-                                        },
-                                    );
-                                }
-                            } else {
-                                window.paint_shadows(
-                                    image_bounds,
-                                    Default::default(),
-                                    &[
-                                        BoxShadow {
-                                            color: rgba(0x17203320).into(),
-                                            offset: point(px(0.), px(12.)),
-                                            blur_radius: px(32.),
-                                            spread_radius: px(0.),
-                                        },
-                                        BoxShadow {
-                                            color: rgba(0x17203310).into(),
-                                            offset: point(px(0.), px(2.)),
-                                            blur_radius: px(6.),
-                                            spread_radius: px(0.),
-                                        },
-                                    ],
-                                );
-                            }
-                            if backdrop.is_none() {
-                                window.paint_quad(quad(
-                                    image_bounds,
-                                    px(backdrop.map_or(0., |b| b.inner_radius as f32 * scale)),
-                                    rgb(0xffffff),
-                                    px(1.),
-                                    rgb(0xd8d8e1),
-                                    Default::default(),
-                                ));
-                            }
-                            let _ = window.paint_image(
-                                preview_bounds,
-                                px(backdrop.map_or(0., |b| b.inner_radius as f32 * scale)).into(),
-                                image,
-                                0,
-                                false,
-                            );
-                            window.with_content_mask(
-                                Some(ContentMask {
-                                    bounds: image_bounds.intersect(&bounds),
-                                }),
-                                |window| {
-                                    for mark in &overlays {
-                                        drawing::paint(mark, layout.get(), window, cx);
-                                        if mark.tool == Tool::Magnifier {
-                                            effects::paint_lens(
-                                                mark,
-                                                layout.get(),
-                                                live_lens
-                                                    .as_ref()
-                                                    .filter(|(key, _)| {
-                                                        *key == effects::LensKey::new(
-                                                            self_revision,
-                                                            mark,
-                                                        )
-                                                    })
-                                                    .map(|(_, image)| image.clone()),
-                                                window,
-                                            );
-                                        }
-                                    }
-                                    if let Some(mark) = &selected_mark
-                                        && matches!(
-                                            mark.tool,
-                                            Tool::Arrow | Tool::Magnifier | Tool::Spotlight
-                                        )
-                                    {
-                                        arrow::paint_handles(mark, layout.get(), window);
-                                    }
-                                    for &(left, top, right, bottom) in &selection_bounds {
-                                        let l = layout.get();
-                                        let b = Bounds::new(
-                                            point(
-                                                px(l.x + left * l.scale),
-                                                px(l.y + top * l.scale),
-                                            ),
-                                            size(
-                                                px((right - left) * l.scale),
-                                                px((bottom - top) * l.scale),
-                                            ),
-                                        )
-                                        .dilate(px(4.));
-                                        window.paint_quad(quad(
-                                            b,
-                                            px(3.),
-                                            gpui::transparent_black(),
-                                            px(1.),
-                                            rgb(0x4c8dff),
-                                            Default::default(),
-                                        ));
-                                    }
-                                    if let Some((left, top, right, bottom)) = marquee {
-                                        let l = layout.get();
-                                        let b = Bounds::new(
-                                            point(
-                                                px(l.x + left * l.scale),
-                                                px(l.y + top * l.scale),
-                                            ),
-                                            size(
-                                                px((right - left) * l.scale),
-                                                px((bottom - top) * l.scale),
-                                            ),
-                                        );
-                                        window.paint_quad(quad(
-                                            b,
-                                            px(0.),
-                                            rgba(0x4c8dff22),
-                                            px(1.),
-                                            rgb(0x4c8dff),
-                                            Default::default(),
-                                        ));
-                                    }
-                                    text_input::paint(
-                                        &text_entity,
-                                        layout.get(),
-                                        image_bounds,
-                                        window,
-                                        cx,
-                                    );
-                                },
-                            );
-                            let preparing = backdrop.is_some_and(|b| {
-                                b.motion.uses_shader() && !motion_preview.borrow().ready_for(b)
-                            });
-                            if preparing {
-                                paint_preparing(frame_bounds.intersect(&bounds), window, cx);
-                            }
-                            text_entity.update(cx, |editor, cx| {
-                                if editor.playback.preparing != preparing {
-                                    editor.sync_preview_preparation(preparing);
-                                    cx.notify();
-                                }
-                            });
-                        },
-                    )
-                    .h_full()
-                    .flex_1()
-                    .min_w_0(),
-                    crate::accessibility::Node::group(format!(
-                        "Screenshot canvas, {} by {} pixels, {} annotations{}",
-                        dimensions.0,
-                        dimensions.1,
-                        self.document.marks.len(),
-                        if self.playback.preparing {
-                            ", preparing preview"
-                        } else {
-                            ""
-                        }
-                    )),
-                ),
-            )
-            .when(self.panels.backdrop, |el| {
-                el.child(self.backdrop_controls(cx))
-            })
-            .when(
-                !self.panels.backdrop && !self.panels.enhance && !self.panels.animation,
-                |el| el.child(self.tool_controls(cx)),
-            )
-            .when(self.panels.enhance, |el| {
-                el.child(self.enhance_controls(cx))
-            })
-            .when(self.panels.animation, |el| {
-                el.child(self.animation_controls(cx))
-            })
-    }
+/// Labels hold one line, so a pasted line break becomes a space.
+fn one_line(text: &str) -> String {
+    text.split(['\r', '\n', '\u{2028}', '\u{2029}'])
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
-// An opaque cover hides partial backdrops/cards until a matching worker frame exists.
-// Preparation has no measurable total, so use a status rather than a fake percentage.
-fn paint_preparing(bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-    let theme = crate::theme::Theme::get(cx);
-    window.with_content_mask(Some(ContentMask { bounds }), |window| {
-        window.paint_quad(fill(bounds, rgb(theme.preparing)));
-        let text: SharedString = "Preparing preview…".into();
-        let font_size = px(14.);
-        let line = window.text_system().shape_line(
-            text.clone(),
-            font_size,
-            &[TextRun {
-                len: text.len(),
-                font: font(crate::platform::UI_FONT),
-                color: rgb(theme.text).into(),
-                background_color: None,
-                underline: None,
-                strikethrough: None,
-            }],
-            None,
+fn at(l: Layout, x: f32, y: f32) -> [f32; 2] {
+    [l.x + x * l.scale, l.y + y * l.scale]
+}
+
+fn dashed_box(shape: Shape, a: [f32; 2], b: [f32; 2], width: f32, color: rune::Color) -> Shape {
+    shape.stroke_with(
+        vec![a, [b[0], a[1]], b, [a[0], b[1]]],
+        true,
+        width,
+        rune::LineCap::Round,
+        color,
+    )
+}
+
+fn handle(shape: Shape, p: [f32; 2]) -> Shape {
+    let box_of = |r: f32| {
+        vec![
+            [p[0] - r, p[1] - r],
+            [p[0] + r, p[1] - r],
+            [p[0] + r, p[1] + r],
+            [p[0] - r, p[1] + r],
+        ]
+    };
+    let shape = shape.fill(box_of(4.), rgba([255, 255, 255, 255]));
+    shape.stroke_with(box_of(4.), true, 1.5, rune::LineCap::Round, rgba(ACCENT))
+}
+
+/// Single-mark handles when the mark has any, otherwise a box around each.
+fn selection(mut shape: Shape, marks: &[&Mark], l: Layout) -> Shape {
+    let accent = rgba(ACCENT);
+    if let [mark] = marks
+        && matches!(mark.tool, Tool::Arrow | Tool::Magnifier | Tool::Spotlight)
+    {
+        for (x, y) in arrow::handles(mark) {
+            shape = handle(shape, at(l, x, y));
+        }
+        return shape;
+    }
+    for mark in marks {
+        let (left, top, right, bottom) = mark.bounds();
+        let a = at(l, left, top);
+        let b = at(l, right, bottom);
+        shape = dashed_box(
+            shape,
+            [a[0] - 4., a[1] - 4.],
+            [b[0] + 4., b[1] + 4.],
+            1.,
+            accent,
         );
-        let badge = Bounds::new(
-            bounds.center() - point((line.width + px(32.)) / 2., px(20.)),
-            size(line.width + px(32.), px(40.)),
+    }
+    shape
+}
+
+impl Editor {
+    fn cursor(&self) -> Cursor {
+        if matches!(self.gesture, Gesture::Panning { .. }) {
+            Cursor::Grabbing
+        } else if self.space_down {
+            Cursor::Grab
+        } else if self.tool == Tool::Select {
+            Cursor::Default
+        } else if self.tool == Tool::Text {
+            Cursor::Text
+        } else {
+            Cursor::Crosshair
+        }
+    }
+
+    fn annotation_nodes(&self, l: Layout) -> Vec<El> {
+        let Some(doc) = &self.doc else {
+            return vec![];
+        };
+        doc.marks
+            .iter()
+            .enumerate()
+            .map(|(index, mark)| {
+                let (left, top, right, bottom) = mark.bounds();
+                let a = at(l, left, top);
+                let b = at(l, right, bottom);
+                el().key(format!("mark-{index}"))
+                    .absolute(a[0], a[1])
+                    .w((b[0] - a[0]).max(1.))
+                    .h((b[1] - a[1]).max(1.))
+                    .role("image")
+                    .label(format!("{} annotation", mark.tool.label()))
+                    .a11y_value(self.describe(index, mark))
+            })
+            .collect()
+    }
+
+    /// What a screen reader says about a mark besides its kind.
+    fn describe(&self, index: usize, mark: &Mark) -> String {
+        let (left, top, right, bottom) = mark.bounds();
+        let mut value = format!(
+            "{} by {} pixels at {}, {}",
+            (right - left).round(),
+            (bottom - top).round(),
+            left.round(),
+            top.round()
         );
-        window.paint_quad(quad(
-            badge,
-            px(10.),
-            rgb(theme.surface),
-            px(1.),
-            rgb(theme.border),
-            Default::default(),
+        if matches!(mark.tool, Tool::Text | Tool::Counter) {
+            value = format!("{}, {value}", mark.text);
+        }
+        if self.selected.contains(&index) {
+            value.push_str(", selected");
+        }
+        value
+    }
+
+    /// The document as JSON for scripts, on the fake port only.
+    pub(crate) fn state_probe(&self) -> Option<El> {
+        if !self.port.exposes_state() {
+            return None;
+        }
+        let marks: Vec<_> = self
+            .doc
+            .iter()
+            .flat_map(|doc| doc.marks.iter().enumerate())
+            .map(|(index, mark)| {
+                serde_json::json!({
+                    "tool": mark.tool.label(),
+                    "points": mark.points,
+                    "curve": mark.curve,
+                    "color": mark.color,
+                    "width": mark.width,
+                    "text": mark.text,
+                    "style": mark.style,
+                    "selected": self.selected.contains(&index),
+                })
+            })
+            .collect();
+        let state = serde_json::json!({
+            "marks": marks,
+            "backdrop": self.doc.as_ref().and_then(|d| d.backdrop),
+            "animation": self.doc.as_ref().map(|d| d.image_animation),
+            "panel": format!("{:?}", self.panel),
+            "open": self.open,
+            "playback": {
+                "position": self.playback.position,
+                "playing": self.playback.playing,
+                "preparing": self.preparing(),
+            },
+            "stage": {
+                "shown": self.stage.shown.map(|key| key.tick),
+                "size": self.stage.pixels.size(),
+            },
+            "export": self.export.as_ref().map(|e| serde_json::json!({
+                "format": e.format.label(),
+                "percent": e.percent,
+            })),
+            "preview": {
+                "behind": self.revision - self.preview.shown,
+                "marks": self.preview.marks,
+                "size": self.preview.size,
+            },
+            "lens": {
+                "shown": self.lens.shown.is_some(),
+                "sampling": self.lens.pending.is_some(),
+                "behind": self.lens_behind(),
+            },
+        });
+        Some(el().key("editor-state").label(state.to_string()).inert())
+    }
+
+    fn text_field(&self, l: Layout, cx: &Cx<Editor>) -> Option<El> {
+        let draft = self.text.as_ref()?;
+        let point = at(l, draft.mark.points[0].0, draft.mark.points[0].1);
+        let size = (draft.mark.width * 7.).max(1.) * l.scale;
+        let t = tok::theme(cx.system_dark());
+        let style = TextStyle {
+            line_height: size,
+            ..TextStyle::new(size, 400.)
+        };
+        Some(
+            text_input(&self.text_edit, style)
+                .key("text-editor")
+                .label("Annotation text")
+                .single_line()
+                .color(rgba(draft.mark.color))
+                .absolute(point[0], point[1])
+                .min_w(size.max(24.) * 8.)
+                .border(1., t.indicator)
+                .on_edit(|s: &mut Editor| &mut s.text_edit)
+                .on_input_paste(|s: &mut Editor, content, _| {
+                    s.text_edit.insert(&one_line(content.text()));
+                    true
+                })
+                .on_submit(|s: &mut Editor, tx| {
+                    s.commit_text(tx);
+                    tx.blur();
+                })
+                .on_input_key(|s: &mut Editor, key, tx| {
+                    if key.key == Key::Escape {
+                        s.dispatch_ui(Action::Cancel, tx);
+                        tx.blur();
+                        return true;
+                    }
+                    false
+                }),
+        )
+    }
+
+    pub(crate) fn canvas_view(&self, cx: &mut Cx<Editor>) -> El {
+        let t = tok::theme(cx.system_dark());
+        let l = self.layout();
+        let mut root = col()
+            .key("canvas")
+            .grow(1.)
+            .h_full()
+            .clip_soft(0.)
+            .instant_changes()
+            .fill(t.control_track)
+            .cursor(self.cursor())
+            .on_layout(|s: &mut Editor, rect| s.canvas = (rect[2], rect[3]))
+            .pointer_buttons([PointerButton::Middle])
+            .on_drag(|s: &mut Editor, drag, tx| {
+                if tx.button() == PointerButton::Middle {
+                    s.on_canvas_pan_drag(drag);
+                } else {
+                    s.on_canvas_drag(drag, tx);
+                }
+            })
+            .on_wheel(|s: &mut Editor, wheel, tx| s.on_canvas_wheel(wheel, tx))
+            .on_magnify(|s: &mut Editor, magnify, tx| {
+                let anchor = (magnify.x, magnify.y);
+                s.dispatch_ui(
+                    Action::ZoomAt {
+                        factor: 1. + magnify.delta,
+                        anchor,
+                    },
+                    tx,
+                );
+                true
+            })
+            .on_smart_magnify(|s: &mut Editor, _, _, tx| {
+                let action = if s.zoom.is_some() {
+                    Action::Fit
+                } else {
+                    Action::ActualSize
+                };
+                s.dispatch_ui(action, tx);
+                true
+            });
+        let Some(doc) = &self.doc else {
+            return root.center().child(
+                col()
+                    .gap(8.)
+                    .center()
+                    .inert()
+                    .child(
+                        text("Open an image to edit it")
+                            .key("editor-empty")
+                            .font(tok::type_::TITLE)
+                            .color(t.text),
+                    )
+                    .child(
+                        text("Drop a PNG or JPEG here, paste one, or press ⌘O.")
+                            .font(tok::type_::BODY)
+                            .color(t.text_secondary),
+                    ),
+            );
+        };
+        let (width, height) = doc.base.dimensions();
+        root = root.label(format!(
+            "Screenshot canvas, {width} by {height} pixels, {} annotations",
+            doc.marks.len()
         ));
-        let _ = line.paint(
-            badge.origin + point(px(16.), px(10.)),
-            font_size,
-            window,
-            cx,
+        let entrance = matches!(self.scene(), Some(super::stage::Scene::Entrance { .. }));
+        if let (Some(rect), Some(shown)) = (self.stage_rect(), self.stage.shown) {
+            root = root.child(
+                el().key("stage")
+                    .label(shown.scene.label(doc.image_animation.effect.label()))
+                    .absolute(rect[0], rect[1])
+                    .w(rect[2])
+                    .h(rect[3])
+                    .pixels(&self.stage.pixels)
+                    .inert(),
+            );
+        }
+        if entrance {
+            return root.children(self.annotation_nodes(l));
+        }
+        if self.preview.size.0 > 0 {
+            // The image as framed: edges extended by the inside padding, corners rounded.
+            let (inside, radius) = doc.backdrop.map_or((0., 0.), |b| {
+                (b.inside_padding as f32, b.inner_radius as f32)
+            });
+            let inset = inside * l.scale;
+            root = root.child(
+                el().key("image")
+                    .absolute(l.x - inset, l.y - inset)
+                    .w(l.width * l.scale + 2. * inset)
+                    .h(l.height * l.scale + 2. * inset)
+                    .radius(radius * l.scale)
+                    .pixels(&self.preview.pixels)
+                    .inert(),
+            );
+        }
+        let (mut shape, labels) = self.live_layer(Shape::new(), l);
+        let selected: Vec<&Mark> = self
+            .selected_indices()
+            .into_iter()
+            .map(|i| self.gesture.moved_mark(i).unwrap_or(&doc.marks[i]))
+            .collect();
+        shape = selection(shape, &selected, l);
+        if let Gesture::Selecting {
+            origin, current, ..
+        } = self.gesture
+        {
+            let a = at(l, origin.0, origin.1);
+            let b = at(l, current.0, current.1);
+            shape = shape.fill(
+                vec![a, [b[0], a[1]], b, [a[0], b[1]]],
+                rgba([0x4c, 0x8d, 0xff, 0x22]),
+            );
+            shape = dashed_box(shape, a, b, 1., rgba(ACCENT));
+        }
+        root = root.child(
+            canvas(shape)
+                .key("overlay")
+                .absolute(0., 0.)
+                .w_full()
+                .h_full()
+                .inert(),
         );
-    });
+        root = root.children(labels);
+        root = root.children(self.lens(l));
+        root = root.children(self.annotation_nodes(l));
+        root = root.children(self.text_field(l, cx));
+        let downscaled = width.max(height) > MAX_VIEW_SIDE;
+        root.children(downscaled.then(|| {
+            text(format!(
+                "View {}×{}, image {width}×{height}, downscaled",
+                self.preview.size.0, self.preview.size.1,
+            ))
+            .key("view-size")
+            .font(tok::type_::LABEL)
+            .color(t.text_secondary)
+            .absolute(10., 8.)
+            .inert()
+        }))
+    }
+
+    fn on_canvas_wheel(&mut self, wheel: rune::WheelEvent, tx: &mut rune::Tx) -> bool {
+        if self.gesture.is_active() {
+            return true;
+        }
+        if wheel.mods.cmd || wheel.mods.ctrl {
+            self.dispatch_ui(
+                Action::ZoomAt {
+                    factor: (wheel.dy * 0.008).exp(),
+                    anchor: (wheel.x, wheel.y),
+                },
+                tx,
+            );
+        } else if wheel.mods.shift && wheel.dx == 0. {
+            self.dispatch_ui(Action::PanBy((wheel.dy, 0.)), tx);
+        } else {
+            self.dispatch_ui(Action::PanBy((wheel.dx, wheel.dy)), tx);
+        }
+        true
+    }
 }

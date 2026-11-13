@@ -15,15 +15,16 @@ fn device() -> Result<Arc<Device>, String> {
     static DEVICE: std::sync::OnceLock<Result<Arc<Device>, String>> = std::sync::OnceLock::new();
     DEVICE
         .get_or_init(|| {
-            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
                 backends: wgpu::Backends::VULKAN,
-                ..Default::default()
+                ..wgpu::InstanceDescriptor::new_without_display_handle()
             });
             let adapter =
                 pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
                     power_preference: wgpu::PowerPreference::HighPerformance,
                     force_fallback_adapter: false,
                     compatible_surface: None,
+                    apply_limit_buckets: false,
                 }))
                 .map_err(|e| e.to_string())?;
             let info = adapter.get_info();
@@ -160,7 +161,7 @@ impl Compute {
             .ok_or("Compute frame byte size overflows")?;
         let limits = self.gpu.device.limits();
         if size == 0
-            || size > u64::from(limits.max_storage_buffer_binding_size)
+            || size > limits.max_storage_buffer_binding_size
             || width.div_ceil(16) > limits.max_compute_workgroups_per_dimension
             || height.div_ceil(16) > limits.max_compute_workgroups_per_dimension
             || params.len() as u64 * 4 != self.params.size()
@@ -283,7 +284,13 @@ impl Compute {
             b.readback.unmap();
             return Err(error);
         }
-        let pixels = b.readback.slice(..).get_mapped_range().to_vec();
+        let pixels = match b.readback.slice(..).get_mapped_range() {
+            Ok(view) => view.to_vec(),
+            Err(error) => {
+                b.readback.unmap();
+                return Err(error.to_string());
+            }
+        };
         b.readback.unmap();
         image::RgbaImage::from_raw(width, height, pixels).ok_or("Invalid compute output".into())
     }

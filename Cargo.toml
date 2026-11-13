@@ -1,71 +1,55 @@
 [package]
-name = "glance"
+name = "attn-lens"
 version = "0.5.0"
 edition = "2024"
-description = "A native screenshot editor for annotation, animated backdrops, and sharing visual context with coding agents."
+description = "Capture part of the live screen, draw on it, talk, and send it to an attn agent session."
 license = "MIT"
-repository = "https://github.com/modem-dev/glance-desktop"
-homepage = "https://glance.sh"
+repository = "https://github.com/SolenesInc/attn-lens"
 readme = "README.md"
-keywords = ["screenshot", "annotation", "macos", "gpui", "mcp"]
+keywords = ["screenshot", "annotation", "macos", "rune", "attn"]
 categories = ["multimedia::images", "gui"]
-# Glance is distributed as a desktop app, not a crates.io package.
 publish = false
 
 [dependencies]
-gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+rune = { git = "https://github.com/SolenesInc/rune.git", rev = "f80f6d03b6a5c6004798d7828345cb004047113b", features = ["native-file-dialog"] }
 image = "0.25"
 imageproc = "0.25"
-smallvec = "1"
 tempfile = "3"
 ab_glyph = "0.2"
 async-channel = "2"
-lyon = "1"
-unicode-segmentation = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-base64 = "0.22"
 gif = "0.14"
 color_quant = "1"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-rand = "0.8"
-sha2 = "0.10"
-hkdf = "0.12"
-aes-gcm = "0.10"
-jsonwebtoken = { version = "10.3", default-features = false, features = ["aws_lc_rs"] }
-fs2 = "0.4"
+hound = "3.5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-# GPUI 0.2.2 pulls xattr 0.2.3, which still uses libc::ENOATTR on Linux.
-# Keep the last verified compatible libc until that upstream dependency changes.
-libc = "=0.2.186"
-wgpu = { version = "28", default-features = false, features = ["std", "vulkan", "glsl"] }
+wgpu = { version = "~30.0.1", default-features = false, features = ["std", "vulkan", "glsl"] }
 pollster = "0.4"
 bytemuck = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-raw-window-handle = "0.6"
 global-hotkey = "0.7"
 arboard = "3.6"
-cocoa = "0.26"
 objc = "0.2"
+objc2 = "0.6"
 block = "0.1"
+block2 = "0.6"
 metal = "0.29"
 # Hex's recorder core (MIT): stills through ScreenCaptureKit now, recordings later.
 capture-core = { git = "https://github.com/anomalyco/hex", rev = "54d1ebfccfa981ad73c5a2fd833504a55e6676c9" }
 security-framework = "3"
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "AVCaptureDevice", "AVMediaFormat"] }
+objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "block2", "AVAudioBuffer", "AVAudioConverter", "AVAudioEngine", "AVAudioFormat", "AVAudioIONode", "AVAudioNode", "AVAudioTime", "AVAudioTypes"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "bitflags", "NSArray", "NSData", "NSError", "NSNotification", "NSProcessInfo", "NSString", "NSURL"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem", "NSRunningApplication", "NSWorkspace"] }
 
-[target.'cfg(target_os = "macos")'.build-dependencies]
+[build-dependencies]
 cc = "1"
 
 [dev-dependencies]
-gpui = { version = "=0.2.2", features = ["test-support", "runtime_shaders"] }
 resvg = { version = "=0.45.1", default-features = false }
 
 [profile.release]
 lto = "thin"
 strip = true
-
-[patch.crates-io]
-# GPUI with three macOS window fixes; see AGENTS.md.
-gpui = { path = "vendor/gpui" }

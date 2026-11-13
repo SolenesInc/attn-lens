@@ -46,6 +46,7 @@ fn randomized_edit_sequences_roundtrip_history_and_png() {
                         color: [200, 30, 80, 255],
                         width: (random(&mut seed) % 9 + 1) as f32,
                         text: "é日本👋".into(),
+                        drawn: None,
                     });
                 }
                 3 if !d.marks.is_empty() => {
@@ -94,6 +95,7 @@ fn randomized_edit_sequences_roundtrip_history_and_png() {
                         color: [0; 4],
                         width: 1.,
                         text: String::new(),
+                        drawn: None,
                     });
                 }
                 _ => {
@@ -119,7 +121,7 @@ fn randomized_edit_sequences_roundtrip_history_and_png() {
 }
 #[test]
 fn tiny_crop_edges_remain_reachable_when_zoomed_out() {
-    let l = crate::Layout {
+    let l = crate::navigation::Layout {
         width: 10.,
         height: 10.,
         scale: 0.1,

@@ -1,0 +1,106 @@
+{
+ "row": "native menus",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "menu": "Arrow"
+  },
+  {
+   "t": 0.78,
+   "type": "mark",
+   "name": "tool"
+  },
+  {
+   "t": 0.9,
+   "menu": "Resize & Rotate"
+  },
+  {
+   "t": 1.12,
+   "type": "mark",
+   "name": "image"
+  },
+  {
+   "t": 1.24,
+   "menu": "Actual Size"
+  },
+  {
+   "t": 1.46,
+   "type": "mark",
+   "name": "zoom"
+  },
+  {
+   "t": 1.58,
+   "menu": "Zoom In"
+  },
+  {
+   "t": 1.8,
+   "type": "mark",
+   "name": "zoom-in"
+  },
+  {
+   "t": 1.92,
+   "type": "mark",
+   "name": "ocr:words"
+  },
+  {
+   "t": 2.04,
+   "menu": "Copy as OCR"
+  },
+  {
+   "t": 2.26,
+   "type": "mark",
+   "name": "ocr"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "tool",
+   "checked": [
+    "tool-arrow"
+   ]
+  },
+  {
+   "at": "image",
+   "present": [
+    "image-tools"
+   ]
+  },
+  {
+   "at": "zoom",
+   "value": {
+    "zoom-label": "100%"
+   }
+  },
+  {
+   "at": "zoom-in",
+   "value": {
+    "zoom-label": "125%"
+   }
+  },
+  {
+   "at": "ocr",
+   "clipboard_text": "words"
+  }
+ ]
+}

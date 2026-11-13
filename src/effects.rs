@@ -1,11 +1,6 @@
 //! Non-destructive focus effects; pointer handlers only change object geometry.
-use crate::{
-    Layout,
-    document::{Mark, Tool},
-};
-use gpui::{Bounds, BoxShadow, RenderImage, Window, fill, point, px, quad, rgb, rgba, size};
+use crate::document::{Mark, Tool};
 use image::{Pixel, Rgba, RgbaImage};
-use std::sync::Arc;
 
 pub fn radius(m: &Mark) -> f32 {
     (m.width * 12.).clamp(18., 300.)
@@ -151,90 +146,6 @@ pub fn magnifier_raster(out: &mut RgbaImage, source: &RgbaImage, m: &Mark) {
     }
     ring(out, b, r, m.color, 3.);
 }
-pub fn paint_spotlight(m: &Mark, l: Layout, w: &mut Window) {
-    let (x, y, r, b) = region(m, l.width, l.height);
-    let dim = rgba((m.style.dim * 255.).round() as u32);
-    for (x, y, width, height) in [
-        (0., 0., l.width, y),
-        (0., b, l.width, l.height - b),
-        (0., y, x, b - y),
-        (r, y, l.width - r, b - y),
-    ] {
-        if width > 0. && height > 0. {
-            w.paint_quad(fill(
-                Bounds::new(
-                    point(px(l.x + x * l.scale), px(l.y + y * l.scale)),
-                    size(px(width * l.scale), px(height * l.scale)),
-                ),
-                dim,
-            ));
-        }
-    }
-    let mut outline = m.clone();
-    outline.tool = Tool::Rectangle;
-    outline.width = 2.;
-    for path in crate::drawing::paths(&outline, l) {
-        w.paint_path(path, rgba(u32::from_be_bytes(m.color)));
-    }
-}
-pub fn paint_lens(m: &Mark, l: Layout, image: Option<Arc<RenderImage>>, w: &mut Window) {
-    if m.points.len() < 2 {
-        return;
-    }
-    let a = m.points[0];
-    let b = *m.points.last().unwrap();
-    let r = radius(m) * l.scale;
-    let color = rgba(u32::from_be_bytes(m.color));
-    let mut line = m.clone();
-    line.tool = Tool::Pen;
-    line.width = 1.;
-    for p in crate::drawing::paths(&line, l) {
-        w.paint_path(p, color);
-    }
-    let map = |(x, y): (f32, f32)| point(px(l.x + x * l.scale), px(l.y + y * l.scale));
-    let source_r = r / zoom(m);
-    w.paint_quad(quad(
-        Bounds::new(
-            map(a) - point(px(source_r), px(source_r)),
-            size(px(source_r * 2.), px(source_r * 2.)),
-        ),
-        px(source_r),
-        rgba(0x00000000),
-        px(1.5 * l.scale),
-        color,
-        Default::default(),
-    ));
-    let bounds = Bounds::new(map(b) - point(px(r), px(r)), size(px(r * 2.), px(r * 2.)));
-    w.paint_shadows(
-        bounds,
-        px(r).into(),
-        &[BoxShadow {
-            color: rgba(0x00000038).into(),
-            offset: point(px(0.), px(3.)),
-            blur_radius: px(12.),
-            spread_radius: px(0.),
-        }],
-    );
-    w.paint_quad(quad(
-        bounds,
-        px(r),
-        rgb(0xffffff),
-        px(0.),
-        color,
-        Default::default(),
-    ));
-    if let Some(image) = image {
-        let _ = w.paint_image(bounds, px(r).into(), image, 0, false);
-    }
-    w.paint_quad(quad(
-        bounds,
-        px(r),
-        rgba(0x00000000),
-        px(3. * l.scale),
-        color,
-        Default::default(),
-    ));
-}
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct LensKey {
     revision: u64,
@@ -267,6 +178,7 @@ mod tests {
             width: 2.,
             text: "2".into(),
             curve: None,
+            drawn: None,
         }
     }
     #[test]

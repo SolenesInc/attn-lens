@@ -1,96 +1,90 @@
 # Attn Lens
 
-Attn Lens captures your screen, lets you mark it up in place, and sends it to an
-[attn](https://github.com/victorarias/attn) agent session, on this Mac or on an
-outpost. Press **⌘⌥2**, drag arrows over the frozen screen, type a message, press
-**↩**. The agent gets the message and a command that saves the image where it runs.
-See [Send to an attn session](docs/send.md).
+Attn Lens captures part of your live screen, lets you mark it up in place, and
+sends it to an [attn](https://github.com/victorarias/attn) agent session, on this
+Mac or on an outpost. The screen stays live while you do it: clicks, scrolls and
+typing keep reaching your apps.
 
-To install or update it from a checkout, run `scripts/install.sh`. It builds the
-source, installs `~/Applications/Attn Lens.app`, and restarts Lens if it is
-running. Screen Recording permission and the attn pairing carry over because
-every build is signed with the same identity: your Apple Development certificate,
-or the one `GLANCE_CODESIGN_IDENTITY` names.
-
-Attn Lens is a fork of [Glance](https://github.com/modem-dev/glance-desktop) (MIT).
-It keeps Glance's editor (**⌘E** from a capture) for crop, pixelate, backdrops and
-GIF/MP4 export. The rest of this README describes that editor.
-
-## Glance
-
-Glance is a native screenshot editor for macOS, with experimental support for Omarchy.
-Capture a screenshot, add arrows and labels, then copy, save, or share it.
-Frame images with backdrops and export animations as GIF or MP4.
-
-![Light and dark album galleries with rounded padding and an animated violet Lava backdrop](docs/assets/glance-albums.gif)
-
-*Six-second loop made with Glance’s padding and animated Lava backdrop.
-[See a still annotation example](docs/assets/glance-example.png).*
+It runs on macOS 15 or later. It is a fork of
+[Glance](https://github.com/modem-dev/glance-desktop) (MIT).
 
 ## Install
 
-Download a binary from the [latest release](https://github.com/modem-dev/glance-desktop/releases/latest).
-
-### macOS — Apple Silicon, macOS 12+
-
-1. Download `Glance-<version>-macos-arm64.zip` and extract it.
-2. Move `Glance.app` to **Applications** and open it.
-3. If macOS blocks it, follow the [FAQ below](#macos-faq).
-
-### Omarchy — x86_64, experimental
-
-Download the release's `.pkg.tar.zst` package, then install and launch it:
+From a checkout, with the tools listed in [BUILD.md](BUILD.md):
 
 ```sh
-sudo pacman -U ./glance-desktop-*.pkg.tar.zst
-glance
+scripts/install.sh
 ```
 
-See the [Omarchy guide](docs/linux.md) for checksum verification and global capture bindings.
+The script builds the source, installs `~/Applications/Attn Lens.app`, and restarts
+Lens if it is running. Run it again to update. Permissions and the attn pairing
+carry over because every build is signed with the same identity: your Apple
+Development certificate, or the one `GLANCE_CODESIGN_IDENTITY` names.
 
-## Your first screenshot
+Lens is a Dock app. **⌘Q** quits, and a Dock click opens the editor.
 
-The app opens with a practice canvas. Try the tools there, or capture your screen:
+## First capture
 
-1. Press **⌘⌥2** to select an area, or **⌘⌥3** to capture the main display.
-   Grant Screen Recording access when prompted, then quit and reopen Glance.
-2. Press **A** and draw an arrow. Press **T**, click, and type a label.
-3. Press **⌘C** to copy the image or **⌘S** to save a PNG.
-4. To share a temporary link, press **⌘⇧C** and paste it into a chat.
+1. Tap **right ⌘** alone and drag an area. A click takes the whole display, and **Esc**
+   cancels.
+2. Hold **fn** and drag to draw on the area. A lone straight drag is an arrow;
+   writing and underlining, strokes in quick succession, stay as drawn.
+3. Type a message in the bar. Click the page to give it the keyboard; **⌘⌥C** takes
+   it back.
+4. Press **↩** in the bar, or **⌘⌥↩** from anywhere.
 
-On Omarchy, use **Ctrl** for editor shortcuts; use the guide above to capture globally.
-Open **Backdrop** to add framing or motion, and **Export** to save a GIF or MP4.
-[Read the usage guide](docs/usage.md) for selection, tool options, and shortcuts.
+The first send asks you to pair Lens with attn. The agent gets your message and
+the stills Lens took along the way. [Capture and send](docs/send.md) covers stills,
+pairing, the corner tile and what the agent receives.
 
-Editing, copying, and file exports work locally. Sharing a link uploads an encrypted
-PNG to [glance.sh](https://glance.sh). Anyone with the link can retrieve it until
-it expires, usually after about 30 minutes.
+## Voice
 
-## macOS FAQ
+During a capture, tap **right ⌥** to talk and tap it again to stop, or hold it
+and talk until you let go. Each phrase is transcribed on this Mac and placed on
+the capture's timeline. A key pressed with right ⌘ or right ⌥, such as right ⌘+C
+or right ⌥+e, is left to the app in front and opens nothing.
 
-### macOS says it cannot verify Glance. How do I open it?
+With no capture open, right ⌥ dictates into the app in front instead: a pill
+shows the words, attn tidies them, and the text pastes at the cursor. **↩** pastes
+the raw text without waiting, **Esc** cancels. See [Dictation](docs/dictation.md).
 
-The current download is ad-hoc signed and has not been notarized by Apple.
-For a copy downloaded from this repository's releases, try opening it once,
-then go to **System Settings → Privacy & Security → Open Anyway** and confirm **Open**.
-On macOS 12, use **System Preferences → Security & Privacy → General**.
+The first voice downloads a 731 MB English speech model to
+`~/Library/Application Support/dev.attn.lens/speech`, showing its progress in the
+bar. An interrupted download resumes the next time you press right ⌥.
 
-“Cannot verify” is different from “will damage your computer.” For the latter,
-stop and report the exact message in [an issue](https://github.com/modem-dev/glance-desktop/issues).
-See [Apple's explanation](https://support.apple.com/en-us/102445).
+## Editor
 
-### Why can't Glance capture my screen?
+The bar's **Edit** button or any thumbnail opens that still in the editor, for
+pixelating a secret or adding a precise mark. A Dock click opens it for any PNG or
+JPEG. It has crop, pixelate, callouts, backdrops, OCR, and GIF and MP4 export. See
+[the editor's guide](docs/usage.md) and the [tool options](TOOL_OPTIONS.md).
 
-Enable Glance under **Privacy & Security → Screen Recording** (called
-**Screen & System Audio Recording** on newer macOS), then quit and reopen it.
-On macOS 12, this setting is under **Security & Privacy → Privacy**.
-If access is already enabled, remove Glance's entry and add the installed app again.
+## Permissions
+
+Lens needs these accesses:
+
+- **Screen Recording**, to take stills. When it is missing, Lens opens System
+  Settings at the list as it launches, and again on the capture key, with a guide
+  that says what is being set up and the steps: drag Attn Lens into the list,
+  switch it on, then quit and reopen Lens.
+- **Accessibility**, for its keys: right ⌘, right ⌥ and fn, and to paste a
+  dictation. Without it the keys do nothing and a dictation goes to the clipboard. When it is missing, Lens opens the Accessibility list at launch with the
+  same guide; the grant takes effect within a few seconds, with no reopen.
+- **Microphone**, for voice. macOS asks the first time you press right ⌥.
+
+## What stays on the Mac
+
+Captures, marks, transcription and OCR all happen on this Mac. A capture leaves it
+only when you send it, through `attn send`, to the session you chose. A
+dictation's text goes to attn for refinement through `attn refine`. That session
+may run on another machine. The only download Lens makes is the speech model, from
+Hugging Face.
 
 ## More
 
-- [Usage](docs/usage.md) · [Terminal commands](docs/cli.md) · [Omarchy](docs/linux.md) · [MCP setup](mcp/README.md)
+- [Capture and send](docs/send.md) · [Dictation](docs/dictation.md) · [Editor](docs/usage.md) · [Tool options](TOOL_OPTIONS.md)
 - [Build from source](BUILD.md) · [Contribute](CONTRIBUTING.md) · [Architecture](docs/architecture.md)
-- [Report a bug](https://github.com/modem-dev/glance-desktop/issues) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
+- [Report a bug](https://github.com/SolenesInc/attn-lens/issues) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
 ## License
 

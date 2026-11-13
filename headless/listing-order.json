@@ -1,0 +1,14 @@
+{"displays":[{"id":1,"frame":[0,0,1280,800],"scale":2,"primary":true}],
+ "pointer":[400,300],
+ "events":[
+ {"t":0.05,"type":"mark","name":"jobs:hold"},
+ {"t":0.1,"type":"mark","name":"key:capture"},
+ {"t":0.2,"type":"drag","x":200,"y":100,"dx":400,"dy":300,"dur":0.1},
+ {"t":0.4,"type":"key","name":"Escape"},
+ {"t":0.5,"type":"mark","name":"key:capture"},
+ {"t":0.6,"type":"drag","x":200,"y":100,"dx":400,"dy":300,"dur":0.1},
+ {"t":0.8,"type":"mark","name":"jobs:last"},
+ {"t":0.85,"type":"mark","name":"jobs:release"},
+ {"t":0.9,"type":"mark","name":"key:send"},
+ {"t":1.0,"type":"mark","name":"sent"}
+]}

@@ -1,0 +1,902 @@
+{
+ "row": "Backdrop",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "tap",
+   "key": "backdrop-button"
+  },
+  {
+   "t": 0.71,
+   "type": "mark",
+   "name": "framed"
+  },
+  {
+   "t": 0.83,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 1.03,
+   "type": "menu-pick",
+   "id": "square"
+  },
+  {
+   "t": 1.18,
+   "type": "mark",
+   "name": "format-square"
+  },
+  {
+   "t": 1.3,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 1.5,
+   "type": "menu-pick",
+   "id": "classic"
+  },
+  {
+   "t": 1.65,
+   "type": "mark",
+   "name": "format-classic"
+  },
+  {
+   "t": 1.77,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 1.97,
+   "type": "menu-pick",
+   "id": "photo"
+  },
+  {
+   "t": 2.12,
+   "type": "mark",
+   "name": "format-photo"
+  },
+  {
+   "t": 2.24,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 2.44,
+   "type": "menu-pick",
+   "id": "widescreen"
+  },
+  {
+   "t": 2.59,
+   "type": "mark",
+   "name": "format-widescreen"
+  },
+  {
+   "t": 2.71,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 2.91,
+   "type": "menu-pick",
+   "id": "portrait"
+  },
+  {
+   "t": 3.06,
+   "type": "mark",
+   "name": "format-portrait"
+  },
+  {
+   "t": 3.18,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 3.38,
+   "type": "menu-pick",
+   "id": "vertical"
+  },
+  {
+   "t": 3.53,
+   "type": "mark",
+   "name": "format-vertical"
+  },
+  {
+   "t": 3.65,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 3.85,
+   "type": "menu-pick",
+   "id": "youtube"
+  },
+  {
+   "t": 4.0,
+   "type": "mark",
+   "name": "format-youtube"
+  },
+  {
+   "t": 4.12,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 4.32,
+   "type": "menu-pick",
+   "id": "shorts"
+  },
+  {
+   "t": 4.47,
+   "type": "mark",
+   "name": "format-shorts"
+  },
+  {
+   "t": 4.59,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 4.79,
+   "type": "menu-pick",
+   "id": "pinterest"
+  },
+  {
+   "t": 4.94,
+   "type": "mark",
+   "name": "format-pinterest"
+  },
+  {
+   "t": 5.06,
+   "type": "tap",
+   "key": "backdrop-format"
+  },
+  {
+   "t": 5.26,
+   "type": "menu-pick",
+   "id": "auto"
+  },
+  {
+   "t": 5.41,
+   "type": "mark",
+   "name": "format-auto"
+  },
+  {
+   "t": 5.56,
+   "type": "drag",
+   "key": "outside-padding-slider",
+   "dx": 58,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 5.81,
+   "type": "mark",
+   "name": "padded"
+  },
+  {
+   "t": 5.93,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 6.08,
+   "type": "mark",
+   "name": "padding-undone"
+  },
+  {
+   "t": 6.23,
+   "type": "drag",
+   "key": "outside-padding-slider",
+   "dx": 58,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 6.48,
+   "type": "drag",
+   "key": "inside-padding-slider",
+   "dx": -93,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 6.73,
+   "type": "mark",
+   "name": "inside"
+  },
+  {
+   "t": 6.88,
+   "type": "drag",
+   "key": "image-corners-slider",
+   "dx": 0,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 7.13,
+   "type": "drag",
+   "key": "shadow-slider",
+   "dx": -58,
+   "dy": 0,
+   "dur": 0.1
+  },
+  {
+   "t": 7.38,
+   "type": "mark",
+   "name": "styled"
+  },
+  {
+   "t": 7.5,
+   "type": "tap",
+   "key": "background-gradient"
+  },
+  {
+   "t": 7.65,
+   "type": "mark",
+   "name": "gradient"
+  },
+  {
+   "t": 7.77,
+   "type": "tap",
+   "key": "background-solid"
+  },
+  {
+   "t": 7.92,
+   "type": "mark",
+   "name": "solid"
+  },
+  {
+   "t": 8.04,
+   "type": "tap",
+   "key": "background-gradient"
+  },
+  {
+   "t": 8.16,
+   "type": "tap",
+   "key": "palette-ocean"
+  },
+  {
+   "t": 8.31,
+   "type": "mark",
+   "name": "ocean"
+  },
+  {
+   "t": 8.43,
+   "type": "tap",
+   "key": "backdrop-color-2"
+  },
+  {
+   "t": 8.58,
+   "type": "mark",
+   "name": "picker"
+  },
+  {
+   "t": 8.7,
+   "type": "tap",
+   "key": "hex-field"
+  },
+  {
+   "t": 8.82,
+   "type": "key",
+   "name": "a",
+   "cmd": true
+  },
+  {
+   "t": 9.02,
+   "type": "type",
+   "text": "#102030",
+   "every": 0.01
+  },
+  {
+   "t": 9.14,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 9.29,
+   "type": "mark",
+   "name": "hex"
+  },
+  {
+   "t": 9.41,
+   "type": "tap",
+   "key": "palette-ocean"
+  },
+  {
+   "t": 9.56,
+   "type": "mark",
+   "name": "picker-palette"
+  },
+  {
+   "t": 9.68,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 9.83,
+   "type": "mark",
+   "name": "picker-undone"
+  },
+  {
+   "t": 9.95,
+   "type": "tap",
+   "key": "background-solid"
+  },
+  {
+   "t": 10.1,
+   "type": "mark",
+   "name": "picker-solid"
+  },
+  {
+   "t": 10.22,
+   "type": "tap",
+   "key": "background-gradient"
+  },
+  {
+   "t": 10.34,
+   "type": "tap",
+   "key": "backdrop-color-1"
+  },
+  {
+   "t": 10.64,
+   "type": "tap",
+   "key": "pick-screen"
+  },
+  {
+   "t": 10.94,
+   "type": "mark",
+   "name": "pick:#405060"
+  },
+  {
+   "t": 11.09,
+   "type": "mark",
+   "name": "picked"
+  },
+  {
+   "t": 11.21,
+   "type": "tap",
+   "key": "backdrop-color-1"
+  },
+  {
+   "t": 11.33,
+   "type": "tap",
+   "key": "backdrop-enabled"
+  },
+  {
+   "t": 11.48,
+   "type": "mark",
+   "name": "off"
+  },
+  {
+   "t": 11.6,
+   "type": "tap",
+   "key": "backdrop-enabled"
+  },
+  {
+   "t": 11.75,
+   "type": "mark",
+   "name": "on"
+  },
+  {
+   "t": 11.87,
+   "type": "key",
+   "name": "c",
+   "cmd": true
+  },
+  {
+   "t": 12.27,
+   "type": "mark",
+   "name": "copied"
+  },
+  {
+   "t": 12.39,
+   "type": "tap",
+   "key": "backdrop-done"
+  },
+  {
+   "t": 12.54,
+   "type": "mark",
+   "name": "done"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "framed",
+   "state": {
+    "panel": "Backdrop",
+    "backdrop": {
+     "format": "auto",
+     "padding": 64,
+     "inner_radius": 18,
+     "shadow": 24,
+     "inside_padding": 0,
+     "motion": "still",
+     "gradient": false,
+     "preset": 0
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     277.0,
+     448.0,
+     328.0
+    ],
+    "image": [
+     320,
+     341,
+     320,
+     200
+    ]
+   },
+   "present": [
+    "backdrop-panel"
+   ],
+   "status_contains": "Backdrop added",
+   "label": {
+    "stage": "Preview, Solid backdrop"
+   }
+  },
+  {
+   "at": "format-square",
+   "state": {
+    "backdrop": {
+     "format": "square"
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     217.0,
+     448.0,
+     448.0
+    ]
+   }
+  },
+  {
+   "at": "format-classic",
+   "state": {
+    "backdrop": {
+     "format": "classic"
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     273.0,
+     448.0,
+     336.0
+    ]
+   }
+  },
+  {
+   "at": "format-photo",
+   "state": {
+    "backdrop": {
+     "format": "photo"
+    }
+   },
+   "rect": {
+    "stage": [
+     234.0,
+     277.0,
+     492.0,
+     328.0
+    ]
+   }
+  },
+  {
+   "at": "format-widescreen",
+   "state": {
+    "backdrop": {
+     "format": "widescreen"
+    }
+   },
+   "rect": {
+    "stage": [
+     184.0,
+     274.5,
+     592.0,
+     333.0
+    ]
+   }
+  },
+  {
+   "at": "format-portrait",
+   "state": {
+    "backdrop": {
+     "format": "portrait"
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     161.0,
+     448.0,
+     560.0
+    ]
+   }
+  },
+  {
+   "at": "format-vertical",
+   "state": {
+    "backdrop": {
+     "format": "vertical"
+    }
+   },
+   "rect": {
+    "stage": [
+     278.625,
+     83.0,
+     402.75,
+     716.0
+    ]
+   }
+  },
+  {
+   "at": "format-youtube",
+   "state": {
+    "backdrop": {
+     "format": "youtube"
+    }
+   },
+   "rect": {
+    "stage": [
+     184.0,
+     274.5,
+     592.0,
+     333.0
+    ]
+   }
+  },
+  {
+   "at": "format-shorts",
+   "state": {
+    "backdrop": {
+     "format": "shorts"
+    }
+   },
+   "rect": {
+    "stage": [
+     278.625,
+     83.0,
+     402.75,
+     716.0
+    ]
+   }
+  },
+  {
+   "at": "format-pinterest",
+   "state": {
+    "backdrop": {
+     "format": "pinterest"
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     105.0,
+     448.0,
+     672.0
+    ]
+   }
+  },
+  {
+   "at": "format-auto",
+   "state": {
+    "backdrop": {
+     "format": "auto"
+    }
+   },
+   "rect": {
+    "stage": [
+     256.0,
+     277.0,
+     448.0,
+     328.0
+    ]
+   }
+  },
+  {
+   "at": "padded",
+   "state": {
+    "backdrop": {
+     "padding": 150
+    }
+   },
+   "value": {
+    "outside-padding-slider": "150 px"
+   },
+   "rect": {
+    "stage": [
+     170.0,
+     191.0,
+     620.0,
+     500.0
+    ]
+   }
+  },
+  {
+   "at": "padding-undone",
+   "state": {
+    "backdrop": {
+     "padding": 64
+    }
+   }
+  },
+  {
+   "at": "inside",
+   "state": {
+    "backdrop": {
+     "inside_padding": 20
+    },
+    "preview": {
+     "size": [
+      360,
+      240
+     ]
+    }
+   },
+   "rect": {
+    "stage": [
+     150.0,
+     171.0,
+     660.0,
+     540.0
+    ]
+   }
+  },
+  {
+   "at": "styled",
+   "state": {
+    "backdrop": {
+     "inner_radius": 40,
+     "shadow": 15
+    }
+   }
+  },
+  {
+   "at": "gradient",
+   "state": {
+    "backdrop": {
+     "gradient": true,
+     "motion": "still"
+    }
+   },
+   "checked": [
+    "background-gradient"
+   ],
+   "unchecked": [
+    "background-solid"
+   ],
+   "present": [
+    "backdrop-color-1",
+    "backdrop-color-2"
+   ]
+  },
+  {
+   "at": "solid",
+   "state": {
+    "backdrop": {
+     "gradient": false
+    }
+   },
+   "absent": [
+    "backdrop-color-2"
+   ]
+  },
+  {
+   "at": "ocean",
+   "state": {
+    "backdrop": {
+     "preset": 1,
+     "colors": null
+    }
+   },
+   "checked": [
+    "palette-ocean"
+   ],
+   "value": {
+    "backdrop-color-1": "#63B9FF"
+   }
+  },
+  {
+   "at": "picker",
+   "present": [
+    "color-wheel",
+    "hex-field"
+   ],
+   "value": {
+    "backdrop-color-2": "#344AC7"
+   }
+  },
+  {
+   "at": "hex",
+   "state": {
+    "backdrop": {
+     "colors": [
+      [
+       99,
+       185,
+       255
+      ],
+      [
+       16,
+       32,
+       48
+      ]
+     ]
+    }
+   },
+   "value": {
+    "backdrop-color-2": "#102030"
+   }
+  },
+  {
+   "at": "picker-palette",
+   "state": {
+    "backdrop": {
+     "colors": null
+    }
+   },
+   "value": {
+    "backdrop-color-2": "#344AC7",
+    "hex-field": "#344AC7"
+   }
+  },
+  {
+   "at": "picker-undone",
+   "state": {
+    "backdrop": {
+     "colors": [
+      [
+       99,
+       185,
+       255
+      ],
+      [
+       16,
+       32,
+       48
+      ]
+     ]
+    }
+   },
+   "value": {
+    "hex-field": "#102030"
+   }
+  },
+  {
+   "at": "picker-solid",
+   "absent": [
+    "color-wheel",
+    "hex-field",
+    "backdrop-color-2"
+   ]
+  },
+  {
+   "at": "picked",
+   "state": {
+    "backdrop": {
+     "colors": [
+      [
+       64,
+       80,
+       96
+      ],
+      [
+       16,
+       32,
+       48
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "at": "off",
+   "state": {
+    "backdrop": null
+   },
+   "absent": [
+    "stage"
+   ],
+   "unchecked": [
+    "backdrop-enabled"
+   ],
+   "rect": {
+    "image": [
+     320,
+     341,
+     320,
+     200
+    ]
+   }
+  },
+  {
+   "at": "on",
+   "state": {
+    "backdrop": {
+     "padding": 150,
+     "inside_padding": 20,
+     "colors": [
+      [
+       64,
+       80,
+       96
+      ],
+      [
+       16,
+       32,
+       48
+      ]
+     ],
+     "gradient": true
+    }
+   },
+   "checked": [
+    "backdrop-enabled"
+   ],
+   "present": [
+    "stage"
+   ]
+  },
+  {
+   "at": "copied",
+   "clipboard": {
+    "size": [
+     660,
+     540
+    ],
+    "pixels": [
+     [
+      0,
+      0,
+      [
+       64,
+       80,
+       96,
+       255
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "at": "done",
+   "state": {
+    "panel": "Tool"
+   },
+   "absent": [
+    "backdrop-panel"
+   ],
+   "present": [
+    "stage"
+   ]
+  }
+ ]
+}

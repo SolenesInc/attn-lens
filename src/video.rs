@@ -15,22 +15,13 @@ impl Drop for Encoder {
         let _ = self.0.wait();
     }
 }
-fn encoder_path() -> Result<PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let dir = exe.parent().ok_or("App directory unavailable")?;
-    for path in [
-        dir.join("glance-video-encoder"),
-        dir.join("../glance-video-encoder"),
-        dir.join("../../glance-video-encoder"),
-    ] {
-        if path.is_file() {
-            return Ok(path);
-        }
-    }
-    Err("Video encoder unavailable. Build with scripts/bundle.sh (macOS) or scripts/package-linux.sh.".into())
+pub fn encoder_path() -> Result<PathBuf, String> {
+    crate::platform::native_helper("glance-video-encoder")
+        .ok_or_else(|| "Video encoder unavailable. Build with scripts/bundle.sh.".into())
 }
 pub fn encode(
     document: &Document,
+    native: &Path,
     path: &Path,
     start_phase: f32,
     cancel: &AtomicBool,
@@ -49,7 +40,6 @@ pub fn encode(
     if cancel.load(Ordering::Relaxed) {
         return Ok(false);
     }
-    let native = encoder_path()?;
     let renderer = Renderer::for_document(document, Some(1920));
     let start_phase = if document.image_animation.enabled() {
         0.
@@ -170,6 +160,7 @@ mod tests {
                 color: [255, 56, 100, 255],
                 width: 5.,
                 text: String::new(),
+                drawn: None,
             });
             d.backdrop = Some(Backdrop {
                 format: Format::Widescreen,
@@ -210,7 +201,17 @@ mod tests {
                 renderer.height
             );
             let path = directory.join(format!("{name}.mp4"));
-            assert!(encode(&d, &path, 0.6, &AtomicBool::new(false), |_| {}).unwrap());
+            assert!(
+                encode(
+                    &d,
+                    &encoder_path().unwrap(),
+                    &path,
+                    0.6,
+                    &AtomicBool::new(false),
+                    |_| {}
+                )
+                .unwrap()
+            );
             assert!(
                 crate::gif_export::encode(
                     &d,
@@ -252,12 +253,22 @@ mod tests {
                 ..Default::default()
             });
             let path = directory.join(format!("{name}.mp4"));
-            assert!(encode(&d, &path, 0., &AtomicBool::new(false), |_| {}).unwrap());
+            assert!(
+                encode(
+                    &d,
+                    &encoder_path().unwrap(),
+                    &path,
+                    0.,
+                    &AtomicBool::new(false),
+                    |_| {}
+                )
+                .unwrap()
+            );
             assert!(std::fs::metadata(&path).unwrap().len() > 1000);
             let original = std::fs::read(&path).unwrap();
             let cancel = AtomicBool::new(false);
             assert!(
-                !encode(&d, &path, 0., &cancel, |p| {
+                !encode(&d, &encoder_path().unwrap(), &path, 0., &cancel, |p| {
                     if p >= 5 {
                         cancel.store(true, Ordering::Relaxed);
                     }
@@ -274,11 +285,88 @@ mod tests {
         d.backdrop = Some(crate::backdrop::Backdrop::default());
         let path = std::env::temp_dir().join(format!("glance-cancel-{}.mp4", std::process::id()));
         std::fs::write(&path, b"existing movie").unwrap();
-        assert!(!encode(&d, &path, 0., &AtomicBool::new(true), |_| {}).unwrap());
+        assert!(
+            !encode(
+                &d,
+                Path::new("/nonexistent-encoder"),
+                &path,
+                0.,
+                &AtomicBool::new(true),
+                |_| {}
+            )
+            .unwrap()
+        );
         d.backdrop.as_mut().unwrap().seconds = 100;
-        assert!(encode(&d, &path, 0., &AtomicBool::new(false), |_| {}).is_err());
+        assert!(
+            encode(
+                &d,
+                Path::new("/nonexistent-encoder"),
+                &path,
+                0.,
+                &AtomicBool::new(false),
+                |_| {}
+            )
+            .is_err()
+        );
         assert_eq!(std::fs::read(&path).unwrap(), b"existing movie");
         std::fs::remove_file(path).unwrap();
+    }
+    /// Encodes through the bundled helper and reads a frame back through its partner,
+    /// on macOS (AVFoundation) and with `native/linux` (FFmpeg). Build the helpers first:
+    /// CI's macOS job compiles them, its Linux job copies `native/linux/glance-video-*`.
+    #[test]
+    #[ignore = "requires the bundled native encoder and frame reader; writes a real video"]
+    fn native_video_roundtrip() {
+        let mut d = Document::new(image::RgbaImage::from_pixel(
+            320,
+            180,
+            image::Rgba([50, 90, 130, 255]),
+        ));
+        d.backdrop = Some(crate::backdrop::Backdrop {
+            motion: Motion::Flow,
+            gradient: true,
+            padding: 40,
+            inner_radius: 0,
+            seconds: 2,
+            ..Default::default()
+        });
+        let encoder = encoder_path().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("roundtrip.mp4");
+        let mut progress = vec![];
+        assert!(
+            encode(&d, &encoder, &path, 0., &AtomicBool::new(false), |p| {
+                progress.push(p)
+            })
+            .unwrap()
+        );
+        assert_eq!(progress.last(), Some(&100));
+        assert!(std::fs::metadata(&path).unwrap().len() > 1000);
+        let reader = encoder.with_file_name("glance-video-frame");
+        let frame = |seconds: &str, out: &Path| {
+            Command::new(&reader)
+                .arg(&path)
+                .arg(seconds)
+                .arg(out)
+                .output()
+                .unwrap()
+        };
+        let still = dir.path().join("frame.png");
+        let read = frame("1", &still);
+        assert!(
+            read.status.success(),
+            "{}",
+            String::from_utf8_lossy(&read.stderr)
+        );
+        let decoded = image::open(&still).unwrap().to_rgba8();
+        // 320×180 framed by 40 px on each side, under both size caps.
+        assert_eq!(decoded.dimensions(), (400, 260));
+        let pixel = decoded.get_pixel(200, 130);
+        for (actual, expected) in pixel.0[..3].iter().zip([50i16, 90, 130]) {
+            assert!((*actual as i16 - expected).abs() < 8, "{pixel:?}");
+        }
+        // Past the 2 s clip there is no frame.
+        assert!(!frame("2.5", &dir.path().join("late.png")).status.success());
     }
     #[test]
     #[ignore = "requires the built native encoder; writes real QA videos"]
@@ -305,7 +393,17 @@ mod tests {
             let path = directory.join(format!("{}.mp4", motion.label()));
             let timer = std::time::Instant::now();
             let mut progress = vec![];
-            assert!(encode(&d, &path, 0., &AtomicBool::new(false), |p| progress.push(p)).unwrap());
+            assert!(
+                encode(
+                    &d,
+                    &encoder_path().unwrap(),
+                    &path,
+                    0.,
+                    &AtomicBool::new(false),
+                    |p| progress.push(p)
+                )
+                .unwrap()
+            );
             assert_eq!(progress.last(), Some(&100));
             assert!(progress.windows(2).all(|p| p[0] <= p[1]));
             assert!(std::fs::metadata(&path).unwrap().len() > 1000);
@@ -316,7 +414,7 @@ mod tests {
             let original = std::fs::read(&path).unwrap();
             let cancel = AtomicBool::new(false);
             assert!(
-                !encode(&d, &path, 0., &cancel, |p| {
+                !encode(&d, &encoder_path().unwrap(), &path, 0., &cancel, |p| {
                     if p >= 5 {
                         cancel.store(true, Ordering::Relaxed);
                     }

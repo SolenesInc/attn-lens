@@ -137,6 +137,14 @@ impl Default for Backdrop {
     }
 }
 impl Backdrop {
+    /// How many of `colors` the background shows: Solid one, Gradient and Motion two.
+    pub fn stops(self) -> usize {
+        if self.gradient || self.motion != crate::animation::Motion::Still {
+            2
+        } else {
+            1
+        }
+    }
     pub fn colors(self) -> [u32; 2] {
         self.colors.map_or_else(
             || {
@@ -187,18 +195,6 @@ impl Backdrop {
     }
     pub fn dimensions(self, source: (u32, u32)) -> (u32, u32) {
         self.layout(source).dimensions
-    }
-    pub fn background(self) -> gpui::Background {
-        let [from, to] = self.colors();
-        if self.gradient {
-            gpui::linear_gradient(
-                180.,
-                gpui::linear_color_stop(gpui::rgb(from), 0.),
-                gpui::linear_color_stop(gpui::rgb(to), 1.),
-            )
-        } else {
-            gpui::solid_background(gpui::rgb(from))
-        }
     }
     pub fn apply(self, source: &RgbaImage) -> RgbaImage {
         if self.motion != crate::animation::Motion::Still {

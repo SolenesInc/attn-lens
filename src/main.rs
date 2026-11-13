@@ -1,140 +1,16 @@
-mod accessibility;
-mod animation;
-mod arrow;
-mod automation;
-mod backdrop;
-mod chatgpt;
-mod cli;
-mod color_picker;
-mod document;
-mod drawing;
-mod effects;
-mod enhance;
-mod gestures;
-mod gif_export;
-mod glance;
-mod icons;
-#[cfg(target_os = "macos")]
-mod lens;
-#[cfg(target_os = "linux")]
-mod linux_compute;
-mod mcp;
-mod menus;
-mod motion_shader;
-mod navigation;
-mod ocr;
-#[cfg(test)]
-mod performance;
-#[cfg(target_os = "macos")]
-mod permission_guide;
-mod platform;
-mod prompt_input;
-mod selection;
-#[cfg(test)]
-mod stress_tests;
-mod style;
-mod text;
-mod theme;
-mod video;
-actions!(glance, [Quit]);
-mod editor;
-use editor::Editor;
-pub(crate) use editor::{Layout, Message};
-use gpui::*;
 fn main() {
-    let args = match cli::mode(std::env::args().skip(1).collect()) {
-        cli::Mode::Desktop(args) => args,
-        cli::Mode::Mcp => {
-            if let Err(error) = mcp::run() {
-                eprintln!("Glance MCP: {error}");
-                std::process::exit(1);
-            }
-            return;
-        }
-        cli::Mode::Cli(args) => {
-            if let Err(error) = cli::run(&args) {
-                eprintln!("{}", serde_json::json!({"error": error}));
-                std::process::exit(1);
-            }
-            return;
-        }
+    let mut args = std::env::args().skip(1);
+    let result = if args.next().as_deref() == Some("lens") {
+        // Talks to a running Lens over the automation socket.
+        let line = args.next().unwrap_or_else(|| r#"{"cmd":"state"}"#.into());
+        attn_lens::lens::automation::socket_path()
+            .and_then(|path| attn_lens::lens::automation::request(&path, &line))
+            .map(|reply| println!("{reply}"))
+    } else {
+        attn_lens::app::run()
     };
-    let initial = match platform::startup_image(args.into_iter()) {
-        Ok(platform::Startup::Image(image)) => Some(image),
-        Ok(platform::Startup::Demo) => None,
-        Ok(platform::Startup::Exit) => return,
-        Err(error) => {
-            eprintln!("Attn Lens: {error}");
-            std::process::exit(1);
-        }
-    };
-    let application = Application::new().with_assets(icons::Icons);
-    #[cfg(target_os = "macos")]
-    application.on_reopen(|cx| {
-        lens::start_capture(cx);
-    });
-    #[cfg(target_os = "linux")]
-    application.on_reopen(|cx| cx.activate(true));
-    application.run(move |cx: &mut App| {
-        cx.text_system()
-            .add_fonts(vec![std::borrow::Cow::Borrowed(
-                platform::FALLBACK_FONT_DATA,
-            )])
-            .expect("Unable to register the embedded annotation font");
-        cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
-        cx.bind_keys([KeyBinding::new(&platform::key_binding("cmd-q"), Quit, None)]);
-        menus::install(cx);
-        #[cfg(target_os = "macos")]
-        {
-            if let Err(error) = lens::install(cx) {
-                eprintln!("Attn Lens: {error}");
-            }
-            if std::env::args().any(|arg| arg == "--automation")
-                && let Err(error) = automation::listen_lens(cx)
-            {
-                eprintln!("Attn Lens automation: {error}");
-            }
-            // Lens lives behind ⌘⌥2; it opens a window only for an image it was given.
-            match initial {
-                Some(image) => open_editor(Some(document::Document::new(image)), cx),
-                None if !permission_guide::granted(
-                    permission_guide::Permission::ScreenRecording,
-                ) =>
-                {
-                    permission_guide::show(permission_guide::Permission::ScreenRecording)
-                }
-                None => {}
-            }
-        }
-        #[cfg(target_os = "linux")]
-        open_editor(initial.map(document::Document::new), cx);
-    });
-}
-
-/// Opens an editor window on `document`, or on the practice canvas.
-pub(crate) fn open_editor(document: Option<document::Document>, cx: &mut App) {
-    let bounds = Bounds::centered(None, size(px(1220.), px(860.)), cx);
-    cx.open_window(
-        WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
-            window_min_size: Some(size(px(1050.), px(600.))),
-            #[cfg(target_os = "linux")]
-            app_id: Some("glance".into()),
-            titlebar: Some(TitlebarOptions {
-                title: Some("Attn Lens".into()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        },
-        move |window, cx| {
-            theme::Theme::install(window, cx);
-            cx.new(|cx| {
-                let editor = Editor::from_document(cx, document);
-                editor.focus.focus(window);
-                editor
-            })
-        },
-    )
-    .expect("Unable to open the editor");
-    cx.activate(true);
+    if let Err(error) = result {
+        eprintln!("Attn Lens: {error}");
+        std::process::exit(1);
+    }
 }

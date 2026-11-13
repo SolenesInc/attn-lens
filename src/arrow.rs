@@ -1,8 +1,5 @@
 //! Shared quadratic arrow geometry, handles, and antialiased export.
-use crate::{
-    Layout,
-    document::{Mark, Tool},
-};
+use crate::document::{Mark, Tool};
 type Point = (f32, f32);
 pub fn at(m: &Mark, t: f32) -> Point {
     let a = m.points[0];
@@ -147,26 +144,6 @@ pub fn drag(m: &mut Mark, handle: Option<usize>, delta: Point, shift: bool) {
         _ => m.translate(delta.0, delta.1),
     }
 }
-pub fn paint_handles(m: &Mark, l: Layout, w: &mut gpui::Window) {
-    use gpui::*;
-    for (_, p) in handles(m)
-        .into_iter()
-        .enumerate()
-        .filter(|(i, _)| m.tool == Tool::Arrow || *i != 1)
-    {
-        w.paint_quad(quad(
-            Bounds::new(
-                point(px(l.x + p.0 * l.scale - 4.), px(l.y + p.1 * l.scale - 4.)),
-                size(px(8.), px(8.)),
-            ),
-            px(2.),
-            rgb(0xffffff),
-            px(1.),
-            rgb(0x64748b),
-            Default::default(),
-        ));
-    }
-}
 pub fn raster(out: &mut image::RgbaImage, m: &Mark) {
     use image::{GrayImage, Luma, Rgba, imageops};
     use imageproc::{
@@ -266,6 +243,7 @@ mod tests {
             width: 5.,
             color: [255, 40, 100, 255],
             text: String::new(),
+            drawn: None,
         }
     }
     #[test]
@@ -332,16 +310,5 @@ mod tests {
         let mut image = image::RgbaImage::new(30, 30);
         raster(&mut image, &m);
         assert!(!inside_triangle((10., 10.), head(&m)));
-        assert!(
-            crate::drawing::paths(
-                &m,
-                Layout {
-                    scale: 1.,
-                    ..Default::default()
-                }
-            )
-            .len()
-                <= 2
-        );
     }
 }

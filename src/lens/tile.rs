@@ -1,116 +1,76 @@
-//! The corner tile a capture shrinks into when it is sent or closed. Clicking
-//! it reopens the capture with its marks, message and target.
-use super::Capture;
-use crate::theme::Theme;
-use gpui::{prelude::*, *};
+//! The corner tile a closed capture shrinks to (D13 on the plan). A sent capture's
+//! tile leaves after a few seconds unless hovered; an unsent one stays. A click
+//! reopens the capture.
+use super::{Lens, Summary, session::DisplayFrame};
+use rune::{Color, Cx, El, col, el, text, tok};
 use std::sync::Arc;
 
-pub enum Content {
-    Capture(Box<Capture>),
-    Notice(SharedString),
+const SIZE: (f32, f32) = (176., 128.);
+const MARGIN: f64 = 16.;
+
+/// The tile's window, at the display's bottom-right corner.
+pub fn placement(display: DisplayFrame) -> [f32; 4] {
+    [
+        (display.frame[2] - f64::from(SIZE.0) - MARGIN) as f32,
+        (display.frame[3] - f64::from(SIZE.1) - MARGIN) as f32,
+        SIZE.0,
+        SIZE.1,
+    ]
 }
 
 pub struct Tile {
-    content: Content,
-    thumbnail: Option<Arc<RenderImage>>,
+    pub lens: Arc<Lens>,
 }
 
-impl Tile {
-    /// The capture this tile reopens, if it holds one.
-    pub fn capture(&self) -> Option<&Capture> {
-        match &self.content {
-            Content::Capture(capture) => Some(capture),
-            Content::Notice(_) => None,
-        }
-    }
-
-    pub fn new(content: Content) -> Self {
-        let thumbnail = match &content {
-            Content::Capture(capture) => Some(crate::editor::render_image(
-                image::DynamicImage::ImageRgba8(capture.document.render(None))
-                    .thumbnail(240, 140)
-                    .to_rgba8(),
-            )),
-            Content::Notice(_) => None,
+pub fn tile_view(s: &Tile, cx: &mut Cx<Tile>) -> El {
+    let t = tok::theme(cx.system_dark());
+    s.lens.read(|summary: &Summary| {
+        let Some(tile) = &summary.tile else {
+            return el().key("tile-empty");
         };
-        Self { content, thumbnail }
-    }
-}
-
-impl Render for Tile {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = Theme::get(cx);
-        let (title, detail, ok): (SharedString, SharedString, bool) = match &self.content {
-            Content::Capture(capture) => match &capture.sent_to {
-                Some(label) => (
-                    format!("Sent to {label}").into(),
-                    "Click to reopen".into(),
-                    true,
-                ),
-                None => ("Not sent".into(), "Click to reopen".into(), false),
-            },
-            Content::Notice(text) => ("Attn Lens".into(), text.clone(), false),
+        let caption = match (tile.sent, tile.stills) {
+            (true, _) => "Sent · click to reopen".to_string(),
+            (false, 1) => "Not sent · 1 still".to_string(),
+            (false, stills) => format!("Not sent · {stills} stills"),
         };
-        div()
-            .id("lens-tile")
-            .size_full()
-            .p_2()
-            .flex()
-            .gap_2()
-            .rounded_lg()
-            .bg(rgb(theme.chrome))
-            .border_1()
-            .border_color(rgb(match (&self.content, ok) {
-                (_, true) => theme.positive,
-                (Content::Notice(_), _) => theme.error,
-                _ => theme.border,
-            }))
-            .text_xs()
-            .cursor_pointer()
-            .on_click(cx.listener(|this, _, _, cx| {
-                if let Some(capture) = this.capture() {
-                    let capture = capture.clone();
-                    cx.defer(move |cx| super::open_overlay(capture, cx));
-                }
-            }))
-            .children(
-                self.thumbnail
-                    .clone()
-                    .map(|t| img(t).w(px(108.)).h_full().rounded_md()),
-            )
+        col()
+            .key("tile")
+            .hit()
+            .w_full()
+            .h_full()
+            .padding(8.)
+            .gap(6.)
+            .radius(12.)
+            .fill(t.card)
+            .on_hover_change(|s: &mut Tile, inside, _| s.lens.hover_tile(inside))
+            .on_press(|s: &mut Tile| s.lens.reopen_tile())
             .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(if ok { theme.positive } else { theme.text }))
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .child(title),
-                    )
-                    .child(
-                        div()
-                            .text_color(rgb(theme.muted))
-                            .whitespace_normal()
-                            .child(detail),
+                el().grow(1.)
+                    .w_full()
+                    .radius(6.)
+                    .fill(t.control_track)
+                    .children(
+                        tile.thumb
+                            .as_ref()
+                            .map(|thumb| el().w_full().h_full().pixels(thumb)),
                     ),
             )
             .child(
-                div()
-                    .id("lens-tile-close")
-                    .text_color(rgb(theme.muted))
-                    .child("×")
-                    .on_click(cx.listener(|_, _, window, cx| {
-                        cx.stop_propagation();
-                        window.remove_window();
-                    })),
+                text(caption)
+                    .key("tile-caption")
+                    .font(tok::type_::LABEL)
+                    .color(t.text),
             )
-    }
+            .child(
+                el().key("tile-discard")
+                    .label("Discard this capture")
+                    .absolute(SIZE.0 - 24., 4.)
+                    .size(20., 20.)
+                    .center()
+                    .radius(10.)
+                    .fill(Color::BLACK.alpha(0.6))
+                    .child(text("×").font(tok::type_::LABEL).color(Color::WHITE))
+                    .on_press(|s: &mut Tile| s.lens.discard_tile()),
+            )
+    })
 }

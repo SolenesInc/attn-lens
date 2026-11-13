@@ -259,6 +259,7 @@ mod tests {
             color: [255, 0, 0, 255],
             width: 4.,
             text: String::new(),
+            drawn: None,
         }
     }
     #[test]
@@ -278,16 +279,6 @@ mod tests {
         assert_eq!(image.get_pixel(20, 20).0, [0, 0, 0, 255]);
         assert!(m.hit((60., 60.), 0.));
         assert!(!m.hit((20., 20.), 0.));
-        assert!(
-            !crate::drawing::paths(
-                &m,
-                crate::Layout {
-                    scale: 1.,
-                    ..Default::default()
-                }
-            )
-            .is_empty()
-        );
     }
     #[test]
     fn translucent_stroke_joints_blend_once_and_dashes_have_gaps() {

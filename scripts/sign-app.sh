@@ -111,6 +111,7 @@ sign() {
 sign "$APP/Contents/MacOS/glance-video-encoder"
 sign "$APP/Contents/MacOS/glance-video-frame"
 sign "$APP/Contents/MacOS/glance-ocr"
+sign "$APP/Contents/MacOS/attn-speech"
 sign "$APP"
 codesign --verify --deep --strict "$APP"
 if [ "$SIGN_IDENTITY" = '-' ]; then

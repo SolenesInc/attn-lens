@@ -1,51 +1,46 @@
-# Using Glance
+# Using the Attn Lens editor
 
-[Install](../README.md#install) · [Omarchy setup](linux.md) · [Tool options](../TOOL_OPTIONS.md)
+[Send to an attn session](send.md) · [Tool options](../TOOL_OPTIONS.md)
 
-Shortcuts below use macOS notation. On Omarchy, use **Ctrl** in place of **⌘**;
-[Hyprland bindings](linux.md#capture-from-hyprland) provide global capture.
-For shell automation, see [Terminal commands](cli.md); plain `glance` still opens
-the editor, while commands such as `glance resize-image --scale 0.5` use a running
-editor started with `--automation`.
+The editor follows the system's light or dark appearance and updates when it
+changes while the app is running. Image content, annotation colors, backdrops, and
+exported media keep their colors.
 
-Glance’s interface follows the system’s light or dark appearance and updates when
-it changes while the app is running. Image content, annotation colors, backdrops,
-and exported media keep their colors.
+## Edit a capture's still
 
-## Capture or open an image
+From a capture's bar, **Edit** or a thumbnail opens a still here. The toolbar then
+has **‹ Back** and **Send ↩**, and opening, dropping or pasting another image is
+refused until you go Back. See [Capture and send](send.md#edit-a-still).
 
-- **⌘⌥2**, from anywhere, captures the display under the pointer into the
-  in-place Send overlay ([Send to an attn session](send.md)).
-- **⌘⌥3** in the editor captures the display under the pointer into the editor.
-  There is no interactive area selector: crop in the editor.
-- **⌘O** opens PNG/JPEG. You can also drop a file onto the canvas.
+## Open an image
+
+A click on the Dock icon opens the editor. **⌘Q** quits; edits last for the current
+launch, so save or copy your work first.
+
+- **⌘O** opens a PNG or JPEG. You can also drop a file onto the window.
 - **⌘V** loads a clipboard image when you are outside text editing.
 
-The starter image is a practice canvas. Save or copy your work before capturing,
-opening, pasting a replacement, or quitting; editable sessions last for the current launch.
-On macOS, closing the window keeps global shortcuts active. Click the Dock icon
-to reopen it; **⌘Q** quits.
-
-For capture permission help, see the [macOS FAQ](../README.md#macos-faq).
+An image wider or taller than 8192 pixels shows downscaled on screen, and still
+copies, saves and edits at full size.
 
 ## Annotate and select
 
 | Tool | Key | How to use it |
 | --- | --- | --- |
-| Pen | P | Drag to draw |
+| Draw | P | Drag to draw |
 | Arrow | A | Drag between endpoints; use the middle handle to bend it |
-| Rectangle | R | Drag a box |
+| Box | R | Drag a box |
 | Text | T | Click and type; Enter or clicking outside finishes, Escape cancels |
 | Highlight | H | Drag over an area |
 | Pixelate | B | Drag a region; block size is adjustable |
-| Numbered callout | N | Click to place the next number |
+| Step | N | Click to place the next numbered callout |
 | Spotlight | S | Drag a focus rectangle; the surrounding image dims |
 | Magnifier | M | Drag from the source detail to the enlarged lens position |
 | Crop | X | Drag to crop; undo restores the image |
 
 Text labels are single-line; pasted line breaks become spaces. Text selection,
 copy/paste, undo/redo, and native input methods work while editing.
-Numbered callouts stay visible without selecting them. Text and numbers use an
+Steps stay visible without selecting them. Text and numbers use an
 embedded offline fallback if the system annotation font is unavailable.
 Spotlights have corner handles; magnifiers have separate source and lens handles.
 The magnifier enlarges the annotated foreground and keeps details bright within a spotlight.
@@ -62,7 +57,7 @@ Drag any selected mark to move the group. **Delete**, **⌘D** (duplicate), and
 Color, width, and appearance edits apply to the group. Each group edit or drag
 is one undo step; held nudge repeats are grouped. **⌘Z / ⌘⇧Z** undo/redo.
 
-Hold **Shift** while drawing to snap arrows to 45° or make rectangles, highlights,
+Hold **Shift** while drawing to snap arrows to 45° or make boxes, highlights,
 pixelation regions, and crops square. Shift-moving locks to the dominant axis.
 Crop endpoints snap near image edges.
 
@@ -87,14 +82,14 @@ Backdrop padding stays in physical pixels.
 
 Use **⌘1** to fit, **⌘0** for 100%, or **⌘+ / ⌘−** to zoom. Pinch zooms around
 the pointer; two-finger scrolling pans. **⌘ + scroll** zooms; **Shift + wheel**
-pans horizontally. Hold **Space** and drag, or right-drag, to pan.
+pans horizontally. Hold **Space** and drag, or drag with the middle button, to pan.
 Hold **Z** and click to zoom in at a spot; Shift-click zooms out.
 Trackpad smart zoom toggles 100%/fit. Zoom ranges from 1–800%.
 
 ## Copy as OCR
 
 Click **Copy as OCR** (the text-scanning icon beside Copy in the top toolbar), or
-**Edit → Copy as OCR**. Glance recognizes text in the source screenshot locally
+**Edit → Copy as OCR**. The editor recognizes text in the source screenshot locally
 and puts it directly on your clipboard. Paste it into any text editor or app.
 The toolbar shows **Reading text…**, then **Text copied!**; no result panel opens.
 If no text is found or recognition fails, your existing clipboard is preserved.
@@ -104,82 +99,9 @@ and backdrops and does not change image pixels or image undo history.
 Recognition preserves detected line breaks but does not reconstruct tables or
 code indentation. Review the pasted text for recognition errors.
 
-macOS uses the bundled Apple Vision helper. Omarchy uses optional `tesseract`
-with its English language data; see [Linux setup](linux.md#text-extraction).
-Local OCR needs no account, subscription, or upload. Work runs in the background,
-with a 45-second timeout and a 64 KiB text limit; use a smaller crop if a limit is reached.
-
-## Ask Glance
-
-Click **AI** at the far right of the toolbar, choose **Edit → Ask Glance…**, or press
-**⌘K** (**Ctrl+K** on Linux). Type a request and press **Enter** or **Run**:
-
-- “Pixelate the email addresses and highlight the error.”
-- “Crop to the dialog and add numbered steps.”
-- “Make this screenshot presentable with a rounded ocean backdrop.”
-- “Explain this error and draft a bug report.”
-
-Connect a ChatGPT account first. Ask Glance uses the selected account/model
-independently of the **OCR source** setting; local OCR can remain selected.
-The model dropdown opens only the available models, directly above the prompt.
-The account icon sits beside **AI**, separated from the export controls.
-Running a request sends the current annotated image (as a downscaled preview),
-annotation metadata, and your prompt to OpenAI using your ChatGPT plan.
-Opening the prompt bar, typing, or signing in does not send the image.
-
-The agent uses the same validated crop, resize, annotation, and backdrop actions
-as the editor and MCP. It works on a private draft, inspects previews, and can
-make several edits before finishing. A completed draft appears on the canvas as
-**one undoable change**; annotations remain selectable and editable. Review
-pixelated regions before sharing. **Stop** or **Esc** cancels a running request;
-closing the bar also cancels it. Failure, interruption, cancellation, and
-revision/account conflicts discard the draft and preserve your document.
-
-Ask Glance stays in a compact row with the prompt, model, Run/Stop, and close
-controls. A spinner and elapsed time accompany the current activity while a
-request runs; the status changes as edits execute and results are checked.
-Only the latest reply appears below the row, without an extra copy button.
-There is no conversation history or extra completion banner. Ask Glance
-can answer questions without changing the image. It does not export/upload
-images, control other apps, or modify Glance's source code. Use the normal export
-and copy controls after reviewing the result. Requests are bounded to eight
-model rounds, 32 tool calls, five minutes, and 16 MP source images. Very large
-contexts or framed previews may require a smaller crop or simpler request.
-
-## Use your ChatGPT plan
-
-Open the **ChatGPT account** icon in the top toolbar (or
-**Glance → ChatGPT account…**) and choose **Continue with ChatGPT**. Finish signing in and granting permission in your
-system browser. Eligible ChatGPT accounts can use their plan for image editing
-and OCR without an API key. A first-use connection confirmation offers usage settings; choose
-**Got it** to continue.
-
-In the account menu, select **ChatGPT** under **OCR source**, then choose an
-available model from the **Model** dropdown. The same OCR
-button now sends the source screenshot to OpenAI and copies the completed result
-to the clipboard. Signing in alone does not upload images or select ChatGPT OCR.
-Choose **On device** to use local recognition again. ChatGPT can help
-preserve text layout and code indentation; review the pasted result for errors.
-
-The menu shows saved accounts separately, including accounts with the same email.
-Use the account dropdown to switch accounts or **Continue with ChatGPT** to add
-another account/workspace. The circular-arrow icon reconnects the selected account;
-the exit icon signs it out. Both have labels and hover hints. **Cancel sign-in**
-stops a pending browser callback. Signing out clears the selected account’s local
-credentials and attempts remote session revocation,
-while preserving the account registration for later sign-in.
-
-**Manage usage** opens ChatGPT usage settings. Requests count toward your ChatGPT
-plan or available credits and may reach account/app limits. If permission or usage
-is unavailable, Glance shows an error and preserves your clipboard. It does not
-silently switch OCR providers. The integration currently uses OpenAI’s preview
-subscription API; availability and models depend on the selected account.
-
-Credentials are kept outside the repository in private, owner-only local files,
-with atomic writes and serialized token refresh. MCP exposes account metadata,
-model choices and OCR settings, never tokens. ChatGPT OCR sends at most a 16 MP,
-20 MB source image, limits each network request to 90 seconds and returned text to 64 KiB,
-and waits for complete inference before copying. Cropping limits the image sent.
+Recognition uses the bundled Apple Vision helper and uploads nothing. Work runs in
+the background, with a 45-second timeout and a 64 KiB text limit; use a smaller crop
+if a limit is reached.
 
 ## Frame the image
 
@@ -192,9 +114,9 @@ Open **Backdrop** and choose **Solid**, **Gradient**, or **Motion**.
 - **Image corners** and **Shadow** style the screenshot.
 
 Choose a palette or click a swatch for custom colors. Solid uses one color;
-Gradient and Motion use two. **Pick from screen** opens the macOS eyedropper;
-Omarchy requires `hyprpicker`. Colors are opaque sRGB. Custom colors survive effect
-changes; choosing a palette resets them. Slider/color gestures are one undo step.
+Gradient and Motion use two. **Pick from screen** opens the macOS eyedropper.
+Colors are opaque sRGB. Custom colors survive effect changes; choosing a palette
+resets them. Slider/color gestures are one undo step.
 
 **Done** closes the panel. **Enable backdrop** toggles framing while retaining its settings.
 
@@ -220,9 +142,11 @@ Timing changes are undoable; replay and seeking leave history unchanged.
 
 **⌘C** copies the composed image; **⌘S** saves PNG. Both retain full resolution.
 With Animation open, PNG/copy capture the inspected frame; during normal editing
-they capture the fully revealed image.
+they capture the fully revealed image over the backdrop frame on the canvas.
 
-Use **Export → GIF… / MP4…** for an animated backdrop or image entrance.
+Use the toolbar's **Export** menu, or **File → Export GIF… / Export MP4…**, for an
+animated backdrop or image entrance. If nothing moves yet, export adds a Flow
+backdrop and opens **Backdrop** instead; export again to save it.
 Exports begin at time zero and preserve aspect ratio:
 
 | Format | Output |
@@ -233,26 +157,15 @@ Exports begin at time zero and preserve aspect ratio:
 
 GIF/MP4 use an ivory matte for transparent areas. Configure the video player to
 loop an MP4. The export progress bar stays at the bottom of the window;
-**Cancel export**, **Export → Cancel export**, or Escape stops it.
+**Cancel export**, **Export → Cancel export**, **File → Cancel Export**, or Escape
+stops it.
 
 Save dialogs suggest timestamped names in Pictures (PNG/GIF) or Movies (MP4).
-Use the matching `.png`, `.gif`, or `.mp4` extension. Glance preserves the
+Use the matching `.png`, `.gif`, or `.mp4` extension. The editor preserves the
 confirmed filename. If you omit an extension and the appended filename already
 exists, choose the full filename in the dialog to confirm replacement.
 
-### Share a link
-
-**Copy (remote) · ⌘⇧C** uploads the composed PNG to [glance.sh](https://glance.sh)
-and copies `Screenshot: <url>`. Wait for **Link copied!**, then paste it into a chat.
-Failed uploads preserve the clipboard.
-
-Links expire after about 30 minutes. Anyone with the link can retrieve the image.
-Uploads are encrypted and require internet; the service allows up to 15 MB per
-image and 30 uploads/hour per IP. Crop out sensitive content before sharing;
-pixelation is a visual effect rather than reliable removal of information.
-See the [security policy](../SECURITY.md) for data handling.
-
-## macOS accessibility
+## Accessibility
 
 Toolbar and inspector controls, numeric values, color hex fields, sliders, and
 Format/Export menus are exposed to accessibility. Exact-value edits use the same

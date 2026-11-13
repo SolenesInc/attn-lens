@@ -1,0 +1,8 @@
+#!/bin/sh
+# Stands in for glance-video-encoder in headless scripts. It takes the same
+# arguments (width, height, fps, frame count, output) and reads the same BGRA
+# frames, but writes what it received instead of a video, for tests/editor.rs.
+set -eu
+[ "$#" -eq 5 ] || { echo 'Expected width height fps frames output' >&2; exit 1; }
+bytes=$(wc -c | tr -d ' ')
+printf '%s %s %s %s %s\n' "$1" "$2" "$3" "$4" "$bytes" > "$5"

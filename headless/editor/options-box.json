@@ -1,0 +1,218 @@
+{
+ "row": "Box",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "r"
+  },
+  {
+   "t": 0.68,
+   "type": "tap",
+   "key": "corner-radius-value"
+  },
+  {
+   "t": 0.88,
+   "type": "type",
+   "text": "12",
+   "every": 0.01
+  },
+  {
+   "t": 0.95,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.07,
+   "type": "tap",
+   "key": "stroke-dot"
+  },
+  {
+   "t": 1.27,
+   "type": "tap",
+   "key": "thickness-value"
+  },
+  {
+   "t": 1.47,
+   "type": "type",
+   "text": "4",
+   "every": 0.01
+  },
+  {
+   "t": 1.53,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.65,
+   "type": "key",
+   "name": "F20",
+   "code": "f20",
+   "shift": true
+  },
+  {
+   "t": 1.77,
+   "type": "drag",
+   "dx": 60,
+   "dy": 30,
+   "dur": 0.05,
+   "x": 350,
+   "y": 371
+  },
+  {
+   "t": 1.97,
+   "type": "key",
+   "name": "F20",
+   "code": "f20"
+  },
+  {
+   "t": 2.19,
+   "type": "mark",
+   "name": "square"
+  },
+  {
+   "t": 2.31,
+   "type": "tap",
+   "key": "fill-filled"
+  },
+  {
+   "t": 2.61,
+   "type": "mark",
+   "name": "filled"
+  },
+  {
+   "t": 2.73,
+   "type": "key",
+   "name": "s",
+   "cmd": true
+  },
+  {
+   "t": 2.85,
+   "type": "file-dialog",
+   "path": "$OUT/box.png"
+  },
+  {
+   "t": 3.25,
+   "type": "mark",
+   "name": "saved"
+  },
+  {
+   "t": 3.37,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 3.49,
+   "type": "key",
+   "name": "v"
+  },
+  {
+   "t": 3.61,
+   "type": "tap",
+   "x": 380,
+   "y": 401
+  },
+  {
+   "t": 3.91,
+   "type": "mark",
+   "name": "interior-picked"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "square",
+   "marks": [
+    {
+     "tool": "Box",
+     "points": [
+      [
+       30,
+       30
+      ],
+      [
+       90,
+       90
+      ]
+     ],
+     "width": 4,
+     "style": {
+      "radius": 12,
+      "dash": "dotted"
+     }
+    }
+   ],
+   "present": [
+    "thickness-field"
+   ]
+  },
+  {
+   "at": "filled",
+   "marks": [
+    {
+     "tool": "Box",
+     "style": {
+      "fill": "filled"
+     }
+    }
+   ],
+   "absent": [
+    "thickness-field"
+   ],
+   "checked": [
+    "fill-filled"
+   ]
+  },
+  {
+   "at": "saved",
+   "png": {
+    "path": "$OUT/box.png",
+    "size": [
+     320,
+     200
+    ],
+    "pixels": [
+     [
+      60,
+      60,
+      [
+       255,
+       56,
+       100,
+       255
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "at": "interior-picked",
+   "marks": [
+    {
+     "tool": "Box",
+     "selected": true
+    }
+   ]
+  }
+ ]
+}

@@ -4,7 +4,7 @@ use crate::backdrop::{Backdrop, PRESETS};
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum DocumentAction {
+pub enum DocumentAction {
     AddAnnotation {
         mark: Mark,
     },
@@ -36,11 +36,17 @@ pub(crate) enum DocumentAction {
         smart: bool,
     },
     Rotate,
+    /// `remember: false` folds the change into the last undo step, as a slider drag does
+    /// after its first move.
     SetBackdrop {
         backdrop: Option<Backdrop>,
+        #[serde(default = "remember_default")]
+        remember: bool,
     },
     SetImageAnimation {
         animation: crate::animation::ImageAnimation,
+        #[serde(default = "remember_default")]
+        remember: bool,
     },
     Undo,
     Redo,
@@ -49,22 +55,39 @@ fn remember_default() -> bool {
     true
 }
 
-pub(crate) enum Selection {
+pub enum Selection {
     Keep,
     Clear,
     Select(usize),
     SelectMany(Vec<usize>),
 }
-pub(crate) struct EditOutcome {
-    pub(crate) changed: bool,
-    pub(crate) reset_view: bool,
-    pub(crate) selection: Selection,
+pub struct EditOutcome {
+    pub changed: bool,
+    pub reset_view: bool,
+    pub selection: Selection,
 }
-pub(crate) fn validate_mark(mark: &Mark) -> Result<(), String> {
+/// A tripwire on one mark's points. A pen adds at most one point per pointer event, so
+/// at 120 events a second this is about 14 minutes of continuous drawing. Measured at
+/// this size on ai-sandbox, on a 3420×2224 image: render 1.4 s off the UI thread, hit
+/// test 54 µs, clone 0.2 ms, and 205 ms a frame to paint the stroke live on software
+/// Vulkan (17 ms at 2,000 points, 65 ms at 20,000).
+pub const MAX_MARK_POINTS: usize = 100_000;
+
+/// A tripwire on all marks' points together: ten strokes at [`MAX_MARK_POINTS`]. Render
+/// time grows with points, 5.3 s at 500,000 on ai-sandbox, so near this every edit
+/// waits seconds for its raster; no drawing done by hand gets close.
+pub const MAX_DOCUMENT_POINTS: usize = 1_000_000;
+
+pub fn validate_mark(mark: &Mark) -> Result<(), String> {
     mark.style.validate()?;
+    if mark.points.len() > MAX_MARK_POINTS {
+        return Err(format!(
+            "A mark holds at most {MAX_MARK_POINTS} points; this one has {}.",
+            mark.points.len()
+        ));
+    }
     if matches!(mark.tool, Tool::Select | Tool::Crop)
         || mark.points.is_empty()
-        || mark.points.len() > 2000
         || !mark.width.is_finite()
         // Stored geometry scales with the image and can lie outside toolbar
         // settings after resizing. Keep it bounded and editable.
@@ -104,7 +127,7 @@ pub(crate) fn validate_mark(mark: &Mark) -> Result<(), String> {
 }
 impl DocumentAction {
     /// Validation happens before history or document mutation, including moves.
-    pub(crate) fn apply(self, document: &mut Document) -> Result<EditOutcome, String> {
+    pub fn apply(self, document: &mut Document) -> Result<EditOutcome, String> {
         let mut outcome = EditOutcome {
             changed: true,
             reset_view: false,
@@ -239,6 +262,7 @@ impl DocumentAction {
                     color: [0; 4],
                     width: 1.,
                     text: String::new(),
+                    drawn: None,
                 });
                 outcome.reset_view = true;
                 outcome.selection = Selection::Clear;
@@ -256,7 +280,7 @@ impl DocumentAction {
                 outcome.reset_view = true;
                 outcome.selection = Selection::Clear;
             }
-            Self::SetBackdrop { backdrop } => {
+            Self::SetBackdrop { backdrop, remember } => {
                 if let Some(b) = backdrop
                     && (b.preset >= PRESETS.len()
                         || b.padding > 512
@@ -274,16 +298,23 @@ impl DocumentAction {
                 }
                 outcome.changed = document.backdrop != backdrop;
                 if outcome.changed {
-                    document.remember();
+                    if remember {
+                        document.remember();
+                    }
                     document.backdrop = backdrop;
                     document.image_animation = animation;
                 }
             }
-            Self::SetImageAnimation { animation } => {
+            Self::SetImageAnimation {
+                animation,
+                remember,
+            } => {
                 animation.validate()?;
                 outcome.changed = document.image_animation != animation;
                 if outcome.changed {
-                    document.remember();
+                    if remember {
+                        document.remember();
+                    }
                     document.image_animation = animation;
                     if let Some(b) = &mut document.backdrop {
                         b.seconds = animation.seconds;
@@ -305,8 +336,11 @@ impl DocumentAction {
     }
 }
 fn check_points(document: &Document, added: usize, removed: usize) -> Result<(), String> {
-    if document.marks.iter().map(|m| m.points.len()).sum::<usize>() - removed + added > 10000 {
-        return Err("Maximum 10000 drawing points".into());
+    let total = document.marks.iter().map(|m| m.points.len()).sum::<usize>() - removed + added;
+    if total > MAX_DOCUMENT_POINTS {
+        return Err(format!(
+            "An image holds at most {MAX_DOCUMENT_POINTS} drawing points; this edit makes {total}."
+        ));
     }
     Ok(())
 }
@@ -314,6 +348,24 @@ fn check_points(document: &Document, added: usize, removed: usize) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn too_many_points_names_the_limit() {
+        let mark = Mark {
+            style: Default::default(),
+            tool: Tool::Pen,
+            curve: None,
+            points: vec![(0., 0.); MAX_MARK_POINTS + 1],
+            color: [255, 0, 0, 255],
+            width: 5.,
+            text: String::new(),
+            drawn: None,
+        };
+        assert_eq!(
+            validate_mark(&mark).unwrap_err(),
+            "A mark holds at most 100000 points; this one has 100001."
+        );
+    }
+
     #[test]
     fn resized_annotation_sizes_remain_editable_and_invalid_resize_is_atomic() {
         let mut d = Document::new(image::RgbaImage::new(200, 200));
@@ -326,6 +378,7 @@ mod tests {
                 tool: Tool::Rectangle,
                 points: vec![(20., 20.), (180., 180.)],
                 curve: None,
+                drawn: None,
                 width: 32.,
                 color: [255; 4],
                 text: String::new(),
@@ -411,6 +464,7 @@ mod tests {
                 effect: crate::animation::Entrance::Pop,
                 ..Default::default()
             },
+            remember: true,
         }
         .apply(&mut d)
         .unwrap();
@@ -433,6 +487,7 @@ mod tests {
             text: String::new(),
             curve: None,
             style: Default::default(),
+            drawn: None,
         };
         document.commit(mark.clone());
         document.commit(mark.clone());
@@ -489,6 +544,7 @@ mod tests {
             color: [255; 4],
             width: 3.,
             text: String::new(),
+            drawn: None,
         };
         DocumentAction::AddAnnotation { mark: mark.clone() }
             .apply(&mut document)
@@ -508,6 +564,7 @@ mod tests {
                     preset: PRESETS.len(),
                     ..Default::default()
                 }),
+                remember: true,
             },
         ] {
             assert!(edit.apply(&mut document).is_err());

@@ -2,7 +2,7 @@ use ab_glyph::Font;
 use image::{Rgba, RgbaImage};
 use imageproc::drawing::{draw_filled_circle_mut, draw_text_mut};
 use std::sync::Arc;
-pub(crate) mod actions;
+pub mod actions;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -50,6 +50,10 @@ pub struct Mark {
     pub color: [u8; 4],
     pub width: f32,
     pub text: String,
+    /// When this mark was drawn on a live capture, as host-clock nanoseconds from
+    /// its first to its last point. Editor marks have none, so no timeline row.
+    #[serde(skip)]
+    pub drawn: Option<(u64, u64)>,
 }
 #[derive(Clone)]
 struct Snapshot {
@@ -89,13 +93,6 @@ impl Document {
         }
     }
     /// Commit a completed private agent draft as one undoable change.
-    pub(crate) fn apply_agent_draft(&mut self, draft: Self) {
-        self.remember();
-        self.base = draft.base;
-        self.marks = draft.marks;
-        self.backdrop = draft.backdrop;
-        self.image_animation = draft.image_animation;
-    }
     fn snapshot(&self) -> Snapshot {
         Snapshot {
             base: self.base.clone(),
@@ -129,6 +126,29 @@ impl Document {
             self.remember();
             self.marks.push(mark);
         }
+    }
+    /// Replaces the live mark drawn over the same span as `mark`, in the history
+    /// too, so undo never brings back the form it replaced.
+    pub fn replace_drawn(&mut self, mark: Mark) {
+        let marks = std::iter::once(&mut self.marks)
+            .chain(self.undo.iter_mut().map(|s| &mut s.marks))
+            .chain(self.redo.iter_mut().map(|s| &mut s.marks));
+        for marks in marks {
+            for m in marks.iter_mut().filter(|m| m.drawn == mark.drawn) {
+                *m = mark.clone();
+            }
+        }
+    }
+    /// Whether undo would bring back a different image, not only different marks.
+    pub fn undo_replaces_image(&self) -> bool {
+        self.undo
+            .last()
+            .is_some_and(|s| !Arc::ptr_eq(&s.base, &self.base))
+    }
+    pub fn redo_replaces_image(&self) -> bool {
+        self.redo
+            .last()
+            .is_some_and(|s| !Arc::ptr_eq(&s.base, &self.base))
     }
     pub fn undo(&mut self) {
         if let Some(previous) = self.undo.pop() {
@@ -180,8 +200,12 @@ impl Document {
         out
     }
     pub fn export_at(&self, phase: f32) -> RgbaImage {
+        self.export_frame(phase, phase)
+    }
+    /// A still with the entrance at phase `entrance` and a moving background at `phase`.
+    pub fn export_frame(&self, entrance: f32, phase: f32) -> RgbaImage {
         if self.image_animation.enabled() {
-            return crate::animation::Renderer::for_document(self, None).frame(phase);
+            return crate::animation::Renderer::for_document(self, None).compose(entrance, phase);
         }
         if let Some(b) = self.backdrop
             && b.motion != crate::animation::Motion::Still
@@ -482,6 +506,7 @@ pub fn demo() -> RgbaImage {
                 color,
                 width: size / 7.,
                 text: text.into(),
+                drawn: None,
             },
         );
     };
@@ -587,6 +612,7 @@ mod tests {
                     color,
                     width: 6.,
                     text: text.into(),
+                    drawn: None,
                 });
                 for image in [doc.render(None), doc.export()] {
                     let label_pixels = image
@@ -626,6 +652,7 @@ mod tests {
                 color: [255; 4],
                 width: em / 7.,
                 text: text.into(),
+                drawn: None,
             };
             let mut actual = RgbaImage::new(160, 100);
             paint(&mut actual, &mark);
@@ -653,6 +680,7 @@ mod tests {
             color: [255, 0, 0, 255],
             width: 2.,
             text: String::new(),
+            drawn: None,
         }
     }
     #[test]

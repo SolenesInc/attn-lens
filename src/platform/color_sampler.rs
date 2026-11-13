@@ -5,16 +5,16 @@ pub fn sample_screen_color() -> Result<async_channel::Receiver<SampleResult>, St
     let (sender, receiver) = async_channel::bounded(1);
     #[cfg(target_os = "macos")]
     unsafe {
-        use cocoa::base::{id, nil};
-        use objc::{class, msg_send, sel, sel_impl};
-        let sampler: id = msg_send![class!(NSColorSampler), new];
-        let handler = block::ConcreteBlock::new(move |color: id| {
-            let result = if color == nil {
+        use objc::{class, msg_send, runtime::Object, sel, sel_impl};
+        type Id = *mut Object;
+        let sampler: Id = msg_send![class!(NSColorSampler), new];
+        let handler = block::ConcreteBlock::new(move |color: Id| {
+            let result = if color.is_null() {
                 Ok(None)
             } else {
-                let space: id = msg_send![class!(NSColorSpace), sRGBColorSpace];
-                let color: id = msg_send![color, colorUsingColorSpace: space];
-                if color == nil {
+                let space: Id = msg_send![class!(NSColorSpace), sRGBColorSpace];
+                let color: Id = msg_send![color, colorUsingColorSpace: space];
+                if color.is_null() {
                     Err("The sampled color could not be converted to sRGB".into())
                 } else {
                     let r: f64 = msg_send![color, redComponent];
@@ -55,7 +55,7 @@ pub fn sample_screen_color() -> Result<async_channel::Receiver<SampleResult>, St
                     if text.trim().is_empty() {
                         return Ok(None);
                     }
-                    crate::color_picker::parse_hex(&text)
+                    parse_hex(&text)
                         .map(Some)
                         .ok_or_else(|| "Screen sampler returned an invalid hex color".into())
                 });
@@ -63,4 +63,22 @@ pub fn sample_screen_color() -> Result<async_channel::Receiver<SampleResult>, St
         });
     }
     Ok(receiver)
+}
+
+/// Parses the helper's `#RGB` or `#RRGGBB` output.
+#[cfg(target_os = "linux")]
+fn parse_hex(text: &str) -> Option<[u8; 3]> {
+    let text = text.trim().strip_prefix('#').unwrap_or(text.trim());
+    if !text.is_ascii() || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    match text.len() {
+        3 => Some(std::array::from_fn(|i| {
+            u8::from_str_radix(&text[i..i + 1], 16).unwrap() * 17
+        })),
+        6 => Some(std::array::from_fn(|i| {
+            u8::from_str_radix(&text[i * 2..i * 2 + 2], 16).unwrap()
+        })),
+        _ => None,
+    }
 }

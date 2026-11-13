@@ -1,15 +1,18 @@
 //! Attn Lens reaches attn only through the `attn` CLI on this Mac. Its `--json`
-//! output is the whole contract: `attn send sessions`, `attn send pair` and
-//! `attn send <session>`, pinned by attn's own stack test.
+//! output is the whole contract: `attn send sessions`, `attn send pair`,
+//! `attn send <session>` and `attn refine`, pinned by attn's own stack tests
+//! (cmd/attn/send_stack_test.go, cmd/attnd/refine_stack_test.go).
 use serde::Deserialize;
 use std::{
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, ChildStderr, ChildStdout, Command, Stdio},
+    sync::Mutex,
 };
 
 /// The name the user sees when Lens asks to pair, and in attn's Settings → Paired senders.
 pub const SENDER_NAME: &str = "Attn Lens";
+#[cfg(target_os = "macos")]
 const KEYCHAIN_SERVICE: &str = "dev.attn.lens.sender";
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -18,16 +21,36 @@ pub struct Session {
     pub label: String,
     pub agent: String,
     pub state: String,
-    /// The outpost the session runs on; absent for this Mac.
+    /// The id of the outpost the session runs on; absent for this Mac.
     #[serde(default)]
     pub host: Option<String>,
+    /// The outpost's name; attn repeats the id here when it cannot find the outpost.
+    #[serde(default)]
+    pub host_label: Option<String>,
     #[serde(default)]
     pub last_focused_at: Option<String>,
 }
 
 impl Session {
-    pub fn host_label(&self) -> &str {
-        self.host.as_deref().unwrap_or("this Mac")
+    /// Where the session runs, for the user: "this Mac", the outpost's name, or
+    /// when attn has no name for it, "outpost" and the id's first eight characters.
+    pub fn host_label(&self) -> String {
+        match (&self.host_label, &self.host) {
+            // attn sends the id as the name when it cannot find the outpost.
+            (Some(name), host) if !name.is_empty() && Some(name) != host.as_ref() => name.clone(),
+            (_, Some(id)) => format!("outpost {}", id.chars().take(8).collect::<String>()),
+            (_, None) => "this Mac".into(),
+        }
+    }
+
+    /// The session's state in words; a state Lens does not know shows without underscores.
+    pub fn state_label(&self) -> String {
+        match self.state.as_str() {
+            "waiting_input" => "waiting for you".into(),
+            "pending_approval" => "needs approval".into(),
+            "launching" => "starting".into(),
+            other => other.replace('_', " "),
+        }
     }
 }
 
@@ -84,6 +107,7 @@ pub fn locate() -> Result<PathBuf, Failure> {
         })
 }
 
+#[cfg(target_os = "macos")]
 pub fn token() -> Option<String> {
     let bytes =
         security_framework::passwords::get_generic_password(KEYCHAIN_SERVICE, account()).ok()?;
@@ -92,6 +116,7 @@ pub fn token() -> Option<String> {
         .filter(|t| !t.trim().is_empty())
 }
 
+#[cfg(target_os = "macos")]
 pub fn store_token(token: &str) -> Result<(), Failure> {
     security_framework::passwords::set_generic_password(
         KEYCHAIN_SERVICE,
@@ -101,10 +126,12 @@ pub fn store_token(token: &str) -> Result<(), Failure> {
     .map_err(|e| Failure::Error(format!("Paired, but the Keychain refused the token: {e}")))
 }
 
+#[cfg(target_os = "macos")]
 pub fn forget_token() {
     let _ = security_framework::passwords::delete_generic_password(KEYCHAIN_SERVICE, account());
 }
 
+#[cfg(target_os = "macos")]
 /// One token per attn instance, so a test instance never overwrites the real pairing.
 fn account() -> &'static str {
     static ACCOUNT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
@@ -126,16 +153,19 @@ pub fn sessions(bin: &Path, token: &str) -> Result<Vec<Session>, Failure> {
     })
 }
 
-/// Sends `file` and `message` to `session`.
+/// Sends `files` and `message` to `session`.
 pub fn send(
     bin: &Path,
     token: &str,
     session: &str,
-    file: &Path,
+    files: &[PathBuf],
     message: &str,
 ) -> Result<Sent, Failure> {
-    let file = file.to_string_lossy();
-    let mut args = vec!["send", session, "--token-stdin", "--file", &file, "--json"];
+    let files: Vec<_> = files.iter().map(|f| f.to_string_lossy()).collect();
+    let mut args = vec!["send", session, "--token-stdin", "--json"];
+    for file in &files {
+        args.extend(["--file", file]);
+    }
     if !message.trim().is_empty() {
         args.extend(["-m", message]);
     }
@@ -146,6 +176,106 @@ pub fn send(
 
 /// Asks the user to pair Lens. `shown` gets the code attn shows beside Allow;
 /// returns the token once the user allows, or attn's refusal.
+/// A running `attn refine`. Dropping it, or [`Refine::stop`], kills the command,
+/// and attn cancels the refinement when its connection closes.
+pub struct Refine {
+    child: Mutex<Child>,
+    output: Mutex<Option<(ChildStdout, ChildStderr)>>,
+}
+
+/// What `attn refine --json` prints, on success and on failure alike.
+#[derive(Deserialize)]
+struct Refined {
+    success: bool,
+    #[serde(default)]
+    refined_text: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+impl Refine {
+    /// Starts refining `raw`, a recording `duration_ms` long, and returns at once.
+    pub fn start(bin: &Path, token: &str, raw: &str, duration_ms: u64) -> Result<Self, Failure> {
+        let duration = duration_ms.to_string();
+        let mut child = Command::new(bin)
+            .args([
+                "refine",
+                "--token-stdin",
+                "--duration-ms",
+                &duration,
+                "--json",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| Failure::Error(format!("Could not run {}: {e}", bin.display())))?;
+        // The token, then the transcript; closing stdin ends it.
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = write!(stdin, "{token}\n{raw}");
+        }
+        let output = child.stdout.take().zip(child.stderr.take());
+        Ok(Self {
+            child: Mutex::new(child),
+            output: Mutex::new(output),
+        })
+    }
+
+    /// Waits for the refined text, or attn's reason there is none. Slow.
+    pub fn wait(&self) -> Result<String, Failure> {
+        let (mut stdout, mut stderr) = self
+            .output
+            .lock()
+            .unwrap()
+            .take()
+            .ok_or_else(|| Failure::Error("attn refine was already read".into()))?;
+        // Both pipes close when the command exits or is stopped; the child lock
+        // stays free meanwhile, so `stop` can kill it.
+        let (mut out, mut err) = (String::new(), Vec::new());
+        let _ = stdout.read_to_string(&mut out);
+        let _ = stderr.read_to_end(&mut err);
+        let status = self
+            .child
+            .lock()
+            .unwrap()
+            .wait()
+            .map_err(|e| Failure::Error(e.to_string()))?;
+        match serde_json::from_str::<Refined>(out.trim()) {
+            Ok(Refined {
+                success: true,
+                refined_text: Some(text),
+                ..
+            }) => Ok(text),
+            Ok(refined) => {
+                Err(Failure::Error(refined.error.unwrap_or_else(|| {
+                    "attn refine gave no text and no reason".into()
+                })))
+            }
+            // A refused token, or a usage error, comes on stderr with no JSON.
+            Err(_) => {
+                let text = error_text(&err, status.code());
+                Err(if text.contains("attn send pair") {
+                    Failure::NotPaired(text)
+                } else {
+                    Failure::Error(text)
+                })
+            }
+        }
+    }
+
+    pub fn stop(&self) {
+        let _ = self.child.lock().unwrap().kill();
+    }
+}
+
+impl Drop for Refine {
+    fn drop(&mut self) {
+        self.stop();
+        // Reaps it, unless `wait` did.
+        let _ = self.child.lock().unwrap().try_wait();
+    }
+}
+
 pub fn pair(bin: &Path, shown: impl FnOnce(PairRequest)) -> Result<String, Failure> {
     let mut child = Command::new(bin)
         .args(["send", "pair", "--name", SENDER_NAME, "--json"])
@@ -261,7 +391,7 @@ mod tests {
         let bin = fake(
             dir.path(),
             r#"read token; printf '%s' "$token" > "$(dirname "$0")/token"
-echo '[{"agent":"claude","id":"s1","label":"local","last_focused_at":"2026-11-02T10:00:00Z","state":"idle"},{"agent":"claude","host":"ai-sandbox","id":"s2","label":"remote","state":"working"}]'"#,
+echo '[{"agent":"claude","id":"s1","label":"local","last_focused_at":"2026-11-02T10:00:00Z","state":"idle"},{"agent":"claude","host":"7a35fcaf-012f-4a33-8239-1da4d324514f","id":"s2","label":"remote","state":"waiting_input"},{"agent":"claude","host":"7a35fcaf-012f-4a33-8239-1da4d324514f","host_label":"ai-sandbox","id":"s3","label":"named","state":"pending_approval"},{"agent":"claude","host":"0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0","host_label":"0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0","id":"s4","label":"gone","state":"idle"}]'"#,
         );
         let sessions = sessions(&bin, "tok-1").unwrap();
         assert_eq!(
@@ -274,33 +404,57 @@ echo '[{"agent":"claude","id":"s1","label":"local","last_focused_at":"2026-11-02
                 .trim(),
             "send sessions --token-stdin --json"
         );
-        assert_eq!(sessions.len(), 2);
-        assert_eq!(sessions[0].host_label(), "this Mac");
-        assert_eq!(sessions[1].host.as_deref(), Some("ai-sandbox"));
+        assert_eq!(sessions.len(), 4);
+        // attn gives an outpost's id as `host`; the user sees its name, or a short form until attn sends one.
+        let shown = |s: &Session| (s.host_label(), s.state_label());
+        assert_eq!(shown(&sessions[0]), ("this Mac".into(), "idle".into()));
+        assert_eq!(
+            shown(&sessions[1]),
+            ("outpost 7a35fcaf".into(), "waiting for you".into())
+        );
+        assert_eq!(
+            shown(&sessions[2]),
+            ("ai-sandbox".into(), "needs approval".into())
+        );
+        // An outpost attn cannot find comes with its id as the name.
+        assert_eq!(
+            shown(&sessions[3]),
+            ("outpost 0b1c2d3e".into(), "idle".into())
+        );
         assert_eq!(default_session(&sessions), Some(0));
     }
 
     #[test]
-    fn send_passes_the_file_and_message_and_keeps_a_refusal_verbatim() {
+    fn send_passes_every_file_and_the_message_and_keeps_a_refusal_verbatim() {
         let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("screenshot.png");
+        let file = dir.path().join("frame-01.png");
+        let sheet = dir.path().join("sheet.png");
         std::fs::write(&file, b"png").unwrap();
+        std::fs::write(&sheet, b"png").unwrap();
         let ok = fake(
             dir.path(),
-            r#"echo '{"id":"cap","attachments":[{"id":"a","name":"screenshot.png","media_type":"image/png","bytes":3}]}'"#,
+            r#"echo '{"id":"cap","attachments":[{"id":"a","name":"frame-01.png","media_type":"image/png","bytes":3}]}'"#,
         );
-        send(&ok, "tok", "s1", &file, "look here").unwrap();
+        send(
+            &ok,
+            "tok",
+            "s1",
+            &[sheet.clone(), file.clone()],
+            "look here",
+        )
+        .unwrap();
         assert_eq!(
             std::fs::read_to_string(dir.path().join("args"))
                 .unwrap()
                 .trim(),
             format!(
-                "send s1 --token-stdin --file {} --json -m look here",
+                "send s1 --token-stdin --json --file {} --file {} -m look here",
+                sheet.display(),
                 file.display()
             )
         );
         let closed = fake(dir.path(), "echo 'send: session s1 is closed' >&2; exit 1");
-        match send(&closed, "tok", "s1", &file, "") {
+        match send(&closed, "tok", "s1", &[file], "") {
             Err(Failure::Error(text)) => assert_eq!(text, "send: session s1 is closed"),
             other => panic!("expected the CLI's error verbatim, got {other:?}"),
         }
@@ -347,6 +501,7 @@ echo '{"sender":{"id":"x","name":"Attn Lens","created_at":"2026-11-02T10:00:00Z"
             agent: "claude".into(),
             state: "idle".into(),
             host: None,
+            host_label: None,
             last_focused_at: at.map(Into::into),
         };
         assert_eq!(default_session(&[]), None);
@@ -357,5 +512,61 @@ echo '{"sender":{"id":"x","name":"Attn Lens","created_at":"2026-11-02T10:00:00Z"
             row("c", Some("2026-11-02T10:00:00Z")),
         ];
         assert_eq!(default_session(&rows), Some(2));
+    }
+
+    #[test]
+    fn refine_sends_the_token_then_the_transcript_and_reads_attns_json() {
+        let dir = tempfile::tempdir().unwrap();
+        // As cmd/attnd/refine_stack_test.go pins it.
+        let bin = fake(
+            dir.path(),
+            r#"cat > "$(dirname "$0")/stdin"
+echo '{"profile_id":"default","success":true,"refined_text":"Deploy to staging."}'"#,
+        );
+        let refine = Refine::start(&bin, "tok", "um so deploy\nto staging", 7616).unwrap();
+        assert_eq!(refine.wait().unwrap(), "Deploy to staging.");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("stdin")).unwrap(),
+            "tok\num so deploy\nto staging"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("args"))
+                .unwrap()
+                .trim(),
+            "refine --token-stdin --duration-ms 7616 --json"
+        );
+    }
+
+    #[test]
+    fn a_refinement_past_attns_limit_gives_attns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = fake(
+            dir.path(),
+            r#"cat > /dev/null
+echo '{"profile_id":"default","success":false,"error":"refinement did not finish within 25 s for this 40 s recording","limit_ms":25000}'; exit 1"#,
+        );
+        let refine = Refine::start(&bin, "tok", "deploy", 40_000).unwrap();
+        assert_eq!(
+            refine.wait(),
+            Err(Failure::Error(
+                "refinement did not finish within 25 s for this 40 s recording".into()
+            ))
+        );
+        let refused = fake(
+            dir.path(),
+            "cat > /dev/null; echo 'refine: the sender token matches no paired sender; it was unpaired or never allowed. Pair again with attn send pair --name <name>' >&2; exit 1",
+        );
+        let refine = Refine::start(&refused, "gone", "hello", 0).unwrap();
+        assert!(matches!(refine.wait(), Err(Failure::NotPaired(_))));
+    }
+
+    #[test]
+    fn stopping_a_refinement_ends_the_command() {
+        let dir = tempfile::tempdir().unwrap();
+        // Waits for a line that never comes, as a refinement that hangs would.
+        let bin = fake(dir.path(), "cat > /dev/null; exec sleep 600");
+        let refine = Refine::start(&bin, "tok", "words", 0).unwrap();
+        refine.stop();
+        assert!(matches!(refine.wait(), Err(Failure::Error(_))));
     }
 }

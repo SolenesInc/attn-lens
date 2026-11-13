@@ -1,0 +1,423 @@
+{
+ "row": "Select",
+ "events": [
+  {
+   "t": 0.1,
+   "reopen": true
+  },
+  {
+   "t": 0.22,
+   "drop_files": {
+    "paths": [
+     "$FIXTURE"
+    ],
+    "at": [
+     480,
+     400
+    ]
+   }
+  },
+  {
+   "t": 0.44,
+   "type": "mark",
+   "name": "opened"
+  },
+  {
+   "t": 0.56,
+   "type": "key",
+   "name": "r"
+  },
+  {
+   "t": 0.68,
+   "type": "drag",
+   "dx": 50,
+   "dy": 30,
+   "dur": 0.05,
+   "x": 360,
+   "y": 381
+  },
+  {
+   "t": 0.88,
+   "type": "drag",
+   "dx": 50,
+   "dy": 40,
+   "dur": 0.05,
+   "x": 470,
+   "y": 441
+  },
+  {
+   "t": 1.08,
+   "type": "key",
+   "name": "v"
+  },
+  {
+   "t": 1.3,
+   "type": "mark",
+   "name": "none-selected"
+  },
+  {
+   "t": 1.42,
+   "type": "drag",
+   "dx": 290,
+   "dy": 175,
+   "dur": 0.05,
+   "x": 330,
+   "y": 351
+  },
+  {
+   "t": 1.72,
+   "type": "mark",
+   "name": "box-selected"
+  },
+  {
+   "t": 1.84,
+   "type": "drag",
+   "dx": 10,
+   "dy": 20,
+   "dur": 0.05,
+   "x": 360,
+   "y": 396
+  },
+  {
+   "t": 2.14,
+   "type": "mark",
+   "name": "group-moved"
+  },
+  {
+   "t": 2.26,
+   "type": "key",
+   "name": "z",
+   "cmd": true
+  },
+  {
+   "t": 2.48,
+   "type": "mark",
+   "name": "group-move-undone"
+  },
+  {
+   "t": 2.6,
+   "type": "drag",
+   "dx": 290,
+   "dy": 175,
+   "dur": 0.05,
+   "x": 330,
+   "y": 351
+  },
+  {
+   "t": 2.8,
+   "type": "key",
+   "name": "d",
+   "cmd": true
+  },
+  {
+   "t": 3.02,
+   "type": "mark",
+   "name": "duplicated"
+  },
+  {
+   "t": 3.14,
+   "type": "key",
+   "name": "Delete"
+  },
+  {
+   "t": 3.36,
+   "type": "mark",
+   "name": "deleted"
+  },
+  {
+   "t": 3.48,
+   "type": "tap",
+   "x": 620,
+   "y": 531
+  },
+  {
+   "t": 3.68,
+   "type": "tap",
+   "x": 360,
+   "y": 396
+  },
+  {
+   "t": 3.88,
+   "type": "key",
+   "name": "F20",
+   "code": "f20",
+   "shift": true
+  },
+  {
+   "t": 4.0,
+   "type": "tap",
+   "x": 470,
+   "y": 461
+  },
+  {
+   "t": 4.2,
+   "type": "key",
+   "name": "F20",
+   "code": "f20"
+  },
+  {
+   "t": 4.42,
+   "type": "mark",
+   "name": "shift-added"
+  },
+  {
+   "t": 4.54,
+   "type": "key",
+   "name": "F20",
+   "code": "f20",
+   "shift": true
+  },
+  {
+   "t": 4.66,
+   "type": "tap",
+   "x": 470,
+   "y": 461
+  },
+  {
+   "t": 4.86,
+   "type": "key",
+   "name": "F20",
+   "code": "f20"
+  },
+  {
+   "t": 5.08,
+   "type": "mark",
+   "name": "shift-toggled"
+  },
+  {
+   "t": 5.2,
+   "type": "key",
+   "name": "Right"
+  },
+  {
+   "t": 5.32,
+   "type": "key",
+   "name": "Right",
+   "shift": true
+  },
+  {
+   "t": 5.54,
+   "type": "mark",
+   "name": "nudged"
+  },
+  {
+   "t": 5.66,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 5.88,
+   "type": "mark",
+   "name": "cleared"
+  }
+ ],
+ "asserts": [
+  {
+   "at": "none-selected",
+   "marks": [
+    {
+     "tool": "Box",
+     "selected": false
+    },
+    {
+     "tool": "Box",
+     "selected": false
+    }
+   ],
+   "text": {
+    "select-hint": "Select an annotation to edit its properties."
+   }
+  },
+  {
+   "at": "box-selected",
+   "marks": [
+    {
+     "tool": "Box",
+     "selected": true
+    },
+    {
+     "tool": "Box",
+     "selected": true
+    }
+   ],
+   "present": [
+    "duplicate",
+    "delete"
+   ]
+  },
+  {
+   "at": "group-moved",
+   "marks": [
+    {
+     "tool": "Box",
+     "points": [
+      [
+       50,
+       60
+      ],
+      [
+       100,
+       90
+      ]
+     ]
+    },
+    {
+     "tool": "Box",
+     "points": [
+      [
+       160,
+       120
+      ],
+      [
+       210,
+       160
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "at": "group-move-undone",
+   "marks": [
+    {
+     "tool": "Box",
+     "points": [
+      [
+       40,
+       40
+      ],
+      [
+       90,
+       70
+      ]
+     ]
+    },
+    {
+     "tool": "Box",
+     "points": [
+      [
+       150,
+       100
+      ],
+      [
+       200,
+       140
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "at": "duplicated",
+   "marks": [
+    {
+     "tool": "Box",
+     "selected": false
+    },
+    {
+     "tool": "Box",
+     "selected": false
+    },
+    {
+     "tool": "Box",
+     "points": [
+      [
+       50,
+       50
+      ],
+      [
+       100,
+       80
+      ]
+     ],
+     "selected": true
+    },
+    {
+     "tool": "Box",
+     "points": [
+      [
+       160,
+       110
+      ],
+      [
+       210,
+       150
+      ]
+     ],
+     "selected": true
+    }
+   ]
+  },
+  {
+   "at": "deleted",
+   "marks": [
+    {
+     "tool": "Box"
+    },
+    {
+     "tool": "Box"
+    }
+   ]
+  },
+  {
+   "at": "shift-added",
+   "marks": [
+    {
+     "tool": "Box",
+     "selected": true
+    },
+    {
+     "tool": "Box",
+     "selected": true
+    }
+   ]
+  },
+  {
+   "at": "shift-toggled",
+   "marks": [
+    {
+     "tool": "Box",
+     "selected": true
+    },
+    {
+     "tool": "Box",
+     "selected": false
+    }
+   ]
+  },
+  {
+   "at": "nudged",
+   "marks": [
+    {
+     "tool": "Box",
+     "points": [
+      [
+       51,
+       40
+      ],
+      [
+       101,
+       70
+      ]
+     ]
+    },
+    {
+     "tool": "Box"
+    }
+   ]
+  },
+  {
+   "at": "cleared",
+   "marks": [
+    {
+     "tool": "Box",
+     "selected": false
+    },
+    {
+     "tool": "Box",
+     "selected": false
+    }
+   ]
+  }
+ ]
+}
