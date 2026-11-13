@@ -372,16 +372,13 @@ mod tests {
     //! The CLI contract, against a stand-in `attn` that prints what attn's
     //! stack test pins (cmd/attn/send_stack_test.go) and records its input.
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
 
     fn fake(dir: &Path, body: &str) -> PathBuf {
         let bin = dir.join("attn");
-        std::fs::write(
+        crate::stand_in::write_executable(
             &bin,
-            format!("#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$(dirname \"$0\")/args\"\n{body}\n"),
-        )
-        .unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+            &format!("#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$(dirname \"$0\")/args\"\n{body}\n"),
+        );
         bin
     }
 
