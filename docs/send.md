@@ -10,9 +10,11 @@ scrolls and typing keep reaching your apps.
 1. Press **⌘⌥X**. Drag for an area, click for the whole display, press **↩** for
    the last area, or **Esc** to cancel. The area stays outlined; drag a corner to
    adjust it.
-2. Hold **fn** and drag to draw. A straight drag is an arrow, any other stays
-   freehand, and **⇧** makes a box. The bar's Highlight, Label and Counter buttons
-   set the next stroke.
+2. Hold **fn** and drag to draw. A lone straight drag is an arrow, any other stays
+   freehand, and **⇧** makes a box. Strokes written in quick succession, each
+   starting within 1.5 s of the last and within 60 pt of it, are handwriting: they
+   all stay freehand, and the stroke before them turns back to freehand if it was
+   an arrow. The bar's Highlight, Label and Counter buttons set the next stroke.
 3. Type your message in the bar. Click the page to give it the keyboard; **⌘⌥C**
    takes it back.
 4. Press **⌘⌥S** to talk: what you say is transcribed on this Mac, phrase by

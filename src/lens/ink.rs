@@ -26,6 +26,11 @@ const STRAIGHT_MIN: f32 = 6.;
 const STRAIGHT_RATIO: f32 = 0.08;
 /// A longer path than this means the hand went back along the line.
 const STRAIGHT_PATH_RATIO: f32 = 1.15;
+/// A stroke that starts this soon after the last one ended, this close to it,
+/// is writing, so neither stays an arrow. Tripwires past the gaps and distances
+/// measured between strokes of handwritten words; see `docs/send.md`.
+pub const BURST_GAP: std::time::Duration = std::time::Duration::from_millis(1500);
+const BURST_REACH: f32 = 60.;
 /// `validate_mark`'s limit: past it the editor would refuse the mark.
 const MAX_POINTS: usize = 2000;
 const OUTLINE: f32 = 2.;
@@ -37,7 +42,7 @@ const HANDLE_DOT: f32 = 10.;
 /// What the next stroke makes, set on the bar's tool row.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum InkTool {
-    /// An arrow when the drag is straight, otherwise freehand; ⇧ makes a box.
+    /// An arrow when a lone drag is straight, otherwise freehand; ⇧ makes a box.
     #[default]
     Stroke,
     Highlight,
@@ -75,12 +80,38 @@ fn is_straight(points: &[(f32, f32)]) -> bool {
     stray <= STRAIGHT_MIN.max(chord * STRAIGHT_RATIO) && path <= chord * STRAIGHT_PATH_RATIO
 }
 
+/// Whether two strokes are close enough to be parts of one word: their bounds
+/// are at most `BURST_REACH` apart.
+pub fn near(a: &[(f32, f32)], b: &[(f32, f32)]) -> bool {
+    let bounds = |points: &[(f32, f32)]| {
+        points.iter().fold(
+            [f32::MAX, f32::MAX, f32::MIN, f32::MIN],
+            |[x0, y0, x1, y1], &(x, y)| [x0.min(x), y0.min(y), x1.max(x), y1.max(y)],
+        )
+    };
+    let (a, b) = (bounds(a), bounds(b));
+    let dx = (a[0] - b[2]).max(b[0] - a[2]).max(0.);
+    let dy = (a[1] - b[3]).max(b[1] - a[3]).max(0.);
+    dx.hypot(dy) <= BURST_REACH
+}
+
+/// A freehand mark along `points`, thinned to what the editor accepts.
+pub fn pen_mark(points: &[(f32, f32)]) -> Mark {
+    let mut points = points.to_vec();
+    while points.len() > MAX_POINTS {
+        points = points.iter().step_by(2).copied().collect();
+    }
+    mark(Tool::Pen, points, STROKE_POINTS, String::new())
+}
+
 /// The mark a finished stroke makes, in the same space as `points`. None when
-/// the stroke was too short to mean anything.
+/// the stroke was too short to mean anything. A straight plain drag is an arrow,
+/// unless it is `writing`: part of a burst of strokes.
 pub fn mark_from_stroke(
     start: &StrokeStart,
     points: &[(f32, f32)],
     counter: usize,
+    writing: bool,
 ) -> Option<Mark> {
     let (first, last) = (*points.first()?, *points.last()?);
     if start.tool == InkTool::Counter {
@@ -100,14 +131,10 @@ pub fn mark_from_stroke(
     }
     let shaped = draft_mark(start, points).filter(|mark| mark.tool != Tool::Pen);
     Some(shaped.unwrap_or_else(|| {
-        if is_straight(points) {
+        if !writing && is_straight(points) {
             return mark(Tool::Arrow, vec![first, last], STROKE_POINTS, String::new());
         }
-        let mut points = points.to_vec();
-        while points.len() > MAX_POINTS {
-            points = points.iter().step_by(2).copied().collect();
-        }
-        mark(Tool::Pen, points, STROKE_POINTS, String::new())
+        pen_mark(points)
     }))
 }
 
