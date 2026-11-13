@@ -27,10 +27,10 @@ const STRAIGHT_RATIO: f32 = 0.08;
 /// A longer path than this means the hand went back along the line.
 const STRAIGHT_PATH_RATIO: f32 = 1.15;
 /// A stroke that starts this soon after the last one ended, this close to it,
-/// is writing, so neither stays an arrow. Provisional estimates, not yet measured
-/// against the user's handwriting.
+/// is writing, so neither stays an arrow. Tripwires past the pauses and distances
+/// measured in the user's handwriting; the receipt is in `docs/send.md`.
 pub const BURST_GAP: std::time::Duration = std::time::Duration::from_millis(1500);
-const BURST_REACH: f32 = 60.;
+const BURST_REACH: f32 = 150.;
 /// `validate_mark`'s limit: past it the editor would refuse the mark.
 const MAX_POINTS: usize = 2000;
 const OUTLINE: f32 = 2.;

@@ -14,11 +14,11 @@
  {"t":1.5,"type":"drag","x":300,"y":160,"dx":0,"dy":40,"dur":0.1},
  {"t":1.8,"type":"drag","x":245,"y":215,"dx":70,"dy":0,"dur":0.1},
  {"t":2.0,"type":"mark","name":"hi-underlined"},
- {"t":4.0,"type":"drag","x":450,"y":300,"dx":120,"dy":0,"dur":0.1},
+ {"t":4.0,"type":"drag","x":430,"y":130,"dx":120,"dy":0,"dur":0.1},
  {"t":4.15,"type":"mark","name":"lone-drag"},
- {"t":4.2,"type":"drag","x":500,"y":310,"dx":3,"dy":0,"dur":0.05},
+ {"t":4.2,"type":"drag","x":500,"y":140,"dx":3,"dy":0,"dur":0.05},
  {"t":4.4,"type":"mark","name":"tapped"},
- {"t":4.5,"type":"drag","x":250,"y":360,"dx":100,"dy":0,"dur":0.1},
+ {"t":4.5,"type":"drag","x":250,"y":350,"dx":100,"dy":0,"dur":0.1},
  {"t":4.7,"type":"mark","name":"quick-but-far"},
  {"t":4.8,"type":"mark","name":"key:draw-up"}
  ]}
