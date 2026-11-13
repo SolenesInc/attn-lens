@@ -63,7 +63,7 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
     assert_eq!(lens.state()["capture"], Value::Null);
     assert_eq!(lens.state()["input"], "None");
 
-    // ⌘⌥X opens the picker; a pick opens the capture.
+    // The capture key opens the picker; a pick opens the capture.
     assert_eq!(lens.ask(r#"{"cmd":"key","key":"capture"}"#)["ok"], true);
     assert_eq!(lens.state()["picking"][0]["id"], 1);
     assert_eq!(lens.state()["capture"], Value::Null);
@@ -156,7 +156,7 @@ fn a_capture_is_started_read_and_sent_through_the_socket() {
     // Requests that cannot work say what is missing.
     let no_capture = lens.ask(r#"{"cmd":"send","target":"s1"}"#);
     assert_eq!(no_capture["ok"], false);
-    assert!(no_capture["error"].as_str().unwrap().contains("⌘⌥X"));
+    assert!(no_capture["error"].as_str().unwrap().contains("right ⌘"));
     assert!(
         lens.ask(r#"{"cmd":"nope"}"#)["error"]
             .as_str()

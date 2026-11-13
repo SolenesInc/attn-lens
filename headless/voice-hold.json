@@ -1,0 +1,27 @@
+{"displays":[{"id":1,"frame":[0,0,1280,800],"scale":2,"primary":true}],
+ "pointer":[400,300],
+ "events":[
+ {"t":0.05,"type":"mark","name":"key:voice"},
+ {"t":0.07,"type":"mark","name":"key:voice-hold"},
+ {"t":0.08,"type":"mark","name":"key:voice-release"},
+ {"t":0.1,"type":"mark","name":"key:capture"},
+ {"t":0.2,"type":"drag","x":200,"y":100,"dx":400,"dy":300,"dur":0.1},
+ {"t":0.4,"type":"mark","name":"open"},
+
+ {"t":0.5,"type":"mark","name":"key:voice-hold"},
+ {"t":0.55,"type":"mark","name":"voice:listening"},
+ {"t":0.6,"type":"mark","name":"holding"},
+ {"t":0.65,"type":"mark","name":"say:0.52:0.62:held words"},
+ {"t":0.7,"type":"mark","name":"key:voice-release"},
+ {"t":0.75,"type":"mark","name":"released"},
+
+ {"t":0.8,"type":"mark","name":"key:voice"},
+ {"t":0.85,"type":"mark","name":"voice:listening"},
+ {"t":0.9,"type":"mark","name":"key:voice-hold"},
+ {"t":0.95,"type":"mark","name":"tapped-then-held"},
+ {"t":1.0,"type":"mark","name":"key:voice-release"},
+ {"t":1.05,"type":"mark","name":"tapped-then-released"},
+
+ {"t":1.1,"type":"mark","name":"key:voice-release"},
+ {"t":1.15,"type":"mark","name":"stray-release"}
+]}

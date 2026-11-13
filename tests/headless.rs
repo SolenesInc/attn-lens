@@ -8,7 +8,10 @@ use std::{
 };
 
 /// A scratch folder with a stand-in `attn` that lists `sessions`, and records what
-/// it is sent: its arguments in `args` and each PNG as it was then.
+/// it is sent: its arguments in `args` and each PNG as it was then. `attn refine`
+/// keeps its stdin in `refine-stdin`, then prints `refine-out`, and `refine-err` on
+/// stderr, and exits with `refine-code` when a test wrote them; otherwise it
+/// answers "Refined: " and the transcript.
 struct Run {
     dir: tempfile::TempDir,
     script: &'static str,
@@ -22,6 +25,16 @@ impl Run {
             path.join("attn"),
             format!(
                 r#"#!/bin/sh
+if [ "$1" = "refine" ]; then
+  cat > "{dir}/refine-stdin"; echo "$@" > "{dir}/refine-args"
+  if [ -f "{dir}/refine-code" ]; then
+    cat "{dir}/refine-out" 2>/dev/null; cat "{dir}/refine-err" >&2 2>/dev/null
+    exit "$(cat "{dir}/refine-code")"
+  fi
+  raw="$(tail -n +2 "{dir}/refine-stdin")"
+  echo "{{\"profile_id\":\"default\",\"success\":true,\"refined_text\":\"Refined: $raw\"}}"
+  exit 0
+fi
 cat > /dev/null
 if [ "$2" = "sessions" ] && [ -f "{dir}/first-listing" ]; then
   cat "{dir}/first-listing"; rm "{dir}/first-listing"; exit 0
@@ -51,9 +64,14 @@ echo '{{"id":"cap"}}'
         let script: PathBuf = [env!("CARGO_MANIFEST_DIR"), "headless", self.script]
             .iter()
             .collect();
+        // What this run copies and pastes, apart from every other run's.
+        let clipboard = self.clipboard(mark);
+        let _ = std::fs::remove_dir_all(&clipboard);
+        std::fs::create_dir(&clipboard).unwrap();
         let mut command = Command::new(env!("CARGO_BIN_EXE_attn-lens"));
         command
             .env("ATTN_BIN", self.path("attn"))
+            .env("ATTN_LENS_FAKE_CLIPBOARD", clipboard)
             .arg("--desktop")
             .arg(self.path("backdrop.png"))
             .arg("--script")
@@ -61,6 +79,43 @@ echo '{{"id":"cap"}}'
             .arg("--at")
             .arg(format!("mark:{mark}"));
         command
+    }
+
+    fn clipboard(&self, mark: &str) -> PathBuf {
+        self.path(&format!("clipboard-{mark}"))
+    }
+
+    /// The pill keys the app in front received up to `mark`, by the last run read at it.
+    fn app_keys(&self, mark: &str) -> Vec<String> {
+        std::fs::read_to_string(self.clipboard(mark).join("app-keys.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| {
+                serde_json::from_str::<Value>(line).unwrap()["key"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// The texts pasted up to `mark`, by the last run read at it.
+    fn pasted(&self, mark: &str) -> Vec<String> {
+        std::fs::read_to_string(self.clipboard(mark).join("pasted.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| {
+                serde_json::from_str::<Value>(line).unwrap()["text"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// The text copied up to `mark`, by the last run read at it.
+    fn copied(&self, mark: &str) -> Option<String> {
+        std::fs::read_to_string(self.clipboard(mark).join("text.txt")).ok()
     }
 
     fn tree(&self, window: &str, mark: &str) -> Value {
@@ -184,14 +239,14 @@ fn launch_dock_and_capture_keys_reach_the_windows() {
     assert!(visible(&open, "bar"));
     assert_eq!(label(&open, "still-0"), None);
 
-    // ⌘⌥X during a capture, a click and a window switch each take a still, in
+    // The capture key during a capture, a click and a window switch each take a still, in
     // order; voice segments arrive.
     let stills = run.tree("bar", "stills-taken");
     assert_eq!(label(&stills, "still-0"), Some("Hotkey 1280×800"));
     assert_eq!(label(&stills, "still-1"), Some("Click 1280×800"));
     assert_eq!(label(&stills, "still-2"), Some("WindowSwitch 1280×800"));
     assert_eq!(label(&stills, "still-3"), None);
-    assert_eq!(text(&stills, "voice"), Some("Listening · ⌘⌥S to stop"));
+    assert_eq!(text(&stills, "voice"), Some("Listening · right ⌥ to stop"));
     assert_eq!(text(&stills, "segment-0"), Some("this button does nothing"));
 
     // ⌘⌥↩ without a session names what is missing and keeps the capture.
@@ -343,7 +398,7 @@ fn the_draw_key_gives_an_arrow_a_freehand_stroke_and_a_box() {
         None
     );
 
-    // A ⌘⌥X still ends the view, so the next stroke takes a still of its own.
+    // A capture-key still ends the view, so the next stroke takes a still of its own.
     let bar = run.tree("bar", "hotkey-still");
     assert_eq!(label(&bar, "still-1"), Some("Hotkey 800×600"));
     let bar = run.tree("bar", "drawn-after-still");
@@ -549,6 +604,11 @@ fn the_bar_arms_tools_and_owns_the_keyboard() {
     // The bar starts on the session last focused in attn, with the keys.
     let open = run.tree("bar", "open");
     assert_eq!(label(&open, "chip"), Some("→ one · this Mac"));
+    assert_eq!(text(&open, "chip-target"), Some("→ one"));
+    assert!(
+        element(&open, "chip-target").unwrap().get("help").is_none(),
+        "a short label was cut"
+    );
     assert_eq!(text(&open, "keys"), Some("Typing here"));
     for key in [
         "message",
@@ -597,6 +657,60 @@ fn the_bar_arms_tools_and_owns_the_keyboard() {
         text(&run.tree("bar", "typed-again"), "message"),
         Some("hi!")
     );
+}
+
+/// Eight sessions as attn lists them: a long label, every state, and four on an
+/// outpost, which attn names by its id.
+const EIGHT_SESSIONS: &str = r#"[{"id":"s1","label":"Lens walkthrough with the user","agent":"claude","state":"waiting_input","last_focused_at":"2026-11-13T10:00:00Z"},{"id":"s2","label":"Review main","agent":"codex","state":"idle"},{"id":"s3","label":"Bar polish","agent":"claude","state":"working"},{"id":"s4","label":"Notebook sync","agent":"claude","state":"pending_approval"},{"id":"s5","label":"Outpost build","agent":"claude","state":"working","host":"7a35fcaf-012f-4a33-8239-1da4d324514f"},{"id":"s6","label":"Speech helper models","agent":"codex","state":"idle","host":"7a35fcaf-012f-4a33-8239-1da4d324514f"},{"id":"s7","label":"Test history service token for the sandbox","agent":"claude","state":"waiting_input","host":"7a35fcaf-012f-4a33-8239-1da4d324514f"},{"id":"s8","label":"Tart VM","agent":"claude","state":"launching","host":"7a35fcaf-012f-4a33-8239-1da4d324514f","host_label":"ai-sandbox"}]"#;
+
+fn rect(tree: &Value, key: &str) -> [f64; 4] {
+    let rect = &element(tree, key).unwrap_or_else(|| panic!("no {key}"))["rect"];
+    std::array::from_fn(|i| rect[i].as_f64().unwrap())
+}
+
+fn inside(tree: &Value, child: &str, parent: &str) {
+    let (c, p) = (rect(tree, child), rect(tree, parent));
+    assert!(
+        c[0] >= p[0] && c[0] + c[2] <= p[0] + p[2] && c[1] >= p[1] && c[1] + c[3] <= p[1] + p[3],
+        "{child} at {c:?} crosses {parent} at {p:?}"
+    );
+}
+
+#[test]
+fn a_long_session_label_ends_in_an_ellipsis_and_the_palette_reads_as_words() {
+    let run = Run::new("bar-sessions.json", EIGHT_SESSIONS);
+
+    // The label is cut inside the chip; the host after it stays whole.
+    let open = run.tree("bar", "open");
+    let full = "→ Lens walkthrough with the user · this Mac";
+    assert_eq!(label(&open, "chip"), Some(full));
+    assert_eq!(
+        element(&open, "chip-target").unwrap()["help"].as_str(),
+        Some(full),
+        "the long label was not cut"
+    );
+    assert_eq!(text(&open, "chip-host"), Some("· this Mac"));
+    inside(&open, "chip-target", "chip");
+    inside(&open, "chip-host", "chip");
+
+    // Each row: the label, the state in words, and where it runs, never an id.
+    let palette = run.tree("bar", "palette-open");
+    inside(&palette, "chip-host", "chip");
+    let meta = |index: usize| text(&palette, &format!("palette-meta-{index}")).unwrap();
+    assert_eq!(meta(0), "claude · waiting for you · this Mac");
+    assert_eq!(meta(3), "claude · needs approval · this Mac");
+    assert_eq!(meta(4), "claude · working · outpost 7a35fcaf");
+    assert_eq!(meta(7), "claude · starting · ai-sandbox");
+    for index in 0..8 {
+        let row = meta(index);
+        assert!(!row.contains('_'), "row {index} shows an enum: {row}");
+        assert!(!row.contains("7a35fcaf-"), "row {index} shows an id: {row}");
+        inside(
+            &palette,
+            &format!("palette-meta-{index}"),
+            &format!("palette-row-{index}"),
+        );
+    }
 }
 
 #[test]
@@ -716,13 +830,49 @@ if [ ! -e "{dir}/paired" ]; then echo 'token unknown: run attn send pair' >&2; e
 }
 
 #[test]
+fn holding_the_voice_key_talks_until_release_and_a_tap_toggles() {
+    let run = Run::new("voice-hold.json", ONE_SESSION);
+    let voice = |mark| text(&run.tree("bar", mark), "voice").map(str::to_string);
+
+    // The voice key with no capture open dictates: with nothing said it pastes
+    // nothing, and the capture key still works.
+    assert_eq!(voice("open").as_deref(), Some("right ⌥ voice"));
+    let open = state(&run, "open");
+    assert_eq!(open["capture"]["segments"], serde_json::json!([]));
+    assert_eq!(open["error"], Value::Null);
+
+    // A hold starts voice and its release stops it, keeping what was said.
+    assert_eq!(
+        voice("holding").as_deref(),
+        Some("Listening · right ⌥ to stop")
+    );
+    assert_eq!(voice("released").as_deref(), Some("right ⌥ voice"));
+    assert_eq!(
+        text(&run.tree("bar", "released"), "segment-0"),
+        Some("held words")
+    );
+
+    // A hold while a tap's voice runs keeps it, and the release stops it.
+    assert_eq!(
+        voice("tapped-then-held").as_deref(),
+        Some("Listening · right ⌥ to stop")
+    );
+    assert_eq!(
+        voice("tapped-then-released").as_deref(),
+        Some("right ⌥ voice")
+    );
+    // A release with voice off starts nothing.
+    assert_eq!(voice("stray-release").as_deref(), Some("right ⌥ voice"));
+}
+
+#[test]
 fn the_bar_shows_how_far_voice_has_got_and_waits_for_the_last_sentence() {
     let run = Run::new("voice.json", ONE_SESSION);
     let voice = |mark| text(&run.tree("bar", mark), "voice").map(str::to_string);
 
-    assert_eq!(voice("open").as_deref(), Some("⌘⌥S voice"));
+    assert_eq!(voice("open").as_deref(), Some("right ⌥ voice"));
     assert_eq!(voice("starting").as_deref(), Some("Starting voice…"));
-    // The first ⌘⌥S fetches the model, with progress.
+    // The first voice fetches the model, with progress.
     assert_eq!(
         voice("downloading").as_deref(),
         Some("Downloading speech model 25%")
@@ -731,21 +881,21 @@ fn the_bar_shows_how_far_voice_has_got_and_waits_for_the_last_sentence() {
     assert_eq!(voice("warming").as_deref(), Some("Starting microphone…"));
     assert_eq!(
         voice("listening").as_deref(),
-        Some("Listening · ⌘⌥S to stop")
+        Some("Listening · right ⌥ to stop")
     );
     assert_eq!(
         text(&run.tree("bar", "segment"), "segment-0"),
         Some("open the settings")
     );
 
-    // Stopping waits for the sentence in progress, and ⌘⌥S then does nothing.
+    // Stopping waits for the sentence in progress, and a voice tap then does nothing.
     assert_eq!(voice("finishing").as_deref(), Some("Finishing…"));
     assert_eq!(voice("still-finishing").as_deref(), Some("Finishing…"));
-    assert_eq!(voice("stopped").as_deref(), Some("⌘⌥S voice"));
+    assert_eq!(voice("stopped").as_deref(), Some("right ⌥ voice"));
 
     // Voice that fails on its own says why and leaves the capture open.
     let failed = run.tree("bar", "failed");
-    assert_eq!(text(&failed, "voice"), Some("⌘⌥S voice"));
+    assert_eq!(text(&failed, "voice"), Some("right ⌥ voice"));
     assert_eq!(
         text(&failed, "error"),
         Some("Voice stopped: the speech helper quit.")
@@ -764,8 +914,8 @@ fn the_bar_shows_how_far_voice_has_got_and_waits_for_the_last_sentence() {
     let args = std::fs::read_to_string(run.path("args")).unwrap();
     assert!(args.starts_with("send s1 "), "{args}");
 
-    // ⌘⌥S while a send is delivering starts voice on that capture; the send
-    // closing the capture stops it, so the next capture's ⌘⌥S starts afresh.
+    // A voice tap while a send is delivering starts voice on that capture; the send
+    // closing the capture stops it, so the next capture's voice starts afresh.
     assert_eq!(
         text(&run.tree("bar", "voice-during-send"), "voice"),
         Some("Starting voice…")
@@ -817,12 +967,12 @@ fn voice_on_a_new_capture_does_not_wait_for_the_last_one_to_stop() {
 
     // Esc closed the capture and its voice is still stopping, held in a job.
     let second = run.tree("bar", "second-voice");
-    assert_eq!(text(&second, "voice"), Some("Listening · ⌘⌥S to stop"));
+    assert_eq!(text(&second, "voice"), Some("Listening · right ⌥ to stop"));
     assert_eq!(text(&second, "error"), None);
 
     // The old voice ending leaves the new one running.
     let later = run.tree("bar", "old-voice-finished");
-    assert_eq!(text(&later, "voice"), Some("Listening · ⌘⌥S to stop"));
+    assert_eq!(text(&later, "voice"), Some("Listening · right ⌥ to stop"));
 
     // A closed capture's voice failing while it stops is not the next capture's error.
     let clean = run.tree("bar", "after-closed-voice-failed");
@@ -846,17 +996,17 @@ fn a_closed_captures_finish_does_not_start_the_next_captures_send() {
 fn a_stopped_voices_late_failure_leaves_the_next_voice_running() {
     let run = Run::new("voice-late-failure.json", ONE_SESSION);
     let second = run.tree("bar", "second-voice");
-    assert_eq!(text(&second, "voice"), Some("Listening · ⌘⌥S to stop"));
+    assert_eq!(text(&second, "voice"), Some("Listening · right ⌥ to stop"));
 
     let later = run.tree("bar", "after-late-failure");
-    assert_eq!(text(&later, "voice"), Some("Listening · ⌘⌥S to stop"));
+    assert_eq!(text(&later, "voice"), Some("Listening · right ⌥ to stop"));
 }
 
 #[test]
 fn send_right_after_voice_stops_waits_for_its_last_sentence() {
     let run = Run::new("voice-send.json", ONE_SESSION);
 
-    // ⌘⌥S stopped voice and Send came while it finished: the send's still is
+    // A voice tap stopped voice and Send came while it finished: the send's still is
     // taken, but nothing goes to attn until the last sentence is in.
     let waiting = run.tree("bar", "still-while-finishing");
     assert_eq!(text(&waiting, "voice"), Some("Finishing…"));
@@ -865,7 +1015,7 @@ fn send_right_after_voice_stops_waits_for_its_last_sentence() {
 
     let finished = run.tree("bar", "voice-finished");
     assert_eq!(text(&finished, "segment-0"), Some("and then it crashes"));
-    assert_eq!(text(&finished, "voice"), Some("⌘⌥S voice"));
+    assert_eq!(text(&finished, "voice"), Some("right ⌥ voice"));
     assert!(!run.path("args").exists(), "the send runs after the finish");
 
     assert!(!visible(&run.tree("bar", "sent"), "bar"));
@@ -1066,7 +1216,7 @@ fn a_closing_capture_cancels_a_send_queued_in_the_editor() {
 #[test]
 fn an_earlier_voice_finishing_leaves_a_reopened_captures_new_voice() {
     let run = Run::new("roundtrip-voice-reopen.json", ONE_SESSION);
-    // The earlier voice holds the helper until it finishes; ⌘⌥S waits for it.
+    // The earlier voice holds the helper until it finishes; a voice tap waits for it.
     assert_eq!(
         state(&run, "still-finishing")["voice"]["state"],
         "finishing"
@@ -1094,4 +1244,228 @@ fn an_older_still_failing_leaves_a_waiting_edit_alone() {
 fn esc_during_a_send_that_finishes_voice_leaves_no_stuck_voice() {
     let run = Run::new("roundtrip-send-esc-voice.json", ONE_SESSION);
     assert_eq!(state(&run, "reopened")["voice"]["state"], "off");
+}
+
+#[test]
+fn bar_keys_work_with_the_field_not_focused() {
+    let run = Run::new("bar-keys-off-field.json", ONE_SESSION);
+    assert!(element(&run.tree("bar", "palette"), "palette-label-0").is_some());
+    assert!(element(&run.tree("bar", "palette-closed"), "palette-label-0").is_none());
+    assert_eq!(state(&run, "escaped")["capture"], Value::Null);
+}
+
+/// The dictation as the automation state reports it.
+fn dictation(run: &Run, mark: &str) -> Value {
+    state(run, mark)["dictation"].clone()
+}
+
+#[test]
+fn a_dictation_shows_its_words_then_pastes_attns_refinement_once() {
+    let run = Run::new("dictation.json", ONE_SESSION);
+
+    // The pill shows at once, then the words as they come.
+    let pill = run.tree("pill", "starting");
+    assert!(visible(&pill, "pill"));
+    assert_eq!(text(&pill, "pill-status"), Some("Starting voice…"));
+    let pill = run.tree("pill", "recording");
+    assert_eq!(text(&pill, "pill-words"), Some("um so deploy to staging"));
+    assert_eq!(
+        text(&pill, "pill-status"),
+        Some("Listening · right ⌥ to stop")
+    );
+    assert!(run.pasted("recording").is_empty());
+
+    // Voice stops; attn gets the token, then the transcript, and its text pastes once.
+    let refined = dictation(&run, "refined");
+    assert_eq!(refined["state"], "settled");
+    assert_eq!(refined["note"], "Pasted");
+    assert_eq!(run.pasted("refined"), ["Refined: um so deploy to staging"]);
+    assert_eq!(
+        std::fs::read_to_string(run.path("refine-stdin")).unwrap(),
+        "fake-token\num so deploy to staging"
+    );
+    assert_eq!(
+        std::fs::read_to_string(run.path("refine-args"))
+            .unwrap()
+            .trim(),
+        "refine --token-stdin --duration-ms 300 --json"
+    );
+    assert_eq!(
+        text(&run.tree("pill", "refined"), "pill-status"),
+        Some("Pasted")
+    );
+    assert!(!visible(&run.tree("pill", "gone"), "pill"));
+
+    // A hold dictates until release.
+    assert_eq!(dictation(&run, "held")["note"], "Pasted");
+    assert_eq!(
+        run.pasted("held"),
+        ["Refined: um so deploy to staging", "Refined: held words"]
+    );
+    // The Dock menu copies the last dictation.
+    assert_eq!(
+        dictation(&run, "copy-last")["note"],
+        "Copied the last dictation"
+    );
+    assert_eq!(
+        run.copied("copy-last").as_deref(),
+        Some("Refined: held words")
+    );
+
+    // Without Accessibility the text goes to the clipboard, and the pill says why.
+    let copied = dictation(&run, "copied");
+    assert_eq!(copied["note"], "Copied — allow Accessibility to paste");
+    assert_eq!(run.pasted("copied").len(), 2);
+    assert_eq!(
+        run.copied("copied").as_deref(),
+        Some("Refined: copied words")
+    );
+}
+
+#[test]
+fn a_dictation_waiting_for_attn_pastes_raw_on_enter_nothing_on_esc_and_raw_past_its_deadline() {
+    let run = Run::new("dictation-refining.json", ONE_SESSION);
+
+    // ↩ while recording is the app's; while attn refines, it is the pill's.
+    let refining = dictation(&run, "refining");
+    assert_eq!(refining["state"], "refining");
+    assert_eq!(
+        text(&run.tree("pill", "refining"), "pill-status"),
+        Some("Refining… · ↩ paste as is · esc cancel")
+    );
+    assert_eq!(dictation(&run, "entered")["note"], "Pasted as is");
+    assert_eq!(run.pasted("entered"), ["raw words"]);
+    // attn's answer after ↩ is dropped.
+    assert_eq!(dictation(&run, "late")["note"], "Pasted as is");
+    assert_eq!(run.pasted("late"), ["raw words"]);
+
+    // Esc pastes nothing, and keeps the words for Copy Last Dictation.
+    let escaped = state(&run, "escaped");
+    assert_eq!(escaped["dictation"]["note"], "Cancelled · nothing pasted");
+    assert_eq!(escaped["last_dictation"], "never mind");
+    assert_eq!(run.pasted("escaped"), ["raw words"]);
+
+    // attn's limit for 0.2 s of speech is 15.05 s; Lens waits 2 s more.
+    assert_eq!(dictation(&run, "waiting")["state"], "refining");
+    let expired = dictation(&run, "expired");
+    assert_eq!(
+        expired["note"],
+        "Not refined: attn did not answer within 17 s · pasted as is"
+    );
+    assert_eq!(dictation(&run, "deadline-pasted")["state"], "settled");
+    assert_eq!(run.pasted("deadline-pasted"), ["raw words", "too slow"]);
+}
+
+#[test]
+fn an_empty_dictation_pastes_nothing_and_a_failed_refinement_pastes_raw_with_attns_error() {
+    let run = Run::new("dictation-fallbacks.json", ONE_SESSION);
+    assert_eq!(dictation(&run, "empty")["note"], "Didn't catch anything");
+    assert!(run.pasted("empty").is_empty());
+    assert!(
+        !run.path("refine-args").exists(),
+        "attn was asked about nothing"
+    );
+
+    // attn ran and failed.
+    std::fs::write(
+        run.path("refine-out"),
+        r#"{"profile_id":"default","success":false,"error":"the refinement agent exited 1"}"#,
+    )
+    .unwrap();
+    std::fs::write(run.path("refine-code"), "1").unwrap();
+    let failed = state(&run, "settled");
+    assert_eq!(
+        failed["dictation"]["note"],
+        "Not refined: the refinement agent exited 1 · pasted as is"
+    );
+    assert_eq!(run.pasted("settled"), ["raw words"]);
+
+    // attn no longer knows the token: Lens is unpaired, and the raw text pastes.
+    std::fs::remove_file(run.path("refine-out")).unwrap();
+    std::fs::write(
+        run.path("refine-err"),
+        "refine: the sender token matches no paired sender; it was unpaired or never allowed. Pair again with attn send pair --name <name>",
+    )
+    .unwrap();
+    let unpaired = state(&run, "settled");
+    assert!(
+        unpaired["dictation"]["note"]
+            .as_str()
+            .unwrap()
+            .starts_with("Not refined: refine: the sender token matches no paired sender"),
+        "{unpaired}"
+    );
+    assert!(unpaired["attn"].as_str().unwrap().starts_with("Unpaired"));
+    assert_eq!(run.pasted("settled"), ["raw words"]);
+
+    // No attn to run.
+    std::fs::set_permissions(run.path("attn"), std::fs::Permissions::from_mode(0o644)).unwrap();
+    let missing = dictation(&run, "settled");
+    let note = missing["note"].as_str().unwrap();
+    assert!(note.starts_with("Not refined: Could not run "), "{note}");
+    assert!(note.ends_with(" · pasted as is"), "{note}");
+    assert_eq!(run.pasted("settled"), ["raw words"]);
+}
+
+#[test]
+fn the_capture_key_during_a_dictation_hands_its_voice_and_words_to_the_capture() {
+    let run = Run::new("dictation-handover.json", ONE_SESSION);
+    // The dictation runs on while the area is picked.
+    assert_eq!(dictation(&run, "picking")["state"], "recording");
+
+    let open = state(&run, "open");
+    assert_eq!(open["dictation"], Value::Null);
+    assert_eq!(open["capture"]["segments"][0]["text"], "look at this");
+    // The capture's timeline starts where the talk did, at the voice key's frame.
+    let started = open["capture"]["started"].as_u64().unwrap();
+    assert!((100_000_000..120_000_000).contains(&started), "{started}");
+    assert_eq!(open["voice"]["state"], "listening");
+    assert!(!visible(&run.tree("pill", "open"), "pill"));
+
+    let stopped = state(&run, "stopped");
+    assert_eq!(stopped["capture"]["segments"][1]["text"], "and this");
+    assert_eq!(stopped["voice"]["state"], "off");
+    assert!(run.pasted("stopped").is_empty());
+    assert!(
+        !run.path("refine-args").exists(),
+        "a handed-over dictation was refined"
+    );
+}
+
+#[test]
+fn the_area_picker_takes_enter_and_esc_from_a_dictation_attn_is_refining() {
+    let run = Run::new("dictation-picker.json", ONE_SESSION);
+    let picking = state(&run, "picking");
+    assert_eq!(picking["dictation"]["state"], "refining");
+    assert!(picking["picking"].is_array());
+
+    // While the picker shows, ↩ is the picker's, not the dictation's.
+    let cancelled = state(&run, "cancelled");
+    assert_eq!(cancelled["picking"], Value::Null);
+    assert_eq!(cancelled["dictation"]["state"], "refining");
+    assert_eq!(run.app_keys("cancelled"), ["key:enter"]);
+
+    // A cancelled pick gives the waiting dictation its keys back.
+    assert_eq!(
+        dictation(&run, "escaped")["note"],
+        "Cancelled · nothing pasted"
+    );
+    assert_eq!(run.app_keys("escaped"), ["key:enter"]);
+    assert!(run.pasted("after").is_empty());
+}
+
+#[test]
+fn a_capture_taking_a_dictation_attn_is_refining_gives_enter_back_to_the_app() {
+    let run = Run::new("dictation-handover-refining.json", ONE_SESSION);
+    assert_eq!(dictation(&run, "refining")["state"], "refining");
+
+    let open = state(&run, "open");
+    assert_eq!(open["dictation"], Value::Null);
+    assert_eq!(open["capture"]["segments"][0]["text"], "look at this");
+
+    // Lens stops taking ↩ with the hand-over, so it reaches the app in front.
+    assert_eq!(dictation(&run, "after"), Value::Null);
+    assert_eq!(run.app_keys("after"), ["key:enter"]);
+    // The refinement still waiting when the capture took over is dropped unpasted.
+    assert!(run.pasted("after").is_empty());
 }

@@ -8,7 +8,9 @@ pub mod bar;
 #[cfg(target_os = "macos")]
 pub mod capture;
 pub mod deliver;
+pub mod dictation;
 pub mod ink;
+pub mod pill;
 pub mod select;
 pub mod session;
 pub mod tile;
@@ -19,14 +21,16 @@ pub mod watch;
 use crate::{
     document::Document,
     platform_port::{
-        Chord, KeyEvent, PlatformPort, Sink, Voice, VoiceEvent, VoiceSource, VoiceStatus, Watch,
-        WatchEvent,
+        Chord, KeyEvent, PlatformPort, Press, Sink, Voice, VoiceEvent, VoiceSource, VoiceStatus,
+        Watch, WatchEvent,
     },
 };
+use dictation::{Dictation, DictationSummary};
 use ink::InkTool;
 use serde_json::{Value, json};
 use session::{
-    Area, Capture, CaptureVoice, Cause, DisplayFrame, HostTime, InkMark, Segment, Still,
+    Area, Capture, CaptureVoice, Cause, DisplayFrame, HostTime, InkMark, RunningVoice, Segment,
+    Still, VoiceOwner,
 };
 use std::{
     path::PathBuf,
@@ -99,7 +103,7 @@ const CLOSED_BEFORE_SENT: &str = "The capture was closed before it was sent.";
 pub enum VoiceState {
     #[default]
     Off,
-    /// ⌘⌥S was pressed and the port has not reported progress yet.
+    /// The voice key was pressed and the port has not reported progress yet.
     Starting,
     Running(VoiceStatus),
     /// Waiting for the sentence in progress, before voice stops or the send goes.
@@ -183,8 +187,16 @@ struct State {
     watch_generation: u64,
     /// Counts voice starts; see `CaptureVoice::Running`.
     voice_run: u64,
-    /// Set by automation: the next ⌘⌥S plays this WAV instead of the microphone.
+    /// Set by automation: the next voice plays this WAV instead of the microphone.
     voice_wav: Option<PathBuf>,
+    /// The voice key with no capture open.
+    dictation: Option<Dictation>,
+    /// What the last dictation settled on, for Copy Last Dictation (D8). In memory only.
+    last_dictation: Option<String>,
+    /// Where the pill shows: the display with the pointer when it appeared.
+    dictation_display: Option<DisplayFrame>,
+    /// A settled dictation's text, pasted once the state lock is let go.
+    paste: Option<(u64, String)>,
     watch: Option<Watch>,
 }
 
@@ -271,13 +283,17 @@ impl Lens {
         }
     }
 
-    /// Starts listening for keys. Without Screen Recording, it shows the user how
-    /// to allow it now rather than at the first ⌘⌥X.
+    /// Starts listening for keys. Without Screen Recording or Accessibility, it
+    /// shows the user how to allow them now rather than at the first capture key.
+    /// Screen Recording comes first, since its grant needs a reopen; Accessibility
+    /// then shows after it.
     pub fn listen(self: &Arc<Self>) {
         let lens = self.clone();
         let sink: Sink<KeyEvent> = Arc::new(move |event| lens.key(event));
         self.port.keys(sink);
-        self.port.screen_recording();
+        if self.port.screen_recording() {
+            self.port.accessibility();
+        }
     }
 
     pub fn key(self: &Arc<Self>, event: KeyEvent) {
@@ -298,9 +314,16 @@ impl Lens {
                     self.open_picker();
                 }
             }
-            KeyEvent::Pressed(Chord::Voice) => self.toggle_voice(),
+            KeyEvent::Voice(press) => {
+                if self.is_open() {
+                    self.capture_voice(press);
+                } else {
+                    self.dictation(press);
+                }
+            }
             KeyEvent::Pressed(Chord::Keyboard) => self.give_keys_to_bar(),
             KeyEvent::Pressed(Chord::Send) => self.send_or_recover(),
+            KeyEvent::Pill(key) => self.pill_key(key),
         }
     }
 
@@ -540,7 +563,7 @@ impl Lens {
         self.changed();
     }
 
-    /// Opens the area picker on every display connected now. ⌘⌥X during a pick does nothing.
+    /// Opens the area picker on every display connected now. The capture key during a pick does nothing.
     fn open_picker(&self) {
         if !self.port.screen_recording() {
             return;
@@ -553,13 +576,19 @@ impl Lens {
             }
             state.picking = Some(displays);
             state.error = None;
+            // The picker owns ↩ and Esc while it shows.
+            self.sync_pill_keys(&state);
         }
         self.changed();
     }
 
     /// Closes the area picker without starting a capture.
     pub fn cancel_pick(&self) {
-        self.state.lock().unwrap().picking = None;
+        {
+            let mut state = self.state.lock().unwrap();
+            state.picking = None;
+            self.sync_pill_keys(&state);
+        }
         self.changed();
     }
 
@@ -661,22 +690,29 @@ impl Lens {
             // One corner, so a new capture takes the place of the old tile.
             state.tile = None;
             state.next_capture += 1;
+            let id = state.next_capture;
             let target = attn::default_session(&state.sessions)
                 .map(|index| state.sessions[index].id.clone());
+            // Talk that turns into showing stays one piece (D9).
+            let handed = self.hand_over(&mut state, id);
+            let (started, segments, voice) = match handed {
+                Some(handed) => (handed.started, handed.segments, handed.voice),
+                None => (self.port.now(), vec![], CaptureVoice::Off),
+            };
             state.capture = Some(Capture {
-                id: state.next_capture,
+                id,
                 area,
                 display,
-                started: self.port.now(),
+                started,
                 stills: vec![],
                 ink: vec![],
                 view_still: None,
                 unseen_change: None,
                 send_still_error: None,
-                segments: vec![],
+                segments,
                 target,
                 message: String::new(),
-                voice: CaptureVoice::Off,
+                voice,
             });
             state.picking = None;
             state.last_area = Some(area);
@@ -1071,9 +1107,10 @@ impl Lens {
         // A tile keeps the voice as finishing, so its last sentence lands in the
         // capture and a reopened capture's Send waits for it.
         let run = match &voice {
-            Some(CaptureVoice::Running { run, .. } | CaptureVoice::Finishing { run, .. }) => {
-                Some(*run)
-            }
+            Some(
+                CaptureVoice::Running(RunningVoice { run, .. })
+                | CaptureVoice::Finishing { run, .. },
+            ) => Some(*run),
             _ => None,
         };
         if let Some(run) = run
@@ -1088,7 +1125,7 @@ impl Lens {
             };
         }
         let handle = match voice {
-            Some(CaptureVoice::Running { handle, .. }) => Some(handle),
+            Some(CaptureVoice::Running(voice)) => Some(voice.handle),
             Some(CaptureVoice::Finishing {
                 send_after: true, ..
             }) => {
@@ -1248,10 +1285,27 @@ impl Lens {
         Some(still_id)
     }
 
-    /// Plays `wav` instead of the microphone from the next ⌘⌥S; `None` goes
+    /// Plays `wav` instead of the microphone from the next voice; `None` goes
     /// back to the microphone. For driven checks, through automation.
     pub fn set_voice_wav(&self, wav: Option<PathBuf>) {
         self.state.lock().unwrap().voice_wav = wav;
+    }
+
+    /// The voice key in a capture: a tap toggles voice, a hold talks until release.
+    fn capture_voice(self: &Arc<Self>, press: Press) {
+        let running = self
+            .state
+            .lock()
+            .unwrap()
+            .capture
+            .as_ref()
+            .is_some_and(|capture| !matches!(capture.voice, CaptureVoice::Off));
+        match press {
+            Press::Tap => self.toggle_voice(),
+            Press::HoldStart if !running => self.toggle_voice(),
+            Press::HoldEnd if running => self.toggle_voice(),
+            Press::HoldStart | Press::HoldEnd => {}
+        }
     }
 
     fn toggle_voice(self: &Arc<Self>) {
@@ -1261,7 +1315,7 @@ impl Lens {
         };
         let id = capture.id;
         match std::mem::take(&mut capture.voice) {
-            CaptureVoice::Running { run, handle, .. } => {
+            CaptureVoice::Running(RunningVoice { run, handle, .. }) => {
                 capture.voice = CaptureVoice::Finishing {
                     run,
                     send_after: false,
@@ -1287,16 +1341,18 @@ impl Lens {
             .voice_wav
             .clone()
             .map_or(VoiceSource::Microphone, VoiceSource::Wav);
+        let owner = Arc::new(Mutex::new(VoiceOwner::Capture(id)));
         // `voice` returns at once and reports through the sink from elsewhere, so
         // the first report finds the handle stored.
-        match self.port.voice(source, self.voice_sink(id, run)) {
+        match self.port.voice(source, self.voice_sink(run, owner.clone())) {
             Ok(handle) => {
                 if let Some(capture) = state.capture.as_mut() {
-                    capture.voice = CaptureVoice::Running {
+                    capture.voice = CaptureVoice::Running(RunningVoice {
                         run,
                         handle,
                         status: None,
-                    };
+                        owner,
+                    });
                 }
             }
             Err(error) => state.error = Some(error),
@@ -1305,37 +1361,39 @@ impl Lens {
         self.changed();
     }
 
-    /// Where voice `run` of capture `id` reports. Once the capture closes, nothing does.
-    fn voice_sink(self: &Arc<Self>, id: u64, run: u64) -> Sink<VoiceEvent> {
-        let lens = self.clone();
-        Arc::new(move |event| {
-            let mut guard = lens.state.lock().unwrap();
-            let state = &mut *guard;
-            let Some(capture) = capture_by_id(&mut state.capture, &mut state.tile, id) else {
-                return;
-            };
-            let current = matches!(capture.voice, CaptureVoice::Running { run: r, .. } if r == run);
-            match event {
-                // A segment counts even after voice stops: stopping waits for it.
-                VoiceEvent::Segment(segment) => capture.segments.push(segment),
-                VoiceEvent::Status(new) => {
-                    if current && let CaptureVoice::Running { status, .. } = &mut capture.voice {
-                        *status = Some(new);
-                    }
-                }
-                VoiceEvent::Failed(error) => {
-                    if current {
-                        capture.voice = CaptureVoice::Off;
-                    }
-                    state.error = Some(error);
+    /// A report from voice `run` of capture `id`. Once the capture closes, nothing counts.
+    fn capture_voice_event(
+        &self,
+        mut guard: MutexGuard<'_, State>,
+        id: u64,
+        run: u64,
+        event: VoiceEvent,
+    ) {
+        let state = &mut *guard;
+        let Some(capture) = capture_by_id(&mut state.capture, &mut state.tile, id) else {
+            return;
+        };
+        let current = matches!(&capture.voice, CaptureVoice::Running(voice) if voice.run == run);
+        match event {
+            // A segment counts even after voice stops: stopping waits for it.
+            VoiceEvent::Segment(segment) => capture.segments.push(segment),
+            VoiceEvent::Status(new) => {
+                if current && let CaptureVoice::Running(voice) = &mut capture.voice {
+                    voice.status = Some(new);
                 }
             }
-            drop(guard);
-            lens.changed();
-        })
+            VoiceEvent::Failed(error) => {
+                if current {
+                    capture.voice = CaptureVoice::Off;
+                }
+                state.error = Some(error);
+            }
+        }
+        drop(guard);
+        self.changed();
     }
 
-    /// The finish ⌘⌥S asked for returned. It starts the send that waited for it, or
+    /// The finish the voice key asked for returned. It starts the send that waited for it, or
     /// fails it, as the send would lose the last sentence.
     fn voice_stopped(self: &Arc<Self>, id: u64, run: u64, finished: Result<(), String>) {
         let mut guard = self.state.lock().unwrap();
@@ -1390,7 +1448,7 @@ impl Lens {
             let capture = state
                 .capture
                 .as_mut()
-                .ok_or("No capture is open. Start one with ⌘⌥X.")?;
+                .ok_or("No capture is open. Start one with right ⌘.")?;
             if let Some(target) = target {
                 capture.target = Some(target);
             }
@@ -1407,7 +1465,7 @@ impl Lens {
                 (capture.stills.is_empty() && !in_flight) || capture.unseen_change.is_some();
             let (voice, handle, after_voice) = match std::mem::take(&mut capture.voice) {
                 CaptureVoice::Off => (CaptureVoice::Off, None, false),
-                CaptureVoice::Running { run, handle, .. } => (
+                CaptureVoice::Running(RunningVoice { run, handle, .. }) => (
                     CaptureVoice::Finishing {
                         run,
                         send_after: false,
@@ -1614,11 +1672,13 @@ impl Lens {
                 .as_ref()
                 .map_or(VoiceState::Off, |c| match &c.voice {
                     CaptureVoice::Off => VoiceState::Off,
-                    CaptureVoice::Running { status: None, .. } => VoiceState::Starting,
-                    CaptureVoice::Running {
+                    CaptureVoice::Running(RunningVoice { status: None, .. }) => {
+                        VoiceState::Starting
+                    }
+                    CaptureVoice::Running(RunningVoice {
                         status: Some(status),
                         ..
-                    } => VoiceState::Running(*status),
+                    }) => VoiceState::Running(*status),
                     CaptureVoice::Finishing { .. } => VoiceState::Finishing,
                 }),
             resizing: state.resizing,
@@ -1632,6 +1692,8 @@ impl Lens {
             }),
             send: state.send.clone(),
             error: state.error.clone(),
+            dictation: state.dictation.as_ref().map(Dictation::summary),
+            dictation_display: state.dictation_display,
         }
     }
 
@@ -1674,6 +1736,8 @@ impl Lens {
             },
             "send": send,
             "error": summary.error,
+            "dictation": summary.dictation.as_ref().map(dictation_json),
+            "last_dictation": self.state.lock().unwrap().last_dictation,
             "capture": summary.capture.map(|c| json!({
                 "id": c.id,
                 "area": c.area,
@@ -1696,6 +1760,22 @@ impl Lens {
                 "message": c.message,
             })),
         })
+    }
+}
+
+fn dictation_json(dictation: &DictationSummary) -> Value {
+    match dictation {
+        DictationSummary::Recording { status, words } => {
+            json!({"state": "recording", "voice": status, "words": words})
+        }
+        DictationSummary::Finishing { words } => json!({"state": "finishing", "words": words}),
+        DictationSummary::Refining { words } => json!({"state": "refining", "words": words}),
+        DictationSummary::Settled { text, how, pasting } => json!({
+            "state": if *pasting { "pasting" } else { "settled" },
+            "text": text,
+            "how": format!("{how:?}"),
+            "note": how.note(),
+        }),
     }
 }
 
@@ -1783,4 +1863,7 @@ pub struct Summary {
     pub voice: VoiceState,
     pub send: SendStatus,
     pub error: Option<String>,
+    pub dictation: Option<DictationSummary>,
+    /// The display the pill shows on: the pointer's when the dictation started.
+    pub dictation_display: Option<DisplayFrame>,
 }

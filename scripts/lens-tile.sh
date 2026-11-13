@@ -55,7 +55,7 @@ move 300 300
 wait 100
 lens {"cmd":"pick","display":1,"rect":[100,150,500,300]}
 expect "bar":true
-chord cmd+opt x
+tap rcmd
 expect "cause":"hotkey"
 chord cmd+opt return
 expect "state":"sent"
@@ -81,7 +81,7 @@ mark gone
 # A real click on the tile opens the capture again, its still with it.
 lens {"cmd":"pick-last"}
 expect "bar":true
-chord cmd+opt x
+tap rcmd
 expect "cause":"hotkey"
 chord cmd+opt return
 expect "state":"sent"

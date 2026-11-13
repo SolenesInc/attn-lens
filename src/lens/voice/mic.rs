@@ -22,7 +22,7 @@ use std::{
 /// Frames per tap buffer at the hardware rate; AVAudioEngine may deliver other sizes.
 const TAP_FRAMES: u32 = 1_600;
 
-const DENIED: &str = "Attn Lens does not have microphone access. Allow it in System Settings › Privacy & Security › Microphone, then press ⌘⌥S again.";
+const DENIED: &str = "Attn Lens does not have microphone access. Allow it in System Settings › Privacy & Security › Microphone, then press right ⌥ again.";
 
 struct Microphone {
     engine: Retained<AVAudioEngine>,
@@ -80,7 +80,7 @@ pub fn open(feed: Feed, failed: Sink<String>) -> Result<Box<dyn Source>, String>
         let hardware = input.outputFormatForBus(0);
         let rate = hardware.sampleRate();
         if rate <= 0.0 || hardware.channelCount() == 0 {
-            return Err("No microphone is available. Connect one and press ⌘⌥S again.".into());
+            return Err("No microphone is available. Connect one and press right ⌥ again.".into());
         }
         let speech = AVAudioFormat::initWithCommonFormat_sampleRate_channels_interleaved(
             AVAudioFormat::alloc(),
@@ -127,7 +127,7 @@ pub fn open(feed: Feed, failed: Sink<String>) -> Result<Box<dyn Source>, String>
             RcBlock::as_ptr(&tap),
         );
         let changed = RcBlock::new(move |_: NonNull<NSNotification>| {
-            failed("The microphone changed. Press ⌘⌥S to start voice again.".into());
+            failed("The microphone changed. Press right ⌥ to start voice again.".into());
         });
         let observer = NSNotificationCenter::defaultCenter()
             .addObserverForName_object_queue_usingBlock(

@@ -99,7 +99,7 @@ fn wav_voice_puts_each_phrase_on_the_clock_and_finish_keeps_the_last() {
     speech.release();
 }
 
-/// The first ⌘⌥S can leave the microphone prompt up; Send then finishes a voice
+/// The first voice can leave the microphone prompt up; Send then finishes a voice
 /// whose source is still opening. A FIFO holds the WAV source open the same way.
 #[test]
 #[ignore = "needs Metal, the speech helper and the models in ATTN_LENS_SPEECH_CACHE"]

@@ -3,7 +3,7 @@
 # The driver posts real keys, so the caller says where: LENS_DRIVER_WINDOW=vm inside
 # the VM (scripts/lens-vm.sh check), or =agreed in a window agreed with the user.
 #   scripts/lens-mac-check.sh <session id to send to> <output dir>
-# Writes driver.log and receipts.txt: ⌘⌥X to the bar's window, then idle CPU and memory.
+# Writes driver.log and receipts.txt: the capture key (right ⌘) to the bar's window, then idle CPU and memory.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 TARGET="${1:?usage: lens-mac-check.sh <session id> <output dir>}"
@@ -37,7 +37,7 @@ expect "editor":true
 mark dock-opened-editor
 wait 500
 watch-window Attn Lens
-chord cmd+opt x
+tap rcmd
 await-window
 expect "picking":[
 lens {"cmd":"pick"}
@@ -47,7 +47,7 @@ down fn
 expect "input":"All"
 up fn
 expect "input":"None"
-chord cmd+opt x
+tap rcmd
 expect "cause":"hotkey"
 lens {"cmd":"state"}
 lens {"cmd":"send","target":"$TARGET","message":"Attn Lens on Rune: foundation check."}
