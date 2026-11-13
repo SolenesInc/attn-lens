@@ -16,14 +16,33 @@ pub type Sink<T> = Arc<dyn Fn(T) + Send + Sync>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Chord {
-    /// ⌘⌥X, always registered.
+    /// A tap of the capture key, right ⌘. Always listened for.
     Capture,
-    /// ⌘⌥S, only while a capture is open.
-    Voice,
     /// ⌘⌥C, only while a capture is open.
     Keyboard,
     /// ⌘⌥↩, only while a capture is open.
     Send,
+}
+
+/// A press of the voice key, right ⌥ (`crate::keys`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Press {
+    /// Pressed and released alone, before the hold threshold.
+    Tap,
+    /// Held alone past the hold threshold.
+    HoldStart,
+    /// A hold ended: the key came up, or a chord or a blind period ended it.
+    HoldEnd,
+}
+
+/// A key the pill answers while a dictation's refinement is pending (F7 on the
+/// plan). The key engine takes it from the app in front only then.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PillKey {
+    /// ↩: paste the raw text now.
+    Enter,
+    /// Esc: paste nothing.
+    Esc,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,6 +50,8 @@ pub enum KeyEvent {
     DrawDown,
     DrawUp,
     Pressed(Chord),
+    Voice(Press),
+    Pill(PillKey),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -79,11 +100,11 @@ pub enum VoiceSource {
     Wav(PathBuf),
 }
 
-/// How far voice has got since ⌘⌥S.
+/// How far voice has got since it started.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum VoiceStatus {
-    /// The first ⌘⌥S fetches the speech model.
+    /// The first voice fetches the speech model.
     Downloading {
         bytes: u64,
         total: u64,
@@ -116,7 +137,8 @@ impl Voice {
 
 pub trait PlatformPort: Send + Sync {
     fn now(&self) -> HostTime;
-    /// Starts reporting the draw key and ⌘⌥X. Called once, on the UI thread.
+    /// Starts reporting the draw key, the capture key and the voice key. Called
+    /// once, on the UI thread.
     fn keys(&self, sink: Sink<KeyEvent>);
     /// Registers or releases the keys that exist only during a capture.
     fn capture_keys(&self, open: bool);
@@ -127,6 +149,10 @@ pub trait PlatformPort: Send + Sync {
     /// app noted by [`Self::hold_front`] so the user can keep typing there. If the
     /// user has gone to another app since, leaves it alone.
     fn return_front(&self) {}
+    /// Takes ↩ and Esc from the app in front, as [`KeyEvent::Pill`], or gives them back.
+    /// Lens calls it under its state lock, so it follows the dictation's state exactly;
+    /// it only sets a flag.
+    fn pill_keys(&self, on: bool);
     /// The whole display under the pointer.
     fn pointer_display(&self) -> Result<Area, String>;
     /// The displays connected now, which may differ from those at launch.
@@ -138,6 +164,9 @@ pub trait PlatformPort: Send + Sync {
     fn shift_held(&self) -> bool;
     /// True when stills can be taken. Otherwise shows the user how to allow it.
     fn screen_recording(&self) -> bool;
+    /// True when the keys can be read: the capture key, the voice key and the
+    /// draw key need Accessibility. Otherwise shows the user how to allow it.
+    fn accessibility(&self) -> bool;
     fn still(&self, area: Area) -> Result<RgbaImage, String>;
     fn watch(&self, area: Area, sink: Sink<WatchEvent>) -> Watch;
     /// Starts voice. It reports its progress, then segments, to `sink` from
@@ -156,6 +185,10 @@ pub trait PlatformPort: Send + Sync {
     fn clipboard_image(&self) -> Result<RgbaImage, String>;
     /// Puts text on the system clipboard.
     fn copy_text(&self, text: &str) -> Result<(), String>;
+    /// Pastes `text` at the cursor of the app in front, through the clipboard,
+    /// and puts back what the clipboard held (D6 on the plan). Needs
+    /// Accessibility. Slow: call it from [`Self::run`].
+    fn paste(&self, text: &str) -> Result<(), String>;
     /// Reads text from `image`, optionally within [x, y, width, height]. Slow: call it from [`Self::run`].
     fn ocr(&self, image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String>;
     /// True on the fake port: the editor then exposes its state for scripts to assert on.

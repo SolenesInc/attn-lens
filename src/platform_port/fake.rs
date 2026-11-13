@@ -1,8 +1,18 @@
 //! The headless port. A Rune script drives it with marks, on the virtual clock:
 //!
 //! ```text
-//! key:draw-down  key:draw-up  key:capture  key:voice  key:keyboard  key:send
+//! key:draw-down  key:draw-up  key:keyboard  key:send
+//! key:capture                a tap of the capture key, right ⌘
+//! key:voice                  a tap of the voice key, right ⌥
+//! key:voice-hold  key:voice-release  the voice key held past the threshold, then up
 //! key:shift-down  key:shift-up
+//! key:enter  key:esc         ↩ or Esc, which reach Lens only while it takes them
+//!                            (`pill_keys`); otherwise they go to the app in front,
+//!                            recorded in app-keys.jsonl beside the clipboard
+//! accessibility:off          Accessibility is not allowed from now on
+//! paste:fail:the reason      the next paste fails with this
+//! jobs:hold  jobs:next  jobs:last  jobs:drain  jobs:release
+//!                            hold slow work, then run it: see `Script::held`
 //! watch:click  watch:scroll  watch:switch  watch:change:0.7
 //! screen:0.7                 the screen changes by 0.7 of the area, unseen until
 //! watch:sample               the next sample reports it, unless a rebase came first
@@ -22,6 +32,7 @@
 //! press:bar-edit  press:pick presses the bar's Edit, or picks the display, from a script
 //!                            driving another window
 //! front:NAME                 the app NAME has the keyboard, as when the user switches to it
+//! press:copy-last-dictation  the Dock menu's Copy Last Dictation
 //! ```
 //!
 //! Any other mark is left to the script. Work runs inline, so a tree read at a
@@ -29,14 +40,15 @@
 //!
 //! When `ATTN_LENS_FAKE_CLIPBOARD` names a folder, what the app copies lands in
 //! it as `image.png` and `text.txt`, so a test can read what a user would paste.
+//! Each paste adds a JSON line to `pasted.jsonl` there: `{"text": …}`.
 //! `ATTN_LENS_FAKE_VIDEO_ENCODER` names a stand-in for the MP4 helper.
 //!
 //! The fake counts any Lens window taking the keyboard as Lens becoming the active app.
 //! When `ATTN_LENS_FAKE_FOCUS` names a file, each time Lens gives the keyboard back to an
 //! app, a line with the app's name lands in it.
 use super::{
-    Chord, FAKE_TICK, KeyEvent, PlatformPort, Sink, Voice, VoiceEvent, VoiceSource, VoiceStatus,
-    Watch, WatchEvent,
+    Chord, FAKE_TICK, KeyEvent, PillKey, PlatformPort, Press, Sink, Voice, VoiceEvent, VoiceSource,
+    VoiceStatus, Watch, WatchEvent,
 };
 use crate::lens::session::{Area, DisplayFrame, HostTime, Segment};
 use image::{Rgba, RgbaImage};
@@ -92,6 +104,10 @@ struct Script {
     front: Option<String>,
     /// The app `hold_front` noted.
     held_front: Option<String>,
+    /// Lens takes ↩ and Esc.
+    pill_keys: bool,
+    no_accessibility: bool,
+    paste_error: Option<String>,
 }
 
 /// What the fake calls the app with the keyboard while a Lens window has it.
@@ -121,6 +137,7 @@ impl FakePort {
                 id: DISPLAY.display,
                 frame: DISPLAY.rect,
                 menu_bar: MENU_BAR,
+                dock: 0.,
             }]),
             shift: AtomicBool::new(false),
             last_words: Arc::default(),
@@ -148,6 +165,18 @@ impl FakePort {
             }
         } else if mark == "key:shift-down" || mark == "key:shift-up" {
             self.shift.store(mark == "key:shift-down", Ordering::SeqCst);
+        } else if let Some(key) = pill_key(mark) {
+            let script = self.script.lock().unwrap();
+            let sink = script.keys.clone().filter(|_| script.pill_keys);
+            drop(script);
+            match sink {
+                Some(sink) => sink(KeyEvent::Pill(key)),
+                None => append_line("app-keys.jsonl", serde_json::json!({ "key": mark })),
+            }
+        } else if mark == "accessibility:off" {
+            self.script.lock().unwrap().no_accessibility = true;
+        } else if let Some(reason) = mark.strip_prefix("paste:fail:") {
+            self.script.lock().unwrap().paste_error = Some(reason.into());
         } else if let Some(event) = key_event(mark) {
             let sink = self.script.lock().unwrap().keys.clone();
             if let Some(sink) = sink {
@@ -250,11 +279,34 @@ fn key_event(mark: &str) -> Option<KeyEvent> {
         "draw-down" => KeyEvent::DrawDown,
         "draw-up" => KeyEvent::DrawUp,
         "capture" => KeyEvent::Pressed(Chord::Capture),
-        "voice" => KeyEvent::Pressed(Chord::Voice),
+        "voice" => KeyEvent::Voice(Press::Tap),
+        "voice-hold" => KeyEvent::Voice(Press::HoldStart),
+        "voice-release" => KeyEvent::Voice(Press::HoldEnd),
         "keyboard" => KeyEvent::Pressed(Chord::Keyboard),
         "send" => KeyEvent::Pressed(Chord::Send),
         _ => return None,
     })
+}
+
+/// What the app in front received, one JSON line per event, beside the fake clipboard.
+fn append_line(name: &str, line: serde_json::Value) {
+    use std::io::Write;
+    if let Some(path) = clipboard_file(name) {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        writeln!(file, "{line}").unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    }
+}
+
+fn pill_key(mark: &str) -> Option<PillKey> {
+    match mark {
+        "key:enter" => Some(PillKey::Enter),
+        "key:esc" => Some(PillKey::Esc),
+        _ => None,
+    }
 }
 
 fn watch_event(mark: &str) -> Option<WatchEvent> {
@@ -345,6 +397,9 @@ impl PlatformPort for FakePort {
             writeln!(log, "{app}").expect("write the focus log");
         }
     }
+    fn pill_keys(&self, on: bool) {
+        self.script.lock().unwrap().pill_keys = on;
+    }
     fn pointer_display(&self) -> Result<Area, String> {
         Ok(DISPLAY)
     }
@@ -363,6 +418,9 @@ impl PlatformPort for FakePort {
     }
     fn screen_recording(&self) -> bool {
         true
+    }
+    fn accessibility(&self) -> bool {
+        !self.script.lock().unwrap().no_accessibility
     }
     fn still(&self, area: Area) -> Result<RgbaImage, String> {
         if std::mem::take(&mut self.script.lock().unwrap().fail_still) {
@@ -448,6 +506,13 @@ impl PlatformPort for FakePort {
         if let Some(path) = clipboard_file("text.txt") {
             std::fs::write(path, text).map_err(|e| e.to_string())?;
         }
+        Ok(())
+    }
+    fn paste(&self, text: &str) -> Result<(), String> {
+        if let Some(error) = self.script.lock().unwrap().paste_error.take() {
+            return Err(error);
+        }
+        append_line("pasted.jsonl", serde_json::json!({ "text": text }));
         Ok(())
     }
     fn ocr(&self, _image: &RgbaImage, _rectangle: Option<[u32; 4]>) -> Result<String, String> {

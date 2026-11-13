@@ -14,9 +14,10 @@
 //   - an `expect` does not come true (exit 4).
 //
 // Commands:
-//   down|up KEY            hold or release a modifier: fn ctrl shift cmd opt
-//   tap KEY                press and release a key
-//   chord cmd+opt x [ms]   hold the modifiers, tap a key, hold it for ms (default 40)
+//   down|up KEY            hold or release a modifier: fn ctrl shift cmd opt rcmd ropt
+//   tap KEY [ms]           press and release a key, or a modifier alone (rcmd is the
+//                          capture key, ropt the voice key), held ms (default 30)
+//   chord cmd+opt c [ms]   hold the modifiers, tap a key, hold it for ms (default 40)
 //   move X Y | press X Y | release | click X Y | drag X0 Y0 X1 Y1 STEPS STEP_MS
 //   scroll DY [PHASE]
 //   wait MS
@@ -39,6 +40,7 @@ mach_timebase_info(&timebase)
 func now() -> UInt64 { mach_absolute_time() * UInt64(timebase.numer) / UInt64(timebase.denom) }
 func log(_ text: String) { print("\(now()) \(text)") }
 
+let lensPaste: Int64 = 0x4c45_4e53_5056
 let posted: Int64 = 0x4c454e53  // Marks the driver's own events, so real input stands out.
 let source = CGEventSource(stateID: .hidSystemState)!
 source.userData = posted
@@ -74,13 +76,17 @@ guard AXIsProcessTrusted() else {
     exit(2)
 }
 
+// The right-hand keys carry their device flag (NX_DEVICERCMDKEYMASK 0x10,
+// NX_DEVICERALTKEYMASK 0x40), as a keyboard posts them, so Lens can tell the sides.
 let modifiers: [String: (CGKeyCode, CGEventFlags)] = [
     "ctrl": (0x3B, .maskControl), "fn": (0x3F, .maskSecondaryFn), "shift": (0x38, .maskShift),
     "cmd": (0x37, .maskCommand), "opt": (0x3A, .maskAlternate),
+    "rcmd": (0x36, CGEventFlags(rawValue: CGEventFlags.maskCommand.rawValue | 0x10)),
+    "ropt": (0x3D, CGEventFlags(rawValue: CGEventFlags.maskAlternate.rawValue | 0x40)),
 ]
 let keys: [String: CGKeyCode] = [
     "x": 7, "c": 8, "a": 0, "b": 11, "h": 4, "s": 1, "i": 34, "v": 9, "2": 19, "0": 29, "1": 18,
-    "return": 36, "esc": 53, "tab": 48, "space": 49, "backtick": 50,
+    "e": 14, "right": 124, "return": 36, "esc": 53, "tab": 48, "space": 49, "backtick": 50,
 ]
 var held: CGEventFlags = []
 var heldNames = Set<String>()
@@ -163,6 +169,11 @@ guard
             {
                 switcherEchoUntil = 0
                 log("switcher echo flagsChanged flags=0x\(String(event.flags.rawValue, radix: 16))")
+                return Unmanaged.passUnretained(event)
+            }
+            // Attn Lens's paste (src/paste.rs PASTE_MARKER) is the app under test, not a person.
+            if event.getIntegerValueField(.eventSourceUserData) == lensPaste {
+                log("lens paste event type \(type.rawValue)")
                 return Unmanaged.passUnretained(event)
             }
             if event.getIntegerValueField(.eventSourceUserData) != posted {
@@ -271,9 +282,17 @@ func run(_ line: String) {
     case "down": modifier(parts[1], true)
     case "up": modifier(parts[1], false)
     case "tap":
-        key(parts[1], true)
-        pause(30)
-        key(parts[1], false)
+        let hold = parts.count > 2 ? number(2) : 30
+        if modifiers[parts[1]] != nil {
+            lastChordKeyDown = now()
+            modifier(parts[1], true)
+            pause(hold)
+            modifier(parts[1], false)
+        } else {
+            key(parts[1], true)
+            pause(hold)
+            key(parts[1], false)
+        }
     case "chord":
         let names = parts[1].split(separator: "+").map(String.init)
         names.forEach { modifier($0, true) }
@@ -355,7 +374,7 @@ func run(_ line: String) {
         windowShown = false
         let thread = Thread {
             var seen = visibleWindows(owner)
-            // The spike's worst case on a real Mac was 841 ms; a first ⌘⌥X in the VM
+            // The spike's worst case on a real Mac was 841 ms; a first capture key in the VM
             // took 2.5 to 4.3 s with the host's load at 50 to 90. 15 s is past both.
             while lastChordKeyDown == 0 || now() < lastChordKeyDown + 15_000_000_000 {
                 let current = visibleWindows(owner)

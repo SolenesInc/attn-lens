@@ -17,8 +17,8 @@ assets retain their own licenses; the project license does not replace them.
   font under Apache-2.0. See [source attribution](assets/fonts/SOURCE) and the
   [font license](assets/fonts/LICENSE).
 - **The speech helper** (`speech/`) comes from attn (MIT) at 94d1c6551
-  `app/speech`. It links transcribe.cpp and downloads two models on the first
-  ⌘⌥S: Parakeet Unified English (NVIDIA Open Model License) and Silero VAD
+  `app/speech`. It links transcribe.cpp and downloads two models the first
+  time voice runs: Parakeet Unified English (NVIDIA Open Model License) and Silero VAD
   (MIT), both as converted to GGUF by handy-computer. Their licenses and
   notices are in [speech/LICENSES](speech/LICENSES) and ship in the app's
   `Resources/speech-licenses`.
@@ -27,7 +27,12 @@ assets retain their own licenses; the project license does not replace them.
   from Hex's `native/permission_guide.m` and `src/desktop/permission_guide.rs`
   at commit 54d1ebf (<https://github.com/anomalyco/hex>). The contact sheet's
   row layout and sizing in `src/lens/deliver.rs` are adapted from Hex's
-  `crates/capture/src/render.rs` at the same commit:
+  `crates/capture/src/render.rs` at the same commit. The key engine in
+  `src/keys/` (the tap-or-hold state machine, its tests and the event taps) is
+  adapted from Hex's `src/suppression.rs` at the same commit. The paste in
+  `src/paste.rs` (clipboard save and restore, ⌘V by layout, typing for Chromium
+  155–156) is adapted from Hex's `src/paste.rs` and `src/keyboard.rs` at the same
+  commit:
 
   > MIT License
   >

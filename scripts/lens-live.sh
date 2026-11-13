@@ -48,13 +48,13 @@ RECORDER=$!
 cat >"$OUT/script.txt" <<'SCRIPT'
 mark start
 watch-window Attn Lens
-chord cmd+opt x
+tap rcmd
 await-window
 expect "picking":[
 tap esc
 expect "picking":null
 watch-window Attn Lens
-chord cmd+opt x
+tap rcmd
 await-window
 expect "picking":[
 # A person points at the corner before pressing; a press the instant the picker
@@ -100,7 +100,7 @@ up fn
 expect "input":"None"
 mark drawn
 
-chord cmd+opt x
+tap rcmd
 expect "cause":"hotkey"
 mark still
 

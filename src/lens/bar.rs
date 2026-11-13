@@ -329,7 +329,9 @@ fn palette(summary: &Summary, selected: usize, t: &tok::Theme) -> El {
     list
 }
 
-/// Keys the field does not take for itself. Returns whether the key was used.
+/// Enter, Esc, Tab and the palette's arrows. The field hands them here when it has
+/// focus; the bar window does when anything else in the bar has. Returns whether the
+/// key was used.
 pub fn bar_key(s: &mut Bar, event: &KeyEvent, _: &mut Tx) -> bool {
     let (palette_open, placing) = s
         .lens
@@ -499,10 +501,10 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
     })
 }
 
-/// Voice in the bar: what ⌘⌥S does now, or how far voice has got.
-fn voice_text(voice: VoiceState) -> String {
+/// Voice in the bar: what the voice key does now, or how far voice has got.
+pub(super) fn voice_text(voice: VoiceState) -> String {
     match voice {
-        VoiceState::Off => "⌘⌥S voice".into(),
+        VoiceState::Off => "right ⌥ voice".into(),
         VoiceState::Starting => "Starting voice…".into(),
         VoiceState::Running(VoiceStatus::Downloading { bytes, total }) => format!(
             "Downloading speech model {}%",
@@ -510,7 +512,7 @@ fn voice_text(voice: VoiceState) -> String {
         ),
         VoiceState::Running(VoiceStatus::Loading) => "Loading speech model…".into(),
         VoiceState::Running(VoiceStatus::WarmingUp) => "Starting microphone…".into(),
-        VoiceState::Running(VoiceStatus::Listening) => "Listening · ⌘⌥S to stop".into(),
+        VoiceState::Running(VoiceStatus::Listening) => "Listening · right ⌥ to stop".into(),
         VoiceState::Finishing => "Finishing…".into(),
     }
 }
