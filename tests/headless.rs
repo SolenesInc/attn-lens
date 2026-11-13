@@ -1433,6 +1433,28 @@ fn the_capture_key_during_a_dictation_hands_its_voice_and_words_to_the_capture()
 }
 
 #[test]
+fn the_area_picker_takes_enter_and_esc_from_a_dictation_attn_is_refining() {
+    let run = Run::new("dictation-picker.json", ONE_SESSION);
+    let picking = state(&run, "picking");
+    assert_eq!(picking["dictation"]["state"], "refining");
+    assert!(picking["picking"].is_array());
+
+    // While the picker shows, ↩ is the picker's, not the dictation's.
+    let cancelled = state(&run, "cancelled");
+    assert_eq!(cancelled["picking"], Value::Null);
+    assert_eq!(cancelled["dictation"]["state"], "refining");
+    assert_eq!(run.app_keys("cancelled"), ["key:enter"]);
+
+    // A cancelled pick gives the waiting dictation its keys back.
+    assert_eq!(
+        dictation(&run, "escaped")["note"],
+        "Cancelled · nothing pasted"
+    );
+    assert_eq!(run.app_keys("escaped"), ["key:enter"]);
+    assert!(run.pasted("after").is_empty());
+}
+
+#[test]
 fn a_capture_taking_a_dictation_attn_is_refining_gives_enter_back_to_the_app() {
     let run = Run::new("dictation-handover-refining.json", ONE_SESSION);
     assert_eq!(dictation(&run, "refining")["state"], "refining");

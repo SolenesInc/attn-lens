@@ -379,9 +379,7 @@ impl Lens {
             asked,
             deadline: asked.after(attn_limit(recording) + PAST_ATTNS_LIMIT),
         });
-        // Under the lock, like every pill_keys(false): whatever ends Refining
-        // turns interception off after this, never before.
-        self.port.pill_keys(true);
+        self.sync_pill_keys(&state);
         self.release(state);
         dictation_log(format_args!(
             "dictation {run}: {} ms recorded, asking attn",
@@ -461,6 +459,14 @@ impl Lens {
         state
     }
 
+    /// Takes ↩ and Esc from the app in front exactly while a dictation waits for
+    /// attn and no area picker owns the keyboard. Called under the state lock after
+    /// every change to either, so interception never outlives what asked for it.
+    pub(super) fn sync_pill_keys(&self, state: &State) {
+        let refining = matches!(state.dictation, Some(Dictation::Refining { .. }));
+        self.port.pill_keys(refining && state.picking.is_none());
+    }
+
     /// ↩ or Esc while attn refines.
     pub(super) fn pill_key(self: &Arc<Self>, key: PillKey) {
         let state = self.state.lock().unwrap();
@@ -508,7 +514,6 @@ impl Lens {
         how: Settled,
     ) -> MutexGuard<'a, State> {
         dictation_log(format_args!("dictation {run}: settled, {}", how.note()));
-        self.port.pill_keys(false);
         if !text.is_empty() {
             state.last_dictation = Some(text.clone());
         }
@@ -520,6 +525,7 @@ impl Lens {
             how,
             until: (!pastes).then(|| now.after(OUTCOME_STAYS)),
         });
+        self.sync_pill_keys(&state);
         if pastes {
             state.paste = Some((run, text));
         }
@@ -644,7 +650,6 @@ impl Lens {
                 if let Some(refine) = refine {
                     refine.stop();
                 }
-                self.port.pill_keys(false);
                 HandOver {
                     segments,
                     started,
@@ -656,6 +661,7 @@ impl Lens {
                 return None;
             }
         };
+        self.sync_pill_keys(state);
         dictation_log(format_args!("dictation handed to capture {id}"));
         Some(handed)
     }

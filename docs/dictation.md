@@ -21,7 +21,8 @@ While the pill says Refining:
 - **Esc** pastes nothing.
 
 Lens takes ↩ and Esc from the app in front only then; at any other time they
-reach the app as usual.
+reach the app as usual. While the area picker shows, ↩ and Esc are the picker's
+(the last area, and cancel); a cancelled pick gives them back to the pill.
 
 ## When the text is not refined
 

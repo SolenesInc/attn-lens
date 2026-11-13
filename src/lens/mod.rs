@@ -576,13 +576,19 @@ impl Lens {
             }
             state.picking = Some(displays);
             state.error = None;
+            // The picker owns ↩ and Esc while it shows.
+            self.sync_pill_keys(&state);
         }
         self.changed();
     }
 
     /// Closes the area picker without starting a capture.
     pub fn cancel_pick(&self) {
-        self.state.lock().unwrap().picking = None;
+        {
+            let mut state = self.state.lock().unwrap();
+            state.picking = None;
+            self.sync_pill_keys(&state);
+        }
         self.changed();
     }
 
