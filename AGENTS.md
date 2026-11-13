@@ -59,6 +59,7 @@ This file's Glance rules still apply to the code that remains.
   `editor OUT` to run `scripts/lens-editor-check.sh` (menus, Copy as OCR, Pick from screen,
   scroll and zoom, light and dark, read through `tools/driver/ax.swift`),
   `tile OUT` to run `scripts/lens-tile.sh` (tile hover and click, and Back not counted as a change),
+  `switch OUT` to run `scripts/lens-switch.sh` (draw, ⌘Tab, draw, ⌘Tab, draw: fn read while another app is in front),
   `c16 OUT` to run `scripts/lens-c16.sh` (the 60 s drawing, voice and stills capture; `scripts/lens-c16-linux.sh`
   is its headless Linux half), and `stop` when done: it holds 8 GB. `tools/vm/`
   grants the VM's permissions without a click. Nothing of this Mac's goes in: no shared

@@ -1,11 +1,17 @@
 // A plain page under the ink layer that logs what reaches it, so a driven run can
 // prove clicks, scrolls and text selection pass through an area while the draw key
 // is up. The page is a text view, as a browser's text would be.
-//   underlay X Y WIDTH HEIGHT     in global top-left points; logs to stdout
+//   underlay X Y WIDTH HEIGHT [NAME]   in global top-left points; logs to stdout
+//                                      and "active NAME" each time it comes to the front
 import AppKit
 
 setvbuf(stdout, nil, _IOLBF, 0)
-func log(_ text: String) { print("underlay \(text)") }
+var timebase = mach_timebase_info_data_t()
+mach_timebase_info(&timebase)
+/// Each line starts with the host time in nanoseconds, the driver's clock.
+func log(_ text: String) {
+    print("\(mach_absolute_time() * UInt64(timebase.numer) / UInt64(timebase.denom)) underlay \(text)")
+}
 
 final class Page: NSTextView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -32,14 +38,16 @@ final class Page: NSTextView {
 
 final class Delegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
+    let name = CommandLine.arguments.count > 5 ? CommandLine.arguments[5] : "page"
+    func applicationDidBecomeActive(_ notification: Notification) { log("active \(name)") }
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let args = CommandLine.arguments.dropFirst().compactMap(Double.init)
+        let args = CommandLine.arguments.dropFirst().prefix(4).compactMap(Double.init)
         let (x, y, width, height) = (args[0], args[1], args[2], args[3])
         let primary = NSScreen.screens[0].frame.height
         window = NSWindow(
             contentRect: NSRect(x: x, y: primary - y - height, width: width, height: height),
             styleMask: [.titled], backing: .buffered, defer: false)
-        window.title = "Lens underlay"
+        window.title = "Lens underlay \(name)"
         let page = Page(frame: NSRect(x: 0, y: 0, width: width, height: height))
         page.string = Array(repeating: "A line of plain text a person might select.", count: 60)
             .joined(separator: "\n")

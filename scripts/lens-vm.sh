@@ -17,6 +17,7 @@
 #   scripts/lens-vm.sh editor OUT        run lens-editor-check.sh in the VM: menus, OCR, Pick
 #                                        from screen, scroll, zoom, light and dark
 #   scripts/lens-vm.sh tile OUT          run lens-tile.sh in the VM: tile hover and click, Back
+#   scripts/lens-vm.sh switch OUT        run lens-switch.sh in the VM: draw, ⌘Tab, draw, ⌘Tab, draw
 #   scripts/lens-vm.sh sh COMMAND       run a shell command in the VM's GUI session
 #   scripts/lens-vm.sh pull PATH DEST    copy a file or folder out of the VM
 #   scripts/lens-vm.sh destroy           stop and delete the VM
@@ -72,7 +73,7 @@ push() {
     GLANCE_CODESIGN_IDENTITY=- GLANCE_BUNDLE_DEST="$PWD/target/vm/Attn Lens.app" ./scripts/bundle.sh release
     start
     in_vm /bin/sh -c "rm -rf '$GUEST_ROOT' '$GUEST_HOME/Applications/Attn Lens.app'; mkdir -p '$GUEST_ROOT' '$GUEST_HOME/Applications' '$GUEST_HOME/.local/bin'"
-    tar cf - scripts/lens-mac-check.sh scripts/lens-live.sh scripts/lens-editor-check.sh scripts/lens-voice.sh scripts/lens-tile.sh scripts/lens-c16.sh speech/tests/fixtures tools/driver tools/vm |
+    tar cf - scripts/lens-mac-check.sh scripts/lens-live.sh scripts/lens-editor-check.sh scripts/lens-voice.sh scripts/lens-tile.sh scripts/lens-c16.sh scripts/lens-switch.sh speech/tests/fixtures tools/driver tools/vm |
         in_vm_stdin tar xf - -C "$GUEST_ROOT"
     tar cf - -C target/vm 'Attn Lens.app' | in_vm_stdin tar xf - -C "$GUEST_HOME/Applications"
     in_vm /bin/sh -c "cd '$GUEST_ROOT' && /usr/bin/swiftc -O tools/driver/driver.swift -o driver && cp tools/vm/attn '$GUEST_HOME/.local/bin/attn'"
@@ -149,6 +150,15 @@ tile)
     in_vm /usr/bin/env LENS_DRIVER_WINDOW=vm /bin/sh -c "cd '$GUEST_ROOT' && scripts/lens-tile.sh '$GUEST_ROOT/tile-out'" || status=$?
     mkdir -p "$2"
     in_vm /usr/bin/tar cf - -C "$GUEST_ROOT/tile-out" . | tar xf - -C "$2"
+    exit "$status"
+    ;;
+switch)
+    [ $# -eq 2 ] || die "usage: lens-vm.sh switch OUT"
+    start
+    status=0
+    in_vm /usr/bin/env LENS_DRIVER_WINDOW=vm /bin/sh -c "cd '$GUEST_ROOT' && rm -rf switch-out && scripts/lens-switch.sh '$GUEST_ROOT/switch-out'" || status=$?
+    mkdir -p "$2"
+    in_vm /usr/bin/tar cf - -C "$GUEST_ROOT/switch-out" . | tar xf - -C "$2"
     exit "$status"
     ;;
 sh)
