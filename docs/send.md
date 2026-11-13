@@ -113,10 +113,13 @@ bar names every place it looked.
 
 ## Screen Recording
 
-Lens needs Screen Recording access. When it is missing, Lens opens System
-Settings at the list, at launch and again on **⌘⌥X**, and floats a tile of the
-app beside it; drag the tile into the list and enable it. macOS applies the
-grant only to a new process, so quit and reopen Lens afterwards.
+Lens needs Screen Recording, to take stills, and Microphone, for
+voice (macOS asks on the first **⌘⌥S**). When Screen Recording is missing, Lens
+opens System Settings at the list, at launch and again on **⌘⌥X**, and floats a
+guide beside it. The guide says Lens is being set up, lists every access with
+why each is needed, and gives the steps: drag the tile of the app into the list
+and switch it on, then quit and reopen Lens, because macOS applies the grant only
+to a new process.
 
 ## Automation
 
