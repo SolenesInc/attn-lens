@@ -78,6 +78,16 @@ fn on_main(job: impl FnOnce() + Send + 'static) {
     queue_on_main(job);
 }
 
+/// Runs `job` on the main thread and waits for its result. From a worker, the main
+/// thread must not be waiting on that worker.
+fn on_main_wait<T: Send + 'static>(job: impl FnOnce() -> T + Send + 'static) -> T {
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    on_main(move || {
+        let _ = sender.send(job());
+    });
+    receiver.recv().expect("the main thread dropped a job")
+}
+
 /// Runs `job` on the main thread after everything queued before it, from any thread.
 pub(crate) fn queue_on_main(job: impl FnOnce() + Send + 'static) {
     extern "C" fn trampoline(context: *mut c_void) {
@@ -165,8 +175,6 @@ impl PlatformPort for MacPort {
     }
 
     fn keys(&self, sink: Sink<KeyEvent>) {
-        // On the UI thread, where the keyboard layout may be read.
-        crate::paste::prepare();
         match Tap::start(sink.clone()) {
             Ok(tap) => {
                 let _ = self.tap.set(tap);
@@ -288,7 +296,8 @@ impl PlatformPort for MacPort {
     }
 
     fn paste(&self, text: &str) -> Result<(), String> {
-        crate::paste::paste(text)
+        let v_key = on_main_wait(crate::paste::v_key);
+        crate::paste::paste(text, v_key)
     }
 
     fn ocr(&self, image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String> {

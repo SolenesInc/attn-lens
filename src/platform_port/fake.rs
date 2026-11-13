@@ -7,7 +7,8 @@
 //! key:voice-hold  key:voice-release  the voice key held past the threshold, then up
 //! key:shift-down  key:shift-up
 //! key:enter  key:esc         ↩ or Esc, which reach Lens only while it takes them
-//!                            (`pill_keys`); otherwise they go to the app in front
+//!                            (`pill_keys`); otherwise they go to the app in front,
+//!                            recorded in app-keys.jsonl beside the clipboard
 //! accessibility:off          Accessibility is not allowed from now on
 //! paste:fail:the reason      the next paste fails with this
 //! jobs:hold  jobs:next  jobs:last  jobs:drain  jobs:release
@@ -156,8 +157,9 @@ impl FakePort {
             let script = self.script.lock().unwrap();
             let sink = script.keys.clone().filter(|_| script.pill_keys);
             drop(script);
-            if let Some(sink) = sink {
-                sink(KeyEvent::Pill(key));
+            match sink {
+                Some(sink) => sink(KeyEvent::Pill(key)),
+                None => append_line("app-keys.jsonl", serde_json::json!({ "key": mark })),
             }
         } else if mark == "accessibility:off" {
             self.script.lock().unwrap().no_accessibility = true;
@@ -270,6 +272,19 @@ fn key_event(mark: &str) -> Option<KeyEvent> {
         "send" => KeyEvent::Pressed(Chord::Send),
         _ => return None,
     })
+}
+
+/// What the app in front received, one JSON line per event, beside the fake clipboard.
+fn append_line(name: &str, line: serde_json::Value) {
+    use std::io::Write;
+    if let Some(path) = clipboard_file(name) {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        writeln!(file, "{line}").unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    }
 }
 
 fn pill_key(mark: &str) -> Option<PillKey> {
@@ -456,15 +471,7 @@ impl PlatformPort for FakePort {
         if let Some(error) = self.script.lock().unwrap().paste_error.take() {
             return Err(error);
         }
-        if let Some(path) = clipboard_file("pasted.jsonl") {
-            use std::io::Write;
-            let mut file = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)
-                .map_err(|e| e.to_string())?;
-            writeln!(file, "{}", serde_json::json!({ "text": text })).map_err(|e| e.to_string())?;
-        }
+        append_line("pasted.jsonl", serde_json::json!({ "text": text }));
         Ok(())
     }
     fn ocr(&self, _image: &RgbaImage, _rectangle: Option<[u32; 4]>) -> Result<String, String> {

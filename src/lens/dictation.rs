@@ -379,9 +379,10 @@ impl Lens {
             asked,
             deadline: asked.after(attn_limit(recording) + PAST_ATTNS_LIMIT),
         });
-        drop(state);
+        // Under the lock, like every pill_keys(false): whatever ends Refining
+        // turns interception off after this, never before.
         self.port.pill_keys(true);
-        self.changed();
+        self.release(state);
         dictation_log(format_args!(
             "dictation {run}: {} ms recorded, asking attn",
             recording.as_millis()

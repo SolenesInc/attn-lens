@@ -143,6 +143,8 @@ pub trait PlatformPort: Send + Sync {
     /// Registers or releases the keys that exist only during a capture.
     fn capture_keys(&self, open: bool);
     /// Takes ↩ and Esc from the app in front, as [`KeyEvent::Pill`], or gives them back.
+    /// Lens calls it under its state lock, so it follows the dictation's state exactly;
+    /// it only sets a flag.
     fn pill_keys(&self, on: bool);
     /// The whole display under the pointer.
     fn pointer_display(&self) -> Result<Area, String>;

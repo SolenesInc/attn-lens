@@ -85,6 +85,20 @@ echo '{{"id":"cap"}}'
         self.path(&format!("clipboard-{mark}"))
     }
 
+    /// The pill keys the app in front received up to `mark`, by the last run read at it.
+    fn app_keys(&self, mark: &str) -> Vec<String> {
+        std::fs::read_to_string(self.clipboard(mark).join("app-keys.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| {
+                serde_json::from_str::<Value>(line).unwrap()["key"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect()
+    }
+
     /// The texts pasted up to `mark`, by the last run read at it.
     fn pasted(&self, mark: &str) -> Vec<String> {
         std::fs::read_to_string(self.clipboard(mark).join("pasted.jsonl"))
@@ -1416,4 +1430,20 @@ fn the_capture_key_during_a_dictation_hands_its_voice_and_words_to_the_capture()
         !run.path("refine-args").exists(),
         "a handed-over dictation was refined"
     );
+}
+
+#[test]
+fn a_capture_taking_a_dictation_attn_is_refining_gives_enter_back_to_the_app() {
+    let run = Run::new("dictation-handover-refining.json", ONE_SESSION);
+    assert_eq!(dictation(&run, "refining")["state"], "refining");
+
+    let open = state(&run, "open");
+    assert_eq!(open["dictation"], Value::Null);
+    assert_eq!(open["capture"]["segments"][0]["text"], "look at this");
+
+    // Lens stops taking ↩ with the hand-over, so it reaches the app in front.
+    assert_eq!(dictation(&run, "after"), Value::Null);
+    assert_eq!(run.app_keys("after"), ["key:enter"]);
+    // The refinement still waiting when the capture took over is dropped unpasted.
+    assert!(run.pasted("after").is_empty());
 }
