@@ -39,8 +39,12 @@ This file's Glance rules still apply to the code that remains.
   holds a still (`State::editing`), the live surfaces hide and the watch stops;
   `EditorCall` is how Lens reaches the editor, and `Editor::leave_still` gives it back.
 - `src/lens/attn.rs`: the only contract with attn: `attn send sessions`, `attn
-  send pair` and `attn send <session>` JSON, plus the Keychain token. Its tests
+  send pair`, `attn send <session>` and `attn refine` JSON, plus the Keychain token. Its tests
   use a stand-in `attn`; attn's `cmd/attn/send_stack_test.go` pins the real JSON.
+- `src/lens/dictation.rs`, `pill.rs`: the voice key with no capture open: the pill,
+  `attn refine`, the one paste (`src/paste.rs`, from Hex, behind `PlatformPort::paste`)
+  and the hand-over to a capture. See `docs/dictation.md`. `LENS_DICTATION_LOG=1`
+  prints each step's time; `--pill-in-capture` lets a recording show the pill.
 - `src/lens/deliver.rs`: what Send delivers: the timeline message, the contact
   sheets and the frames, written only from `Document::export()`.
 - `src/lens/capture.rs`: stills through Hex's capture-core (ScreenCaptureKit).
@@ -65,6 +69,7 @@ This file's Glance rules still apply to the code that remains.
   `tile OUT` to run `scripts/lens-tile.sh` (tile hover and click, and Back not counted as a change),
   `switch OUT` to run `scripts/lens-switch.sh` (draw, ⌘Tab, draw, ⌘Tab, draw: fn read while another app is in front),
   `keys OUT` to run `scripts/lens-keys.sh` (right ⌘ and right ⌥ alone and in chords with TextEdit, and the Accessibility guide),
+  `dictation OUT` to run `scripts/lens-dictation.sh` (dictation into TextEdit with focus and clipboard kept, and its timings),
   `c16 OUT` to run `scripts/lens-c16.sh` (the 60 s drawing, voice and stills capture; `scripts/lens-c16-linux.sh`
   is its headless Linux half), and `stop` when done: it holds 8 GB. `tools/vm/`
   grants the VM's permissions without a click. Nothing of this Mac's goes in: no shared

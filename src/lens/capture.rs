@@ -67,6 +67,7 @@ pub fn display_size(display: u32) -> (f64, f64) {
 unsafe extern "C" {
     /// From `native/displays.m`.
     fn lens_menu_bar_points(display: u32) -> f64;
+    fn lens_dock_points(display: u32) -> f64;
 }
 
 /// The displays connected now. CoreGraphics reports how many there are first.
@@ -96,6 +97,8 @@ pub fn displays() -> Vec<DisplayFrame> {
                 ],
                 // SAFETY: reads NSScreen's list; no other effect.
                 menu_bar: unsafe { lens_menu_bar_points(id) },
+                // SAFETY: as above.
+                dock: unsafe { lens_dock_points(id) },
             }
         })
         .collect()

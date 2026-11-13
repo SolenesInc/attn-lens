@@ -35,12 +35,23 @@ pub enum Press {
     HoldEnd,
 }
 
+/// A key the pill answers while a dictation's refinement is pending (F7 on the
+/// plan). The key engine takes it from the app in front only then.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PillKey {
+    /// ↩: paste the raw text now.
+    Enter,
+    /// Esc: paste nothing.
+    Esc,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyEvent {
     DrawDown,
     DrawUp,
     Pressed(Chord),
     Voice(Press),
+    Pill(PillKey),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -131,6 +142,10 @@ pub trait PlatformPort: Send + Sync {
     fn keys(&self, sink: Sink<KeyEvent>);
     /// Registers or releases the keys that exist only during a capture.
     fn capture_keys(&self, open: bool);
+    /// Takes ↩ and Esc from the app in front, as [`KeyEvent::Pill`], or gives them back.
+    /// Lens calls it under its state lock, so it follows the dictation's state exactly;
+    /// it only sets a flag.
+    fn pill_keys(&self, on: bool);
     /// The whole display under the pointer.
     fn pointer_display(&self) -> Result<Area, String>;
     /// The displays connected now, which may differ from those at launch.
@@ -163,6 +178,10 @@ pub trait PlatformPort: Send + Sync {
     fn clipboard_image(&self) -> Result<RgbaImage, String>;
     /// Puts text on the system clipboard.
     fn copy_text(&self, text: &str) -> Result<(), String>;
+    /// Pastes `text` at the cursor of the app in front, through the clipboard,
+    /// and puts back what the clipboard held (D6 on the plan). Needs
+    /// Accessibility. Slow: call it from [`Self::run`].
+    fn paste(&self, text: &str) -> Result<(), String>;
     /// Reads text from `image`, optionally within [x, y, width, height]. Slow: call it from [`Self::run`].
     fn ocr(&self, image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String>;
     /// True on the fake port: the editor then exposes its state for scripts to assert on.

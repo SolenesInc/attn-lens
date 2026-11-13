@@ -1,10 +1,20 @@
 #!/bin/sh
-# A stand-in for attn inside the VM: prints what cmd/attn/send_stack_test.go in attn
-# pins and keeps each send's arguments and files in ~/lens-check/sent.
+# A stand-in for attn inside the VM: prints what cmd/attn/send_stack_test.go and
+# cmd/attnd/refine_stack_test.go in attn pin, and keeps each send's arguments and
+# files in ~/lens-check/sent.
 sent="$HOME/lens-check/sent"
 mkdir -p "$sent"
+# attn refine: the token, then the transcript, on stdin. Answers after a second, as a
+# quick refinement would, so the pill's wait shows in a recording.
+if [ "$1" = refine ]; then
+    raw="$(tail -n +2)"
+    printf '%s\n' "$*" >"$sent/refine-args"
+    sleep 1
+    printf '{"profile_id":"default","success":true,"refined_text":"Refined: %s"}\n' "$raw"
+    exit 0
+fi
 [ "$1" = send ] || {
-    echo "stand-in attn: only send is known" >&2
+    echo "stand-in attn: only send and refine are known" >&2
     exit 2
 }
 shift

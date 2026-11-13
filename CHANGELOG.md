@@ -6,6 +6,13 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
+- **Attn Lens** dictation: with no capture open, right ⌥ (tap, or hold) dictates
+  into the app in front. A pill above the Dock shows the words, attn refines them
+  through `attn refine`, and the text pastes once at the cursor with the clipboard
+  put back. ↩ pastes the raw text at once, Esc cancels; a failed, late or
+  unreachable refinement pastes the raw text and says why. Right ⌘ during a
+  dictation turns it into a capture's voice. The Dock menu has Copy Last Dictation.
+
 - A capture's stills open in the editor from Edit or a thumbnail. Back returns to
   the same live capture with the edit kept and undoable, and Send works from the
   editor. After Send the capture shrinks to a corner tile that leaves after 5 s,

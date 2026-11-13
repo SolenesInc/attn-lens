@@ -502,7 +502,7 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
 }
 
 /// Voice in the bar: what the voice key does now, or how far voice has got.
-fn voice_text(voice: VoiceState) -> String {
+pub(super) fn voice_text(voice: VoiceState) -> String {
     match voice {
         VoiceState::Off => "right ⌥ voice".into(),
         VoiceState::Starting => "Starting voice…".into(),

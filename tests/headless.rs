@@ -8,7 +8,10 @@ use std::{
 };
 
 /// A scratch folder with a stand-in `attn` that lists `sessions`, and records what
-/// it is sent: its arguments in `args` and each PNG as it was then.
+/// it is sent: its arguments in `args` and each PNG as it was then. `attn refine`
+/// keeps its stdin in `refine-stdin`, then prints `refine-out`, and `refine-err` on
+/// stderr, and exits with `refine-code` when a test wrote them; otherwise it
+/// answers "Refined: " and the transcript.
 struct Run {
     dir: tempfile::TempDir,
     script: &'static str,
@@ -22,6 +25,16 @@ impl Run {
             path.join("attn"),
             format!(
                 r#"#!/bin/sh
+if [ "$1" = "refine" ]; then
+  cat > "{dir}/refine-stdin"; echo "$@" > "{dir}/refine-args"
+  if [ -f "{dir}/refine-code" ]; then
+    cat "{dir}/refine-out" 2>/dev/null; cat "{dir}/refine-err" >&2 2>/dev/null
+    exit "$(cat "{dir}/refine-code")"
+  fi
+  raw="$(tail -n +2 "{dir}/refine-stdin")"
+  echo "{{\"profile_id\":\"default\",\"success\":true,\"refined_text\":\"Refined: $raw\"}}"
+  exit 0
+fi
 cat > /dev/null
 if [ "$2" = "sessions" ] && [ -f "{dir}/first-listing" ]; then
   cat "{dir}/first-listing"; rm "{dir}/first-listing"; exit 0
@@ -51,9 +64,14 @@ echo '{{"id":"cap"}}'
         let script: PathBuf = [env!("CARGO_MANIFEST_DIR"), "headless", self.script]
             .iter()
             .collect();
+        // What this run copies and pastes, apart from every other run's.
+        let clipboard = self.clipboard(mark);
+        let _ = std::fs::remove_dir_all(&clipboard);
+        std::fs::create_dir(&clipboard).unwrap();
         let mut command = Command::new(env!("CARGO_BIN_EXE_attn-lens"));
         command
             .env("ATTN_BIN", self.path("attn"))
+            .env("ATTN_LENS_FAKE_CLIPBOARD", clipboard)
             .arg("--desktop")
             .arg(self.path("backdrop.png"))
             .arg("--script")
@@ -61,6 +79,43 @@ echo '{{"id":"cap"}}'
             .arg("--at")
             .arg(format!("mark:{mark}"));
         command
+    }
+
+    fn clipboard(&self, mark: &str) -> PathBuf {
+        self.path(&format!("clipboard-{mark}"))
+    }
+
+    /// The pill keys the app in front received up to `mark`, by the last run read at it.
+    fn app_keys(&self, mark: &str) -> Vec<String> {
+        std::fs::read_to_string(self.clipboard(mark).join("app-keys.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| {
+                serde_json::from_str::<Value>(line).unwrap()["key"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// The texts pasted up to `mark`, by the last run read at it.
+    fn pasted(&self, mark: &str) -> Vec<String> {
+        std::fs::read_to_string(self.clipboard(mark).join("pasted.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| {
+                serde_json::from_str::<Value>(line).unwrap()["text"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// The text copied up to `mark`, by the last run read at it.
+    fn copied(&self, mark: &str) -> Option<String> {
+        std::fs::read_to_string(self.clipboard(mark).join("text.txt")).ok()
     }
 
     fn tree(&self, window: &str, mark: &str) -> Value {
@@ -779,7 +834,8 @@ fn holding_the_voice_key_talks_until_release_and_a_tap_toggles() {
     let run = Run::new("voice-hold.json", ONE_SESSION);
     let voice = |mark| text(&run.tree("bar", mark), "voice").map(str::to_string);
 
-    // The voice key with no capture open opens nothing; the capture key still works.
+    // The voice key with no capture open dictates: with nothing said it pastes
+    // nothing, and the capture key still works.
     assert_eq!(voice("open").as_deref(), Some("right ⌥ voice"));
     let open = state(&run, "open");
     assert_eq!(open["capture"]["segments"], serde_json::json!([]));
@@ -1196,4 +1252,220 @@ fn bar_keys_work_with_the_field_not_focused() {
     assert!(element(&run.tree("bar", "palette"), "palette-label-0").is_some());
     assert!(element(&run.tree("bar", "palette-closed"), "palette-label-0").is_none());
     assert_eq!(state(&run, "escaped")["capture"], Value::Null);
+}
+
+/// The dictation as the automation state reports it.
+fn dictation(run: &Run, mark: &str) -> Value {
+    state(run, mark)["dictation"].clone()
+}
+
+#[test]
+fn a_dictation_shows_its_words_then_pastes_attns_refinement_once() {
+    let run = Run::new("dictation.json", ONE_SESSION);
+
+    // The pill shows at once, then the words as they come.
+    let pill = run.tree("pill", "starting");
+    assert!(visible(&pill, "pill"));
+    assert_eq!(text(&pill, "pill-status"), Some("Starting voice…"));
+    let pill = run.tree("pill", "recording");
+    assert_eq!(text(&pill, "pill-words"), Some("um so deploy to staging"));
+    assert_eq!(
+        text(&pill, "pill-status"),
+        Some("Listening · right ⌥ to stop")
+    );
+    assert!(run.pasted("recording").is_empty());
+
+    // Voice stops; attn gets the token, then the transcript, and its text pastes once.
+    let refined = dictation(&run, "refined");
+    assert_eq!(refined["state"], "settled");
+    assert_eq!(refined["note"], "Pasted");
+    assert_eq!(run.pasted("refined"), ["Refined: um so deploy to staging"]);
+    assert_eq!(
+        std::fs::read_to_string(run.path("refine-stdin")).unwrap(),
+        "fake-token\num so deploy to staging"
+    );
+    assert_eq!(
+        std::fs::read_to_string(run.path("refine-args"))
+            .unwrap()
+            .trim(),
+        "refine --token-stdin --duration-ms 300 --json"
+    );
+    assert_eq!(
+        text(&run.tree("pill", "refined"), "pill-status"),
+        Some("Pasted")
+    );
+    assert!(!visible(&run.tree("pill", "gone"), "pill"));
+
+    // A hold dictates until release.
+    assert_eq!(dictation(&run, "held")["note"], "Pasted");
+    assert_eq!(
+        run.pasted("held"),
+        ["Refined: um so deploy to staging", "Refined: held words"]
+    );
+    // The Dock menu copies the last dictation.
+    assert_eq!(
+        dictation(&run, "copy-last")["note"],
+        "Copied the last dictation"
+    );
+    assert_eq!(
+        run.copied("copy-last").as_deref(),
+        Some("Refined: held words")
+    );
+
+    // Without Accessibility the text goes to the clipboard, and the pill says why.
+    let copied = dictation(&run, "copied");
+    assert_eq!(copied["note"], "Copied — allow Accessibility to paste");
+    assert_eq!(run.pasted("copied").len(), 2);
+    assert_eq!(
+        run.copied("copied").as_deref(),
+        Some("Refined: copied words")
+    );
+}
+
+#[test]
+fn a_dictation_waiting_for_attn_pastes_raw_on_enter_nothing_on_esc_and_raw_past_its_deadline() {
+    let run = Run::new("dictation-refining.json", ONE_SESSION);
+
+    // ↩ while recording is the app's; while attn refines, it is the pill's.
+    let refining = dictation(&run, "refining");
+    assert_eq!(refining["state"], "refining");
+    assert_eq!(
+        text(&run.tree("pill", "refining"), "pill-status"),
+        Some("Refining… · ↩ paste as is · esc cancel")
+    );
+    assert_eq!(dictation(&run, "entered")["note"], "Pasted as is");
+    assert_eq!(run.pasted("entered"), ["raw words"]);
+    // attn's answer after ↩ is dropped.
+    assert_eq!(dictation(&run, "late")["note"], "Pasted as is");
+    assert_eq!(run.pasted("late"), ["raw words"]);
+
+    // Esc pastes nothing, and keeps the words for Copy Last Dictation.
+    let escaped = state(&run, "escaped");
+    assert_eq!(escaped["dictation"]["note"], "Cancelled · nothing pasted");
+    assert_eq!(escaped["last_dictation"], "never mind");
+    assert_eq!(run.pasted("escaped"), ["raw words"]);
+
+    // attn's limit for 0.2 s of speech is 15.05 s; Lens waits 2 s more.
+    assert_eq!(dictation(&run, "waiting")["state"], "refining");
+    let expired = dictation(&run, "expired");
+    assert_eq!(
+        expired["note"],
+        "Not refined: attn did not answer within 17 s · pasted as is"
+    );
+    assert_eq!(dictation(&run, "deadline-pasted")["state"], "settled");
+    assert_eq!(run.pasted("deadline-pasted"), ["raw words", "too slow"]);
+}
+
+#[test]
+fn an_empty_dictation_pastes_nothing_and_a_failed_refinement_pastes_raw_with_attns_error() {
+    let run = Run::new("dictation-fallbacks.json", ONE_SESSION);
+    assert_eq!(dictation(&run, "empty")["note"], "Didn't catch anything");
+    assert!(run.pasted("empty").is_empty());
+    assert!(
+        !run.path("refine-args").exists(),
+        "attn was asked about nothing"
+    );
+
+    // attn ran and failed.
+    std::fs::write(
+        run.path("refine-out"),
+        r#"{"profile_id":"default","success":false,"error":"the refinement agent exited 1"}"#,
+    )
+    .unwrap();
+    std::fs::write(run.path("refine-code"), "1").unwrap();
+    let failed = state(&run, "settled");
+    assert_eq!(
+        failed["dictation"]["note"],
+        "Not refined: the refinement agent exited 1 · pasted as is"
+    );
+    assert_eq!(run.pasted("settled"), ["raw words"]);
+
+    // attn no longer knows the token: Lens is unpaired, and the raw text pastes.
+    std::fs::remove_file(run.path("refine-out")).unwrap();
+    std::fs::write(
+        run.path("refine-err"),
+        "refine: the sender token matches no paired sender; it was unpaired or never allowed. Pair again with attn send pair --name <name>",
+    )
+    .unwrap();
+    let unpaired = state(&run, "settled");
+    assert!(
+        unpaired["dictation"]["note"]
+            .as_str()
+            .unwrap()
+            .starts_with("Not refined: refine: the sender token matches no paired sender"),
+        "{unpaired}"
+    );
+    assert!(unpaired["attn"].as_str().unwrap().starts_with("Unpaired"));
+    assert_eq!(run.pasted("settled"), ["raw words"]);
+
+    // No attn to run.
+    std::fs::set_permissions(run.path("attn"), std::fs::Permissions::from_mode(0o644)).unwrap();
+    let missing = dictation(&run, "settled");
+    let note = missing["note"].as_str().unwrap();
+    assert!(note.starts_with("Not refined: Could not run "), "{note}");
+    assert!(note.ends_with(" · pasted as is"), "{note}");
+    assert_eq!(run.pasted("settled"), ["raw words"]);
+}
+
+#[test]
+fn the_capture_key_during_a_dictation_hands_its_voice_and_words_to_the_capture() {
+    let run = Run::new("dictation-handover.json", ONE_SESSION);
+    // The dictation runs on while the area is picked.
+    assert_eq!(dictation(&run, "picking")["state"], "recording");
+
+    let open = state(&run, "open");
+    assert_eq!(open["dictation"], Value::Null);
+    assert_eq!(open["capture"]["segments"][0]["text"], "look at this");
+    // The capture's timeline starts where the talk did, at the voice key's frame.
+    let started = open["capture"]["started"].as_u64().unwrap();
+    assert!((100_000_000..120_000_000).contains(&started), "{started}");
+    assert_eq!(open["voice"]["state"], "listening");
+    assert!(!visible(&run.tree("pill", "open"), "pill"));
+
+    let stopped = state(&run, "stopped");
+    assert_eq!(stopped["capture"]["segments"][1]["text"], "and this");
+    assert_eq!(stopped["voice"]["state"], "off");
+    assert!(run.pasted("stopped").is_empty());
+    assert!(
+        !run.path("refine-args").exists(),
+        "a handed-over dictation was refined"
+    );
+}
+
+#[test]
+fn the_area_picker_takes_enter_and_esc_from_a_dictation_attn_is_refining() {
+    let run = Run::new("dictation-picker.json", ONE_SESSION);
+    let picking = state(&run, "picking");
+    assert_eq!(picking["dictation"]["state"], "refining");
+    assert!(picking["picking"].is_array());
+
+    // While the picker shows, ↩ is the picker's, not the dictation's.
+    let cancelled = state(&run, "cancelled");
+    assert_eq!(cancelled["picking"], Value::Null);
+    assert_eq!(cancelled["dictation"]["state"], "refining");
+    assert_eq!(run.app_keys("cancelled"), ["key:enter"]);
+
+    // A cancelled pick gives the waiting dictation its keys back.
+    assert_eq!(
+        dictation(&run, "escaped")["note"],
+        "Cancelled · nothing pasted"
+    );
+    assert_eq!(run.app_keys("escaped"), ["key:enter"]);
+    assert!(run.pasted("after").is_empty());
+}
+
+#[test]
+fn a_capture_taking_a_dictation_attn_is_refining_gives_enter_back_to_the_app() {
+    let run = Run::new("dictation-handover-refining.json", ONE_SESSION);
+    assert_eq!(dictation(&run, "refining")["state"], "refining");
+
+    let open = state(&run, "open");
+    assert_eq!(open["dictation"], Value::Null);
+    assert_eq!(open["capture"]["segments"][0]["text"], "look at this");
+
+    // Lens stops taking ↩ with the hand-over, so it reaches the app in front.
+    assert_eq!(dictation(&run, "after"), Value::Null);
+    assert_eq!(run.app_keys("after"), ["key:enter"]);
+    // The refinement still waiting when the capture took over is dropped unpasted.
+    assert!(run.pasted("after").is_empty());
 }

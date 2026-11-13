@@ -40,6 +40,7 @@ mach_timebase_info(&timebase)
 func now() -> UInt64 { mach_absolute_time() * UInt64(timebase.numer) / UInt64(timebase.denom) }
 func log(_ text: String) { print("\(now()) \(text)") }
 
+let lensPaste: Int64 = 0x4c45_4e53_5056
 let posted: Int64 = 0x4c454e53  // Marks the driver's own events, so real input stands out.
 let source = CGEventSource(stateID: .hidSystemState)!
 source.userData = posted
@@ -168,6 +169,11 @@ guard
             {
                 switcherEchoUntil = 0
                 log("switcher echo flagsChanged flags=0x\(String(event.flags.rawValue, radix: 16))")
+                return Unmanaged.passUnretained(event)
+            }
+            // Attn Lens's paste (src/paste.rs PASTE_MARKER) is the app under test, not a person.
+            if event.getIntegerValueField(.eventSourceUserData) == lensPaste {
+                log("lens paste event type \(type.rawValue)")
                 return Unmanaged.passUnretained(event)
             }
             if event.getIntegerValueField(.eventSourceUserData) != posted {
