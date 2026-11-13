@@ -50,10 +50,9 @@ const SESSION_MASK: u64 = (1 << EVENT_KEY_DOWN)
     | (1 << EVENT_OTHER_MOUSE_DOWN);
 const HID_MASK: u64 = 1 << EVENT_KEY_DOWN;
 
-/// How often the tap thread confirms its taps still run, and retries one it
-/// could not create. macOS can disable or invalidate a tap without telling it
-/// (after sleep, secure input, or an Accessibility change); without
-/// Accessibility no tap can be created until the user allows it. Hex's
+/// How often the tap thread confirms its taps still run, re-creates one macOS
+/// invalidated (after sleep, secure input, or an Accessibility change), and,
+/// until Lens is trusted, checks for an Accessibility grant. Hex's
 /// `TAP_HEALTH_INTERVAL_SECONDS`.
 const TAP_HEALTH_INTERVAL_SECONDS: f64 = 5.0;
 /// How often stale keys are sampled while some are tracked. Recovery needs two
@@ -86,6 +85,7 @@ unsafe extern "C" {
     fn CGEventGetTimestamp(event: EventRef) -> u64;
     fn CGEventGetIntegerValueField(event: EventRef, field: u32) -> i64;
     fn mach_absolute_time() -> u64;
+    fn AXIsProcessTrusted() -> bool;
 }
 
 #[link(name = "CoreFoundation", kind = "framework")]
@@ -154,8 +154,8 @@ pub struct Tap {
 }
 
 impl Tap {
-    /// Starts the taps and the machine. Without Accessibility the taps cannot be
-    /// created; they are retried every few seconds, so a grant takes effect
+    /// Starts the taps and the machine. Without Accessibility no tap is made;
+    /// trust is checked again every few seconds, so a grant takes effect
     /// without a relaunch.
     pub fn start(sink: Sink<KeyEvent>) -> Result<Self, String> {
         let (send, events) = mpsc::channel();
@@ -349,6 +349,20 @@ impl TapSet {
     fn check(&mut self) {
         // SAFETY: `context` outlives this set (see `run_taps`).
         let context = unsafe { &*self.context };
+        // Without Accessibility macOS still creates a listen-only tap, but never
+        // feeds it, not even once access is granted. Creating taps only once the
+        // process is trusted lets a grant reach the running app.
+        // SAFETY: a read-only query.
+        if self.taps.iter().all(Option::is_none) && !unsafe { AXIsProcessTrusted() } {
+            if !self.failing {
+                eprintln!(
+                    "Attn Lens: the capture, voice and draw keys cannot be read: \
+                     allow Attn Lens in Accessibility"
+                );
+            }
+            self.failing = true;
+            return;
+        }
         let mut interrupted = false;
         for kind in Kind::ALL {
             let slot = &mut self.taps[kind.index()];
