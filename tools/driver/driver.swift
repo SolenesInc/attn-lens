@@ -9,8 +9,8 @@
 // releases everything it holds, when:
 //   - the frontmost normal window does not belong to an app named by --front, checked
 //     before each posted key, click and scroll (exit 3);
-//   - real input arrives from the user during the run (exit 5); a flagsChanged that adds
-//     no modifier beyond those the driver holds is the app switcher's echo, and is logged;
+//   - real input arrives from the user during the run (exit 5); the app switcher's one
+//     modifier-free flagsChanged within a second of a posted ⌘Tab is logged, not real;
 //   - an `expect` does not come true (exit 4).
 //
 // Commands:
@@ -87,6 +87,8 @@ var heldNames = Set<String>()
 var buttonDown = false
 var pointer = CGPoint.zero
 var lastChordKeyDown: UInt64 = 0
+/// Until when the app switcher's answer to a posted ⌘Tab may arrive.
+var switcherEchoUntil: UInt64 = 0
 
 func post(_ event: CGEvent) {
     event.setIntegerValueField(.eventSourceUserData, value: posted)
@@ -148,15 +150,19 @@ guard
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                 fail("the real-input watch was disabled", 5)
             }
-            // The app switcher answers a posted ⌘Tab with a flagsChanged of its own. One
-            // that holds no modifier the driver is not holding is that echo, not a person.
-            let modifierMask: CGEventFlags = [
+            // The app switcher answers each posted ⌘Tab with one flagsChanged of its own,
+            // 250–300 ms after the driver lets ⌘ go, carrying no modifier. Let exactly that
+            // through: once per ⌘Tab, within a second, with nothing held, Caps Lock included.
+            let anyModifier: CGEventFlags = [
                 .maskCommand, .maskControl, .maskAlternate, .maskShift, .maskSecondaryFn,
+                .maskAlphaShift,
             ]
             if type == .flagsChanged, event.getIntegerValueField(.eventSourceUserData) != posted,
-                held.isSuperset(of: event.flags.intersection(modifierMask))
+                held.isEmpty, event.flags.intersection(anyModifier).isEmpty,
+                now() < switcherEchoUntil
             {
-                log("echo flagsChanged flags=0x\(String(event.flags.rawValue, radix: 16))")
+                switcherEchoUntil = 0
+                log("switcher echo flagsChanged flags=0x\(String(event.flags.rawValue, radix: 16))")
                 return Unmanaged.passUnretained(event)
             }
             if event.getIntegerValueField(.eventSourceUserData) != posted {
@@ -278,6 +284,7 @@ func run(_ line: String) {
         key(parts[2], false)
         pause(20)
         names.reversed().forEach { modifier($0, false) }
+        if names == ["cmd"], parts[2] == "tab" { switcherEchoUntil = now() + 1_000_000_000 }
     case "move":
         mouse(.mouseMoved, CGPoint(x: number(1), y: number(2)))
         log("posted move")
