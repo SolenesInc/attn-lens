@@ -40,7 +40,9 @@ Notable user-visible changes are recorded here.
   shows the model loading, the microphone starting and listening. Send waits for
   the sentence you are finishing. Missing Microphone access opens System Settings.
 - Missing Screen Recording access opens System Settings at launch and on **⌘⌥X**,
-  with a tile of the app to drag into the list (from Hex, MIT).
+  with a tile of the app to drag into the list (from Hex, MIT). The guide says Lens
+  is being set up, lists each access with why it is needed, and ends with quitting
+  and reopening Lens.
 - The editor interface follows the system’s light or dark appearance, including
   changes while Glance is running. Image content and exported media keep their colors.
 
