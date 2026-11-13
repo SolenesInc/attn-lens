@@ -19,7 +19,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 60
     env:
-      MACOSX_DEPLOYMENT_TARGET: "12.0"
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,9 +47,9 @@ jobs:
           cargo test --locked
       - name: Build native helpers and test video and OCR
         run: |
-          /usr/bin/swiftc -target "$(uname -m)-apple-macosx12.0" -O native/video_encoder.swift -o target/glance-video-encoder
-          /usr/bin/swiftc -target "$(uname -m)-apple-macosx12.0" -O native/video_frame.swift -o target/glance-video-frame
-          /usr/bin/swiftc -target "$(uname -m)-apple-macosx12.0" -O native/ocr.swift -o target/glance-ocr
+          /usr/bin/swiftc -target "$(uname -m)-apple-macosx15.0" -O native/video_encoder.swift -o target/glance-video-encoder
+          /usr/bin/swiftc -target "$(uname -m)-apple-macosx15.0" -O native/video_frame.swift -o target/glance-video-frame
+          /usr/bin/swiftc -target "$(uname -m)-apple-macosx15.0" -O native/ocr.swift -o target/glance-ocr
           cargo test --locked native_video_roundtrip -- --ignored
           cargo test --locked native_ocr_recognizes_synthetic_text_and_regions -- --ignored
 
