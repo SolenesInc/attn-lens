@@ -9,6 +9,7 @@ pub mod editor;
 pub mod effects;
 pub mod enhance;
 pub mod gif_export;
+pub mod keys;
 pub mod lens;
 #[cfg(target_os = "linux")]
 pub mod linux_compute;

@@ -1,7 +1,10 @@
 //! The headless port. A Rune script drives it with marks, on the virtual clock:
 //!
 //! ```text
-//! key:draw-down  key:draw-up  key:capture  key:voice  key:keyboard  key:send
+//! key:draw-down  key:draw-up  key:keyboard  key:send
+//! key:capture                a tap of the capture key, right ⌘
+//! key:voice                  a tap of the voice key, right ⌥
+//! key:voice-hold  key:voice-release  the voice key held past the threshold, then up
 //! key:shift-down  key:shift-up
 //! watch:click  watch:scroll  watch:switch  watch:change:0.7
 //! screen:0.7                 the screen changes by 0.7 of the area, unseen until
@@ -30,8 +33,8 @@
 //! it as `image.png` and `text.txt`, so a test can read what a user would paste.
 //! `ATTN_LENS_FAKE_VIDEO_ENCODER` names a stand-in for the MP4 helper.
 use super::{
-    Chord, FAKE_TICK, KeyEvent, PlatformPort, Sink, Voice, VoiceEvent, VoiceSource, VoiceStatus,
-    Watch, WatchEvent,
+    Chord, FAKE_TICK, KeyEvent, PlatformPort, Press, Sink, Voice, VoiceEvent, VoiceSource,
+    VoiceStatus, Watch, WatchEvent,
 };
 use crate::lens::session::{Area, DisplayFrame, HostTime, Segment};
 use image::{Rgba, RgbaImage};
@@ -236,7 +239,9 @@ fn key_event(mark: &str) -> Option<KeyEvent> {
         "draw-down" => KeyEvent::DrawDown,
         "draw-up" => KeyEvent::DrawUp,
         "capture" => KeyEvent::Pressed(Chord::Capture),
-        "voice" => KeyEvent::Pressed(Chord::Voice),
+        "voice" => KeyEvent::Voice(Press::Tap),
+        "voice-hold" => KeyEvent::Voice(Press::HoldStart),
+        "voice-release" => KeyEvent::Voice(Press::HoldEnd),
         "keyboard" => KeyEvent::Pressed(Chord::Keyboard),
         "send" => KeyEvent::Pressed(Chord::Send),
         _ => return None,
@@ -321,6 +326,9 @@ impl PlatformPort for FakePort {
         self.shift.load(Ordering::SeqCst)
     }
     fn screen_recording(&self) -> bool {
+        true
+    }
+    fn accessibility(&self) -> bool {
         true
     }
     fn still(&self, area: Area) -> Result<RgbaImage, String> {

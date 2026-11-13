@@ -22,33 +22,36 @@ Notable user-visible changes are recorded here.
 - The editor's Backdrop and Animation panels are back on Rune: formats, padding,
   corners, shadow, solid, gradient and moving backgrounds, entrance effects with
   Hold or Exit, playback, and GIF and MP4 export with progress and Cancel.
-- **Attn Lens**: ⌘⌥X opens a crosshair over the live screen: drag for an area,
+- **Attn Lens**: a tap of right ⌘ alone, the capture key, opens a crosshair over the live screen: drag for an area,
   click for the whole display, ↩ for the last area, Esc to cancel. The area stays
   outlined for the whole capture, its corners adjust it, and the page under it
   keeps working. Hold fn and drag to draw: a straight drag is an arrow, any other
   stays freehand, and ⇧ makes a box; the bar's tool row sets highlight, label or
   counter for the next stroke. Type a message in the bar, or click the page to give
-  it the keys and ⌘⌥C to take them back. ⌘⌥X takes a still, × drops one, Tab opens a
+  it the keys and ⌘⌥C to take them back. The capture key takes a still, × drops one, Tab opens a
   palette of sessions, and ↩ or ⌘⌥↩ sends to an attn session, local or on an
   outpost. Lens pairs with attn once and keeps the token in the Keychain.
 - Ink fades on its own when the screen moves under it: a scroll, a click, a window
   switch, or most of the area changing. Clicks and window switches each take a still
   first, and a send takes one more if the screen moved after the last.
-- Voice in Attn Lens: ⌘⌥S during a capture transcribes what you say on this Mac,
-  phrase by phrase, each with the time it was spoken; ⌘⌥S again stops. The first
-  ⌘⌥S downloads the speech model (731 MB) with its progress in the bar, which then
+- Voice in Attn Lens: during a capture, tap right ⌥ to talk and again to stop, or
+  hold it and talk until you let go. What you say is transcribed on this Mac,
+  phrase by phrase, each with the time it was spoken. A key pressed with right ⌘
+  or right ⌥ (right ⌘+C, right ⌥+e) is left to the app in front. The first voice
+  downloads the speech model (731 MB) with its progress in the bar, which then
   shows the model loading, the microphone starting and listening. Send waits for
   the sentence you are finishing. Missing Microphone access opens System Settings.
-- Missing Screen Recording access opens System Settings at launch and on **⌘⌥X**,
+- Missing Screen Recording access opens System Settings at launch and on the capture key,
   with a tile of the app to drag into the list (from Hex, MIT). The guide says Lens
   is being set up, lists each access with why it is needed, and ends with quitting
-  and reopening Lens.
+  and reopening Lens. Missing Accessibility, which the capture, voice and draw keys
+  need, opens the same guide at the Accessibility list.
 - The editor interface follows the system’s light or dark appearance, including
   changes while Glance is running. Image content and exported media keep their colors.
 
 ### Changed
 
-- Attn Lens now runs on Rune instead of GPUI. ⌘⌥X replaces ⌘⌥2 and starts a capture
+- Attn Lens now runs on Rune instead of GPUI. A tap of right ⌘ replaces ⌘⌥2 and starts a capture
   of the display under the pointer; a Dock click opens the editor. The in-place
   overlay and the full editor return in later changes.
 - Removed Ask Glance, glance.sh share links, the MCP server and the terminal commands.

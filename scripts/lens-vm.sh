@@ -18,6 +18,8 @@
 #                                        from screen, scroll, zoom, light and dark
 #   scripts/lens-vm.sh tile OUT          run lens-tile.sh in the VM: tile hover and click, Back
 #   scripts/lens-vm.sh switch OUT        run lens-switch.sh in the VM: draw, ⌘Tab, draw, ⌘Tab, draw
+#   scripts/lens-vm.sh keys OUT          run lens-keys.sh in the VM: right ⌘ and right ⌥ alone
+#                                        and in chords with TextEdit, and the Accessibility guide
 #   scripts/lens-vm.sh sh COMMAND       run a shell command in the VM's GUI session
 #   scripts/lens-vm.sh pull PATH DEST    copy a file or folder out of the VM
 #   scripts/lens-vm.sh destroy           stop and delete the VM
@@ -159,6 +161,15 @@ switch)
     in_vm /usr/bin/env LENS_DRIVER_WINDOW=vm /bin/sh -c "cd '$GUEST_ROOT' && rm -rf switch-out && scripts/lens-switch.sh '$GUEST_ROOT/switch-out'" || status=$?
     mkdir -p "$2"
     in_vm /usr/bin/tar cf - -C "$GUEST_ROOT/switch-out" . | tar xf - -C "$2"
+    exit "$status"
+    ;;
+keys)
+    [ $# -eq 2 ] || die "usage: lens-vm.sh keys OUT"
+    start
+    status=0
+    in_vm /usr/bin/env LENS_DRIVER_WINDOW=vm /bin/sh -c "cd '$GUEST_ROOT' && rm -rf keys-out && scripts/lens-keys.sh '$GUEST_ROOT/keys-out'" || status=$?
+    mkdir -p "$2"
+    in_vm /usr/bin/tar cf - -C "$GUEST_ROOT/keys-out" . | tar xf - -C "$2"
     exit "$status"
     ;;
 sh)

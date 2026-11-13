@@ -1,5 +1,5 @@
 #!/bin/bash
-# The driven voice check, against the installed Attn Lens: ⌘⌥S plays a fixture WAV
+# The driven voice check, against the installed Attn Lens: the voice key (right ⌥) plays a fixture WAV
 # through the real speech helper in place of the microphone, and the socket shows
 # each phrase on the capture clock beside a still taken during it. Posts real keys,
 # so run it through `scripts/lens-vm.sh voice OUT`; on a real Mac, only in a window
@@ -33,14 +33,14 @@ dock Attn Lens
 expect "editor":true
 wait 500
 watch-window Attn Lens
-chord cmd+opt x
+tap rcmd
 await-window
 expect "picking":[
 lens {"cmd":"pick"}
 expect "capture":{
 lens {"cmd":"voice-wav","path":"$WAV"}
 mark voice-pressed
-chord cmd+opt s
+tap ropt
 SCRIPT
 "$OUT/driver" --front "Attn Lens" "$OUT/open.txt" | tee "$OUT/driver.log"
 
@@ -67,7 +67,7 @@ print(reply["generation"], int(state["error"] is not None),
     last="$now"
     case "$now" in
     *'"listening"'*) break ;;
-    # ⌘⌥S may take a moment to arrive; off once voice has begun, or with an
+    # The voice key may take a moment to arrive; off once voice has begun, or with an
     # error, means it failed.
     *'"off"'*) [ -z "$began" ] && [ "$failed" = 0 ] || { echo "voice stopped: $reply" >&2; exit 1; } ;;
     *) began=1 ;;
@@ -80,11 +80,11 @@ cat >"$OUT/talk.txt" <<SCRIPT
 mark listening
 wait $((AUDIO_MS / 2))
 mark still
-chord cmd+opt x
+tap rcmd
 expect "cause":"hotkey"
 wait $((AUDIO_MS / 2 + 500))
 mark voice-stopped
-chord cmd+opt s
+tap ropt
 expect "voice":{"state":"off"}
 lens {"cmd":"state"}
 SCRIPT

@@ -48,7 +48,7 @@ click 100 300
 wait 300
 
 watch-window Attn Lens
-chord cmd+opt x
+tap rcmd
 await-window
 expect "picking":[
 move 200 200
