@@ -384,6 +384,8 @@ impl Lens {
             document
         };
         self.changed();
+        // The editor is a window of its own: it makes Lens the active app.
+        self.port.hold_front();
         self.call_editor(EditorCall::Open {
             still: id,
             document: Box::new(document),
@@ -561,6 +563,7 @@ impl Lens {
     pub fn cancel_pick(&self) {
         self.state.lock().unwrap().picking = None;
         self.changed();
+        self.port.return_front();
     }
 
     /// Starts a capture from the picker: `rect` on `display`, or the whole display.
@@ -1101,6 +1104,9 @@ impl Lens {
         drop(state);
         self.port.capture_keys(false);
         self.changed();
+        // The capture has no window left to take the keyboard, so it goes back to the app
+        // the user was in.
+        self.port.return_front();
         if was_editing {
             self.leave_editor(false);
         }

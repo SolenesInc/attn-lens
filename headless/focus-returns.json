@@ -1,0 +1,260 @@
+{
+ "displays": [
+  {
+   "id": 1,
+   "frame": [
+    0,
+    0,
+    1280,
+    800
+   ],
+   "scale": 2,
+   "primary": true
+  }
+ ],
+ "pointer": [
+  400,
+  300
+ ],
+ "events": [
+  {
+   "t": 0.15,
+   "type": "mark",
+   "name": "front:Terminal"
+  },
+  {
+   "t": 0.25,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 0.35,
+   "type": "drag",
+   "x": 100,
+   "y": 100,
+   "dx": 400,
+   "dy": 300,
+   "dur": 0.1
+  },
+  {
+   "t": 0.55,
+   "type": "mark",
+   "name": "open"
+  },
+  {
+   "t": 0.65,
+   "type": "type",
+   "text": "hi"
+  },
+  {
+   "t": 0.75,
+   "type": "key",
+   "name": "Enter"
+  },
+  {
+   "t": 1.05,
+   "type": "mark",
+   "name": "bar-sent"
+  },
+  {
+   "t": 1.15,
+   "type": "mark",
+   "name": "front:Browser"
+  },
+  {
+   "t": 1.25,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 1.35,
+   "type": "drag",
+   "x": 100,
+   "y": 100,
+   "dx": 400,
+   "dy": 300,
+   "dur": 0.1
+  },
+  {
+   "t": 1.55,
+   "type": "mark",
+   "name": "open"
+  },
+  {
+   "t": 1.65,
+   "type": "mark",
+   "name": "key:send"
+  },
+  {
+   "t": 1.95,
+   "type": "mark",
+   "name": "hotkey-sent"
+  },
+  {
+   "t": 2.05,
+   "type": "mark",
+   "name": "front:Terminal"
+  },
+  {
+   "t": 2.15,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 2.25,
+   "type": "drag",
+   "x": 100,
+   "y": 100,
+   "dx": 400,
+   "dy": 300,
+   "dur": 0.1
+  },
+  {
+   "t": 2.45,
+   "type": "mark",
+   "name": "open"
+  },
+  {
+   "t": 2.55,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 2.85,
+   "type": "mark",
+   "name": "escaped"
+  },
+  {
+   "t": 2.95,
+   "type": "mark",
+   "name": "front:Browser"
+  },
+  {
+   "t": 3.05,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 3.25,
+   "type": "mark",
+   "name": "picking"
+  },
+  {
+   "t": 3.35,
+   "type": "key",
+   "name": "Escape"
+  },
+  {
+   "t": 3.55,
+   "type": "mark",
+   "name": "pick-cancelled"
+  },
+  {
+   "t": 3.65,
+   "type": "mark",
+   "name": "front:Browser"
+  },
+  {
+   "t": 3.75,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 3.85,
+   "type": "drag",
+   "x": 100,
+   "y": 100,
+   "dx": 400,
+   "dy": 300,
+   "dur": 0.1
+  },
+  {
+   "t": 4.05,
+   "type": "mark",
+   "name": "open"
+  },
+  {
+   "t": 4.15,
+   "type": "mark",
+   "name": "key:draw-down"
+  },
+  {
+   "t": 4.25,
+   "type": "drag",
+   "x": 150,
+   "y": 150,
+   "dx": 100,
+   "dy": 40,
+   "dur": 0.05
+  },
+  {
+   "t": 4.35,
+   "type": "mark",
+   "name": "key:draw-up"
+  },
+  {
+   "t": 4.45,
+   "type": "mark",
+   "name": "drawn"
+  },
+  {
+   "t": 4.65,
+   "type": "tap",
+   "key": "edit"
+  },
+  {
+   "t": 4.95,
+   "type": "mark",
+   "name": "editing"
+  },
+  {
+   "t": 5.15,
+   "type": "tap",
+   "key": "send-capture"
+  },
+  {
+   "t": 5.55,
+   "type": "mark",
+   "name": "editor-sent"
+  },
+  {
+   "t": 5.65,
+   "type": "mark",
+   "name": "front:Terminal"
+  },
+  {
+   "t": 5.75,
+   "type": "mark",
+   "name": "key:capture"
+  },
+  {
+   "t": 5.85,
+   "type": "drag",
+   "x": 100,
+   "y": 100,
+   "dx": 400,
+   "dy": 300,
+   "dur": 0.1
+  },
+  {
+   "t": 6.05,
+   "type": "mark",
+   "name": "open"
+  },
+  {
+   "t": 6.15,
+   "type": "mark",
+   "name": "front:Browser"
+  },
+  {
+   "t": 6.25,
+   "type": "mark",
+   "name": "key:send"
+  },
+  {
+   "t": 6.55,
+   "type": "mark",
+   "name": "moved-on"
+  }
+ ]
+}

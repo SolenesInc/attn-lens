@@ -48,6 +48,10 @@ The capture shrinks to a tile in the corner of the display. It leaves after 5
 seconds, and stays while the pointer is on it. Click it to reopen the capture as
 it was, for example to send it to a second session.
 
+When a capture ends, by Send, **⌘⌥↩**, Esc or Send in the editor, the keyboard
+goes back to the app and window you were in, unless you have already moved to
+another app.
+
 **Esc** closes a capture without sending. If it holds a still, it keeps a tile
 that stays until you click it, press its **×**, or start another capture, which
 takes the tile's place.

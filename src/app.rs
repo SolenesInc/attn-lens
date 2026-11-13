@@ -194,6 +194,7 @@ impl Surfaces {
                     .position(|d| Ok(d.id) == under_pointer)
                     .unwrap_or(0);
                 if let Some(picker) = self.pickers.get(slot) {
+                    lens.port().hold_front();
                     picker.take_keys();
                 }
             }
@@ -279,6 +280,7 @@ impl Surfaces {
             self.bar.hide();
         }
         if now.area.is_some() && was.bar_key_requests != now.bar_key_requests {
+            lens.port().hold_front();
             self.bar.open();
         }
     }

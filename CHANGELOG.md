@@ -59,6 +59,8 @@ Notable user-visible changes are recorded here.
 
 ### Fixed
 
+- Sending from the editor, like every other way a capture ends, gives the keyboard
+  back to the app you were in, so you can keep typing without a click.
 - Attn Lens's session chip cuts a long session label with "…" inside the chip and
   keeps the host readable. The Tab palette shows states in words ("waiting for
   you", "needs approval") and an outpost's name, or "outpost" and a short id

@@ -19,7 +19,11 @@ use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
 };
 use image::RgbaImage;
-use objc2::{msg_send, runtime::AnyClass};
+use objc2::{
+    msg_send,
+    rc::Retained,
+    runtime::{AnyClass, AnyObject},
+};
 use std::{
     cell::RefCell,
     ffi::c_void,
@@ -105,6 +109,37 @@ pub(crate) fn queue_on_main(job: impl FnOnce() + Send + 'static) {
 pub struct MacPort {
     speech: Arc<Speech>,
     draw_key: Mutex<DrawKey>,
+    /// The process that had the keyboard when Lens last took it, as `hold_front` saw it.
+    held_front: Arc<Mutex<Option<i32>>>,
+}
+
+/// The process of the app that is active now.
+fn frontmost_pid() -> Option<i32> {
+    let class = AnyClass::get(c"NSWorkspace")?;
+    // SAFETY: `sharedWorkspace` and `frontmostApplication` return live objects or nil, and
+    // `processIdentifier` is a plain integer property.
+    unsafe {
+        let workspace: Retained<AnyObject> = msg_send![class, sharedWorkspace];
+        let app: Option<Retained<AnyObject>> = msg_send![&workspace, frontmostApplication];
+        app.map(|app| msg_send![&app, processIdentifier])
+    }
+}
+
+/// Hands the active app to `pid`. Lens is the active app when this runs, so it may
+/// activate another (macOS 14's cooperative activation); a process that has quit is skipped.
+fn activate_from_lens(pid: i32) {
+    let Some(class) = AnyClass::get(c"NSRunningApplication") else {
+        return;
+    };
+    // SAFETY: both receivers are live objects or nil, and the option is `0`: none.
+    unsafe {
+        let target: Option<Retained<AnyObject>> =
+            msg_send![class, runningApplicationWithProcessIdentifier: pid];
+        let me: Retained<AnyObject> = msg_send![class, currentApplication];
+        if let Some(target) = target {
+            let _: bool = msg_send![&target, activateFromApplication: &*me, options: 0usize];
+        }
+    }
 }
 
 impl MacPort {
@@ -115,6 +150,7 @@ impl MacPort {
                 sink: None,
                 poll: None,
             }),
+            held_front: Arc::default(),
         }
     }
 
@@ -238,6 +274,25 @@ impl PlatformPort for MacPort {
         on_main(move || {
             if let Err(error) = install_hotkeys(sink) {
                 eprintln!("Attn Lens: {error}");
+            }
+        });
+    }
+
+    fn hold_front(&self) {
+        // Lens itself being in front means an earlier hold already noted the app before it.
+        if let Some(pid) = frontmost_pid().filter(|&pid| pid != std::process::id() as i32) {
+            *self.held_front.lock().unwrap() = Some(pid);
+        }
+    }
+
+    fn return_front(&self) {
+        let Some(pid) = self.held_front.lock().unwrap().take() else {
+            return;
+        };
+        // Asked on the main thread, where the answer cannot change under the activation.
+        on_main(move || {
+            if frontmost_pid() == Some(std::process::id() as i32) {
+                activate_from_lens(pid);
             }
         });
     }
