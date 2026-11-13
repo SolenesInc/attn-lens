@@ -54,7 +54,7 @@ JPEG. It has crop, pixelate, callouts, backdrops, OCR, and GIF and MP4 export. S
 
 ## Permissions
 
-Lens needs two accesses:
+Lens needs these accesses:
 
 - **Screen Recording**, to take stills. When it is missing, Lens opens System
   Settings at the list as it launches, and again on **⌘⌥X**, with a guide that

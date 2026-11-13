@@ -558,17 +558,21 @@ void lens_show_permission_guide(int permission) {
                      guideInset, y) + 4;
     y = addGuideText(content,
                      [[NSAttributedString alloc]
-                         initWithString:[NSString stringWithFormat:@"%@ needs two accesses:", appName]
+                         initWithString:[NSString stringWithFormat:@"%@ needs these accesses:", appName]
                              attributes:@{
                                  NSFontAttributeName: [NSFont systemFontOfSize:12],
                                  NSForegroundColorAttributeName: NSColor.secondaryLabelColor,
                              }],
                      guideInset, y) + 6;
-    y = addGuideText(content, guideText(@"Screen Recording", @" — to take stills of your screen.", 13),
-                     guideInset + 10, y) + 2;
-    y = addGuideText(content,
-                     guideText(@"Microphone", @" — for voice. macOS asks on your first ⌘⌥S.", 13),
-                     guideInset + 10, y) + 14;
+    // One entry per access Lens asks for. A new one is a new row here.
+    NSArray<NSArray<NSString *> *> *accesses = @[
+        @[ @"Screen Recording", @" — to take stills of your screen." ],
+        @[ @"Microphone", @" — for voice. macOS asks on your first ⌘⌥S." ],
+    ];
+    for (NSArray<NSString *> *access in accesses) {
+        y = addGuideText(content, guideText(access[0], access[1], 13), guideInset + 10, y) + 2;
+    }
+    y += 12;
 
     y = addGuideStep(content, 1,
                      guideText(@"Drag ", [NSString stringWithFormat:
