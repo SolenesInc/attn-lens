@@ -27,8 +27,8 @@ const STRAIGHT_RATIO: f32 = 0.08;
 /// A longer path than this means the hand went back along the line.
 const STRAIGHT_PATH_RATIO: f32 = 1.15;
 /// A stroke that starts this soon after the last one ended, this close to it,
-/// is writing, so neither stays an arrow. Tripwires past the gaps and distances
-/// measured between strokes of handwritten words; see `docs/send.md`.
+/// is writing, so neither stays an arrow. Provisional estimates, not yet measured
+/// against the user's handwriting.
 pub const BURST_GAP: std::time::Duration = std::time::Duration::from_millis(1500);
 const BURST_REACH: f32 = 60.;
 /// `validate_mark`'s limit: past it the editor would refuse the mark.
