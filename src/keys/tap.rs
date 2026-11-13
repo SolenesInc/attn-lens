@@ -304,6 +304,10 @@ struct Context {
     /// The keys whose press the session tap took, one bit per entry of
     /// [`TAKEN_KEYS`], so their repeats and release are taken too.
     taken: AtomicU16,
+    /// Whether fn is down, from the modifier events this tap has passed on. The
+    /// key events that follow arrive in the same order, so a digit typed just
+    /// after fn comes up is never taken while Lens has yet to hear of the release.
+    fn_down: AtomicBool,
 }
 
 impl Context {
@@ -312,9 +316,9 @@ impl Context {
     }
 
     /// Whether the session tap takes this key event from the app in front: a
-    /// bare ↩ or Esc pressed while the pill waits, or a digit pressed while the
-    /// ink layer takes the pointer (so fn is down; ⇧ may be too), and its repeats
-    /// and release.
+    /// bare ↩ or Esc pressed while the pill waits, or a digit pressed with fn
+    /// (and maybe ⇧) while the ink layer takes the pointer, and its repeats and
+    /// release.
     fn take(&self, code: u16, down: bool, flags: u64) -> bool {
         let Some(index) = TAKEN_KEYS.iter().position(|(c, _)| *c == code) else {
             return false;
@@ -336,6 +340,7 @@ impl Context {
             }
             _ => {
                 flags & (CONTROL | OPTION | COMMAND) == 0
+                    && self.fn_down.load(Ordering::Acquire)
                     && self.takes.tools.load(Ordering::Acquire)
             }
         };
@@ -526,6 +531,7 @@ fn run_taps(send: Sender<Tapped>, takes: Takes) {
         ],
         takes,
         taken: AtomicU16::new(0),
+        fn_down: AtomicBool::new(false),
     });
     // SAFETY: this is the tap thread's own run loop.
     let run_loop = unsafe { CFRunLoopGetCurrent() };
@@ -612,7 +618,12 @@ unsafe extern "C" fn session_callback(
     // SAFETY: CoreGraphics supplied a valid event to this callback.
     let flags = unsafe { CGEventGetFlags(event) };
     let input = match event_type {
-        EVENT_FLAGS_CHANGED => InputEvent::Flags(flags),
+        EVENT_FLAGS_CHANGED => {
+            context
+                .fn_down
+                .store(flags & super::FUNCTION != 0, Ordering::Release);
+            InputEvent::Flags(flags)
+        }
         EVENT_KEY_DOWN | EVENT_KEY_UP => InputEvent::Key {
             // SAFETY: a valid keyboard event.
             code: unsafe { CGEventGetIntegerValueField(event, KEYBOARD_EVENT_KEYCODE) } as u16,
@@ -680,6 +691,7 @@ mod tests {
             ],
             takes,
             taken: AtomicU16::new(0),
+            fn_down: AtomicBool::new(true),
         };
         (context, events)
     }
@@ -734,6 +746,16 @@ mod tests {
             "a new press goes to the app"
         );
         assert_eq!(taken(&events), [KeyEvent::Tool(2)]);
+    }
+
+    #[test]
+    fn a_digit_typed_after_fn_comes_up_reaches_the_app_before_lens_hears_of_it() {
+        // Lens still takes tool keys: the release is on its way to it.
+        let (context, events) = context(false, true);
+        context.fn_down.store(false, Ordering::Release);
+        assert!(!context.take(DIGIT_2, true, 0));
+        assert!(!context.take(DIGIT_2, false, 0));
+        assert!(taken(&events).is_empty());
     }
 
     #[test]
