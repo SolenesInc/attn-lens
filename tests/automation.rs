@@ -5,7 +5,6 @@ use attn_lens::{
 };
 use serde_json::Value;
 use std::{
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -32,9 +31,9 @@ impl Harness {
 /// A stand-in that records its arguments and the PNGs as they were when sent.
 fn stand_in(dir: &Path) -> PathBuf {
     let bin = dir.join("attn");
-    std::fs::write(
+    attn_lens::stand_in::write_executable(
         &bin,
-        format!(
+        &format!(
             r#"#!/bin/sh
 cat > /dev/null
 if [ "$2" = "sessions" ]; then echo '[{{"id":"s1","label":"one","agent":"claude","state":"idle"}}]'; exit 0; fi
@@ -46,9 +45,7 @@ echo '{{"id":"cap"}}'
 "#,
             dir = dir.display()
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     bin
 }
 
