@@ -1189,3 +1189,11 @@ fn esc_during_a_send_that_finishes_voice_leaves_no_stuck_voice() {
     let run = Run::new("roundtrip-send-esc-voice.json", ONE_SESSION);
     assert_eq!(state(&run, "reopened")["voice"]["state"], "off");
 }
+
+#[test]
+fn bar_keys_work_with_the_field_not_focused() {
+    let run = Run::new("bar-keys-off-field.json", ONE_SESSION);
+    assert!(element(&run.tree("bar", "palette"), "palette-label-0").is_some());
+    assert!(element(&run.tree("bar", "palette-closed"), "palette-label-0").is_none());
+    assert_eq!(state(&run, "escaped")["capture"], Value::Null);
+}

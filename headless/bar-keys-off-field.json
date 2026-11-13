@@ -1,0 +1,15 @@
+{"displays":[{"id":1,"frame":[0,0,1280,800],"scale":2,"primary":true}],
+ "pointer":[400,300],
+ "events":[
+ {"t":0.1,"type":"mark","name":"key:capture"},
+ {"t":0.2,"type":"drag","x":200,"y":100,"dx":400,"dy":300,"dur":0.1},
+ {"t":0.4,"type":"mark","name":"open"},
+ {"t":0.5,"type":"tap","key":"keys"},
+ {"t":0.6,"type":"mark","name":"off-field"},
+ {"t":0.7,"type":"key","name":"Tab"},
+ {"t":0.8,"type":"mark","name":"palette"},
+ {"t":0.9,"type":"key","name":"Escape"},
+ {"t":1.0,"type":"mark","name":"palette-closed"},
+ {"t":1.1,"type":"key","name":"Escape"},
+ {"t":1.2,"type":"mark","name":"escaped"}
+]}
