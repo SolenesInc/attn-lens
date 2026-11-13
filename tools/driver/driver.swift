@@ -9,7 +9,8 @@
 // releases everything it holds, when:
 //   - the frontmost normal window does not belong to an app named by --front, checked
 //     before each posted key, click and scroll (exit 3);
-//   - real input arrives from the user during the run (exit 5);
+//   - real input arrives from the user during the run (exit 5); a flagsChanged that adds
+//     no modifier beyond those the driver holds is the app switcher's echo, and is logged;
 //   - an `expect` does not come true (exit 4).
 //
 // Commands:
@@ -146,6 +147,17 @@ guard
         callback: { _, type, event, _ in
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                 fail("the real-input watch was disabled", 5)
+            }
+            // The app switcher answers a posted ⌘Tab with a flagsChanged of its own. One
+            // that holds no modifier the driver is not holding is that echo, not a person.
+            let modifierMask: CGEventFlags = [
+                .maskCommand, .maskControl, .maskAlternate, .maskShift, .maskSecondaryFn,
+            ]
+            if type == .flagsChanged, event.getIntegerValueField(.eventSourceUserData) != posted,
+                held.isSuperset(of: event.flags.intersection(modifierMask))
+            {
+                log("echo flagsChanged flags=0x\(String(event.flags.rawValue, radix: 16))")
+                return Unmanaged.passUnretained(event)
             }
             if event.getIntegerValueField(.eventSourceUserData) != posted {
                 fail("real input arrived: event type \(type.rawValue)", 5)
