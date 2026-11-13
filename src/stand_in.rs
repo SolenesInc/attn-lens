@@ -37,13 +37,13 @@ pub fn write_executable(path: &Path, body: &str) {
     );
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
 
     /// Threads that fork all the time, as the other tests in a binary do, cannot make
-    /// a freshly written stand-in refuse to run.
+    /// a freshly written stand-in refuse to run. Linux only: ETXTBSY is its race.
     #[test]
     fn a_stand_in_runs_while_other_threads_fork() {
         let stop = AtomicBool::new(false);
