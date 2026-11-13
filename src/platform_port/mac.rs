@@ -165,6 +165,8 @@ impl PlatformPort for MacPort {
     }
 
     fn keys(&self, sink: Sink<KeyEvent>) {
+        // On the UI thread, where the keyboard layout may be read.
+        crate::paste::prepare();
         match Tap::start(sink.clone()) {
             Ok(tap) => {
                 let _ = self.tap.set(tap);
@@ -200,6 +202,12 @@ impl PlatformPort for MacPort {
                 }
             });
         });
+    }
+
+    fn pill_keys(&self, on: bool) {
+        if let Some(tap) = self.tap.get() {
+            tap.pill_keys(on);
+        }
     }
 
     fn pointer_display(&self) -> Result<Area, String> {
@@ -277,6 +285,10 @@ impl PlatformPort for MacPort {
         arboard::Clipboard::new()
             .and_then(|mut clipboard| clipboard.set_text(text))
             .map_err(|e| e.to_string())
+    }
+
+    fn paste(&self, text: &str) -> Result<(), String> {
+        crate::paste::paste(text)
     }
 
     fn ocr(&self, image: &RgbaImage, rectangle: Option<[u32; 4]>) -> Result<String, String> {

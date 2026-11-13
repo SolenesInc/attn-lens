@@ -6,6 +6,7 @@ use crate::{
         EditorCall, Input, KeyOwner, Lens, Summary, automation,
         bar::{self, Bar},
         ink::{Corner, Handle, Ink, handle_view, ink_view},
+        pill::{self, Pill},
         select::{self, PICKER_SLOTS, Picker},
         session::{Area, DisplayFrame},
         tile::{self, Tile},
@@ -140,6 +141,7 @@ struct Shown {
     bar_rect: Option<[f32; 4]>,
     bar_key_requests: u64,
     tile: Option<(u32, [f32; 4])>,
+    pill: Option<(u32, [f32; 4])>,
 }
 
 impl Shown {
@@ -163,6 +165,11 @@ impl Shown {
                 .tile
                 .as_ref()
                 .map(|t| (t.display.id, tile::placement(t.display))),
+            pill: summary
+                .dictation
+                .as_ref()
+                .and(summary.dictation_display)
+                .map(|display| (display.id, pill::placement(display))),
         }
     }
 }
@@ -173,6 +180,7 @@ struct Surfaces {
     handles: Vec<Surface<Handle>>,
     bar: AppHandle<Bar>,
     tile: Surface<Tile>,
+    pill: Surface<Pill>,
 }
 
 impl Surfaces {
@@ -275,6 +283,26 @@ impl Surfaces {
                 None => self.tile.hide(),
             }
         }
+        if was.pill != now.pill {
+            match now.pill {
+                Some((display, [x, y, width, height])) => {
+                    self.pill.place(
+                        display,
+                        OverlayPlacement::Rect {
+                            x,
+                            y,
+                            width,
+                            height,
+                        },
+                    );
+                    if was.pill.is_none() {
+                        self.pill.show();
+                        lens.pill_shown();
+                    }
+                }
+                None => self.pill.hide(),
+            }
+        }
         if now.area.is_none() && was.area.is_some() {
             self.bar.hide();
         }
@@ -289,6 +317,7 @@ impl Surfaces {
         }
         self.ink.refresh();
         self.tile.refresh();
+        self.pill.refresh();
         for handle in &self.handles {
             handle.refresh();
         }
@@ -317,6 +346,7 @@ pub fn run() -> Result<(), String> {
                     ],
                     // A headless display has no menu bar; the fake gives one.
                     menu_bar: 0.,
+                    dock: 0.,
                 })
                 .collect(),
         );
@@ -341,6 +371,11 @@ pub fn run() -> Result<(), String> {
         );
         let editing = lens.clone();
         port.script_button("bar-edit", Arc::new(move |()| editing.edit_latest()));
+        let copying = lens.clone();
+        port.script_button(
+            "copy-last-dictation",
+            Arc::new(move |()| copying.copy_last_dictation()),
+        );
         let picking = lens.clone();
         port.script_button(
             "pick",
@@ -377,6 +412,9 @@ pub fn run() -> Result<(), String> {
                     tx.wake_after(FADE_FRAME);
                 }
                 if let Some(next) = lens.advance_tile() {
+                    tx.wake_after(next);
+                }
+                if let Some(next) = lens.advance_dictation() {
                     tx.wake_after(next);
                 }
                 let generation = lens.generation();
@@ -470,12 +508,29 @@ pub fn run() -> Result<(), String> {
             Tile { lens: lens.clone() },
         );
 
+        // Never takes the keyboard or a click, so typing stays in the app in front.
+        let pill = host(
+            &mut bar,
+            &mut windows,
+            "pill".into(),
+            pill::pill_view,
+            None,
+            OverlayOptions {
+                exclude_from_capture: true,
+                input: OverlayInput::None,
+                keys: KeyPolicy::None,
+                ..Default::default()
+            },
+            Pill { lens: lens.clone() },
+        );
+
         let surfaces = Surfaces {
             pickers,
             ink,
             handles,
             bar: handle.clone(),
             tile,
+            pill,
         };
         let shown = Mutex::new(Shown::default());
         let reader = lens.clone();

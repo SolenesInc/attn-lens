@@ -4,6 +4,7 @@ use crate::{
     platform_port::{Voice, VoiceStatus},
 };
 use serde::Serialize;
+use std::sync::{Arc, Mutex};
 
 /// Nanoseconds on the host clock. There is one clock: the macOS port reads
 /// `mach_absolute_time`, and the headless fake reads Rune's virtual clock, so
@@ -41,6 +42,9 @@ pub struct DisplayFrame {
     /// Points the menu bar takes at the display's top. The corner handles stay
     /// below it, since they sit above the menu bar and would take its clicks.
     pub menu_bar: f64,
+    /// Points the Dock takes at the display's bottom; 0 when it sits at a side,
+    /// hides, or is on another display.
+    pub dock: f64,
 }
 
 impl DisplayFrame {
@@ -97,23 +101,36 @@ pub struct InkMark {
     pub fade_from: Option<HostTime>,
 }
 
+/// Who a running voice reports to. A dictation's voice reports to the capture it
+/// hands over to (D9), so the owner is shared with the voice's sink and switched
+/// under the state lock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VoiceOwner {
+    Dictation,
+    Capture(u64),
+}
+
+/// A voice that is listening, whether a capture or a dictation holds it.
+pub struct RunningVoice {
+    /// Which voice key press started it, so a stopped voice's late progress is ignored.
+    pub run: u64,
+    pub handle: Voice,
+    /// `None` until the port reports progress.
+    pub status: Option<VoiceStatus>,
+    pub owner: Arc<Mutex<VoiceOwner>>,
+}
+
 /// A capture's voice. It lives and ends with the capture, so a finish that returns
 /// after the capture closed finds nothing to change.
 #[derive(Default)]
 pub enum CaptureVoice {
     #[default]
     Off,
-    Running {
-        /// Which voice key press started it, so a stopped voice's late progress is ignored.
-        run: u64,
-        handle: Voice,
-        /// `None` until the port reports progress.
-        status: Option<VoiceStatus>,
-    },
+    Running(RunningVoice),
     /// Waiting for the sentence in progress. `send_after`: Send came meanwhile, and
     /// starts, or fails, once this finish returns, so it carries the last sentence.
     Finishing {
-        /// The run being finished; see `Running`.
+        /// The run being finished; see `RunningVoice`.
         run: u64,
         send_after: bool,
     },

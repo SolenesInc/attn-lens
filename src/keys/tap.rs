@@ -4,19 +4,21 @@
 //! Adapted from Hex's `src/suppression.rs` (`run_event_tap`, `TapSet`,
 //! `HealthTimer`; <https://github.com/anomalyco/hex>, commit 54d1ebf), MIT
 //! License, Copyright (c) 2026 Christopher Langton. See THIRD_PARTY_NOTICES.md.
-//! Every tap only listens: Lens never swallows a key.
-use super::{InputEvent, Keys, Physical};
+//! The HID tap only listens. The session tap passes every event on, except ↩
+//! and Esc while a dictation's pill waits for them (`pill_keys`, F7 on the plan):
+//! those it takes, so ↩ never also runs a line in the terminal in front.
+use super::{COMMAND, CONTROL, InputEvent, Keys, OPTION, Physical, SHIFT};
 use crate::{
     lens::session::HostTime,
     platform_port::mac::host_time,
-    platform_port::{KeyEvent, Sink},
+    platform_port::{KeyEvent, PillKey, Sink},
 };
 use std::{
     ffi::c_void,
     ptr,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicPtr, Ordering},
+        atomic::{AtomicBool, AtomicPtr, AtomicU8, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
     },
     time::Duration,
@@ -38,6 +40,7 @@ const ANNOTATED_SESSION_EVENT_TAP: u32 = 2;
 // consumes its key before the session, so only HID sees that press.
 const HID_EVENT_TAP: u32 = 0;
 const HEAD_INSERT_EVENT_TAP: u32 = 0;
+const DEFAULT_EVENT_TAP: u32 = 0;
 const LISTEN_ONLY_EVENT_TAP: u32 = 1;
 const HID_SYSTEM_STATE: u32 = 1;
 const COMBINED_SESSION_STATE: u32 = 0;
@@ -66,6 +69,19 @@ type EventTapCallback = unsafe extern "C" fn(
     event: EventRef,
     user_info: *mut c_void,
 ) -> EventRef;
+
+/// The keys the pill takes, by key code: Return, keypad Enter and Escape.
+const PILL_KEYS: [(u16, PillKey); 3] = [
+    (36, PillKey::Enter),
+    (76, PillKey::Enter),
+    (53, PillKey::Esc),
+];
+
+/// What the taps hand the engine thread.
+enum Tapped {
+    Input(InputEvent, HostTime),
+    Pill(PillKey),
+}
 
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
@@ -151,6 +167,7 @@ pub struct Tap {
     /// The draw key is reported only while a capture is open.
     open: Arc<AtomicBool>,
     draw: Arc<AtomicBool>,
+    pill: Arc<AtomicBool>,
 }
 
 impl Tap {
@@ -159,9 +176,11 @@ impl Tap {
     /// without a relaunch.
     pub fn start(sink: Sink<KeyEvent>) -> Result<Self, String> {
         let (send, events) = mpsc::channel();
+        let pill = Arc::new(AtomicBool::new(false));
+        let tap_pill = pill.clone();
         std::thread::Builder::new()
             .name("lens-key-tap".into())
-            .spawn(move || run_taps(send))
+            .spawn(move || run_taps(send, tap_pill))
             .map_err(|e| format!("the key tap cannot start: {e}"))?;
         let open = Arc::new(AtomicBool::new(false));
         let draw = Arc::new(AtomicBool::new(false));
@@ -177,13 +196,23 @@ impl Tap {
                                 return;
                             }
                         }
-                        KeyEvent::Pressed(_) | KeyEvent::Voice(_) => {}
+                        KeyEvent::Pressed(_) | KeyEvent::Voice(_) | KeyEvent::Pill(_) => {}
                     }
                     engine_sink(event);
                 })
             })
             .map_err(|e| format!("the key engine cannot start: {e}"))?;
-        Ok(Self { sink, open, draw })
+        Ok(Self {
+            sink,
+            open,
+            draw,
+            pill,
+        })
+    }
+
+    /// Takes ↩ and Esc from the app in front from now on, or gives them back.
+    pub fn pill_keys(&self, on: bool) {
+        self.pill.store(on, Ordering::Release);
     }
 
     /// Reports the draw key from now on, or stops. A draw key already down when
@@ -196,7 +225,7 @@ impl Tap {
     }
 }
 
-fn run_keys(events: Receiver<(InputEvent, HostTime)>, emit: impl Fn(KeyEvent)) {
+fn run_keys(events: Receiver<Tapped>, emit: impl Fn(KeyEvent)) {
     let mut keys = Keys::new(Physical {
         flags: session_flags,
         key_down: key_held,
@@ -220,7 +249,15 @@ fn run_keys(events: Receiver<(InputEvent, HostTime)>, emit: impl Fn(KeyEvent)) {
                 Err(_) => return,
             },
         };
-        for (event, at) in first.into_iter().chain(events.try_iter()) {
+        for tapped in first.into_iter().chain(events.try_iter()) {
+            let (event, at) = match tapped {
+                Tapped::Input(event, at) => (event, at),
+                Tapped::Pill(key) => {
+                    super::log(format_args!("took {key:?} for the pill"));
+                    emit(KeyEvent::Pill(key));
+                    continue;
+                }
+            };
             super::log(format_args!(
                 "{event:?} stamped {} µs before it was read",
                 now().0.saturating_sub(at.0) / 1_000
@@ -233,13 +270,42 @@ fn run_keys(events: Receiver<(InputEvent, HostTime)>, emit: impl Fn(KeyEvent)) {
 }
 
 struct Context {
-    send: Sender<(InputEvent, HostTime)>,
+    send: Sender<Tapped>,
     taps: [AtomicPtr<c_void>; 2],
+    /// Set while the pill takes ↩ and Esc.
+    pill: Arc<AtomicBool>,
+    /// The pill keys whose press the session tap took, one bit per entry of
+    /// [`PILL_KEYS`], so their repeats and release are taken too.
+    taken: AtomicU8,
 }
 
 impl Context {
     fn send(&self, event: InputEvent, at: HostTime) {
-        let _ = self.send.send((event, at));
+        let _ = self.send.send(Tapped::Input(event, at));
+    }
+
+    /// Whether the session tap takes this key event from the app in front: a
+    /// bare ↩ or Esc pressed while the pill waits, and its repeats and release.
+    fn take(&self, code: u16, down: bool, flags: u64) -> bool {
+        let Some(index) = PILL_KEYS.iter().position(|(c, _)| *c == code) else {
+            return false;
+        };
+        let bit = 1u8 << index;
+        let taken = self.taken.load(Ordering::Acquire) & bit != 0;
+        if !down {
+            self.taken.fetch_and(!bit, Ordering::AcqRel);
+            return taken;
+        }
+        if taken {
+            return true;
+        }
+        let bare = flags & (SHIFT | CONTROL | OPTION | COMMAND) == 0;
+        if !bare || !self.pill.load(Ordering::Acquire) {
+            return false;
+        }
+        self.taken.fetch_or(bit, Ordering::AcqRel);
+        let _ = self.send.send(Tapped::Pill(PILL_KEYS[index].1));
+        true
     }
 
     /// Re-enables both taps after macOS disables one.
@@ -295,16 +361,21 @@ unsafe fn attach(
     context: *const Context,
     run_loop: *mut c_void,
 ) -> Option<AttachedTap> {
-    let (location, mask, callback): (u32, u64, EventTapCallback) = match kind {
-        Kind::Session => (ANNOTATED_SESSION_EVENT_TAP, SESSION_MASK, session_callback),
-        Kind::Hid => (HID_EVENT_TAP, HID_MASK, hid_callback),
+    let (location, option, mask, callback): (u32, u32, u64, EventTapCallback) = match kind {
+        Kind::Session => (
+            ANNOTATED_SESSION_EVENT_TAP,
+            DEFAULT_EVENT_TAP,
+            SESSION_MASK,
+            session_callback,
+        ),
+        Kind::Hid => (HID_EVENT_TAP, LISTEN_ONLY_EVENT_TAP, HID_MASK, hid_callback),
     };
     // SAFETY: the callback only reads `context`, which the caller keeps alive.
     let tap = unsafe {
         CGEventTapCreate(
             location,
             HEAD_INSERT_EVENT_TAP,
-            LISTEN_ONLY_EVENT_TAP,
+            option,
             mask,
             callback,
             context.cast_mut().cast(),
@@ -407,13 +478,15 @@ impl TapSet {
     }
 }
 
-fn run_taps(send: Sender<(InputEvent, HostTime)>) {
+fn run_taps(send: Sender<Tapped>, pill: Arc<AtomicBool>) {
     let context = Box::new(Context {
         send,
         taps: [
             AtomicPtr::new(ptr::null_mut()),
             AtomicPtr::new(ptr::null_mut()),
         ],
+        pill,
+        taken: AtomicU8::new(0),
     });
     // SAFETY: this is the tap thread's own run loop.
     let run_loop = unsafe { CFRunLoopGetCurrent() };
@@ -515,6 +588,12 @@ unsafe extern "C" fn session_callback(
     // Session taps stamp events in nanoseconds on the host clock.
     // SAFETY: a valid event.
     context.send(input, HostTime(unsafe { CGEventGetTimestamp(event) }));
+    // The engine still sees a taken key, so a chord with it counts as one.
+    if let InputEvent::Key { code, down, flags } = input
+        && context.take(code, down, flags)
+    {
+        return ptr::null_mut();
+    }
     event
 }
 

@@ -43,6 +43,10 @@ and talk until you let go. Each phrase is transcribed on this Mac and placed on
 the capture's timeline. A key pressed with right ⌘ or right ⌥, such as right ⌘+C
 or right ⌥+e, is left to the app in front and opens nothing.
 
+With no capture open, right ⌥ dictates into the app in front instead: a pill
+shows the words, attn tidies them, and the text pastes at the cursor. **↩** pastes
+the raw text without waiting, **Esc** cancels. See [Dictation](docs/dictation.md).
+
 The first voice downloads a 731 MB English speech model to
 `~/Library/Application Support/dev.attn.lens/speech`, showing its progress in the
 bar. An interrupted download resumes the next time you press right ⌥.
@@ -62,21 +66,22 @@ Lens needs these accesses:
   Settings at the list as it launches, and again on the capture key, with a guide
   that says what is being set up and the steps: drag Attn Lens into the list,
   switch it on, then quit and reopen Lens.
-- **Accessibility**, for its keys: right ⌘, right ⌥ and fn. Without it they do
-  nothing. When it is missing, Lens opens the Accessibility list at launch with the
+- **Accessibility**, for its keys: right ⌘, right ⌥ and fn, and to paste a
+  dictation. Without it the keys do nothing and a dictation goes to the clipboard. When it is missing, Lens opens the Accessibility list at launch with the
   same guide; the grant takes effect within a few seconds, with no reopen.
 - **Microphone**, for voice. macOS asks the first time you press right ⌥.
 
 ## What stays on the Mac
 
 Captures, marks, transcription and OCR all happen on this Mac. A capture leaves it
-only when you send it, through `attn send`, to the session you chose. That session
+only when you send it, through `attn send`, to the session you chose. A
+dictation's text goes to attn for refinement through `attn refine`. That session
 may run on another machine. The only download Lens makes is the speech model, from
 Hugging Face.
 
 ## More
 
-- [Capture and send](docs/send.md) · [Editor](docs/usage.md) · [Tool options](TOOL_OPTIONS.md)
+- [Capture and send](docs/send.md) · [Dictation](docs/dictation.md) · [Editor](docs/usage.md) · [Tool options](TOOL_OPTIONS.md)
 - [Build from source](BUILD.md) · [Contribute](CONTRIBUTING.md) · [Architecture](docs/architecture.md)
 - [Report a bug](https://github.com/SolenesInc/attn-lens/issues) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
