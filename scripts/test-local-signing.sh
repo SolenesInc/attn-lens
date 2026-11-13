@@ -1,7 +1,7 @@
 #!/bin/sh
 # Verify that two different signed bundle versions satisfy the same requirement.
 set -eu
-APP="${1:-target/Glance.app}"
+APP="${1:-target/Attn Lens.app}"
 TASK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/glance-signing-qa.XXXXXX")"
 trap 'rm -rf "$TASK_DIR"' EXIT
 trap 'exit 1' HUP INT TERM
