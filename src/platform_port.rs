@@ -142,6 +142,13 @@ pub trait PlatformPort: Send + Sync {
     fn keys(&self, sink: Sink<KeyEvent>);
     /// Registers or releases the keys that exist only during a capture.
     fn capture_keys(&self, open: bool);
+    /// Lens is about to take the keyboard for one of its windows. Notes the app that
+    /// has it, unless that is Lens, so [`Self::return_front`] can give it back.
+    fn hold_front(&self) {}
+    /// Lens is done with the keyboard. If Lens is still the active app, activates the
+    /// app noted by [`Self::hold_front`] so the user can keep typing there. If the
+    /// user has gone to another app since, leaves it alone.
+    fn return_front(&self) {}
     /// Takes ↩ and Esc from the app in front, as [`KeyEvent::Pill`], or gives them back.
     /// Lens calls it under its state lock, so it follows the dictation's state exactly;
     /// it only sets a flag.

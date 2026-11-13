@@ -69,6 +69,8 @@ Notable user-visible changes are recorded here.
 
 ### Fixed
 
+- Sending from the editor, like every other way a capture ends, gives the keyboard
+  back to the app you were in, so you can keep typing without a click.
 - The editor's toolbar starts after the window buttons, so close, minimize and zoom
   no longer cover Back and the title.
 - Attn Lens: Esc, Enter and Tab in the bar work after you click away and back,

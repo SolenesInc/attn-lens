@@ -18,6 +18,7 @@
 #                                        from screen, scroll, zoom, light and dark
 #   scripts/lens-vm.sh tile OUT          run lens-tile.sh in the VM: tile hover and click, Back
 #   scripts/lens-vm.sh switch OUT        run lens-switch.sh in the VM: draw, ⌘Tab, draw, ⌘Tab, draw
+#   scripts/lens-vm.sh focus OUT         run lens-focus.sh in the VM: type, capture, end it, type again
 #   scripts/lens-vm.sh keys OUT          run lens-keys.sh in the VM: right ⌘ and right ⌥ alone
 #                                        and in chords with TextEdit, and the Accessibility guide
 #   scripts/lens-vm.sh dictation OUT     run lens-dictation.sh in the VM: dictation into TextEdit,
@@ -77,7 +78,7 @@ push() {
     GLANCE_CODESIGN_IDENTITY=- GLANCE_BUNDLE_DEST="$PWD/target/vm/Attn Lens.app" ./scripts/bundle.sh release
     start
     in_vm /bin/sh -c "rm -rf '$GUEST_ROOT' '$GUEST_HOME/Applications/Attn Lens.app'; mkdir -p '$GUEST_ROOT' '$GUEST_HOME/Applications' '$GUEST_HOME/.local/bin'"
-    tar cf - scripts/lens-mac-check.sh scripts/lens-live.sh scripts/lens-editor-check.sh scripts/lens-voice.sh scripts/lens-tile.sh scripts/lens-c16.sh scripts/lens-switch.sh scripts/lens-keys.sh scripts/lens-dictation.sh speech/tests/fixtures tools/driver tools/vm |
+    tar cf - scripts/lens-mac-check.sh scripts/lens-live.sh scripts/lens-editor-check.sh scripts/lens-voice.sh scripts/lens-tile.sh scripts/lens-c16.sh scripts/lens-switch.sh scripts/lens-focus.sh scripts/lens-keys.sh scripts/lens-dictation.sh speech/tests/fixtures tools/driver tools/vm |
         in_vm_stdin tar xf - -C "$GUEST_ROOT"
     tar cf - -C target/vm 'Attn Lens.app' | in_vm_stdin tar xf - -C "$GUEST_HOME/Applications"
     in_vm /bin/sh -c "cd '$GUEST_ROOT' && /usr/bin/swiftc -O tools/driver/driver.swift -o driver && cp tools/vm/attn '$GUEST_HOME/.local/bin/attn'"
@@ -163,6 +164,15 @@ switch)
     in_vm /usr/bin/env LENS_DRIVER_WINDOW=vm /bin/sh -c "cd '$GUEST_ROOT' && rm -rf switch-out && scripts/lens-switch.sh '$GUEST_ROOT/switch-out'" || status=$?
     mkdir -p "$2"
     in_vm /usr/bin/tar cf - -C "$GUEST_ROOT/switch-out" . | tar xf - -C "$2"
+    exit "$status"
+    ;;
+focus)
+    [ $# -eq 2 ] || die "usage: lens-vm.sh focus OUT"
+    start
+    status=0
+    in_vm /usr/bin/env LENS_DRIVER_WINDOW=vm /bin/sh -c "cd '$GUEST_ROOT' && rm -rf focus-out && scripts/lens-focus.sh '$GUEST_ROOT/focus-out'" || status=$?
+    mkdir -p "$2"
+    in_vm /usr/bin/tar cf - -C "$GUEST_ROOT/focus-out" . | tar xf - -C "$2"
     exit "$status"
     ;;
 keys)

@@ -77,8 +77,20 @@ echo '{{"id":"cap"}}'
             .arg("--script")
             .arg(script)
             .arg("--at")
-            .arg(format!("mark:{mark}"));
+            .arg(format!("mark:{mark}"))
+            // Each run starts a new log, so a mark's log is only what led to it.
+            .env("ATTN_LENS_FAKE_FOCUS", self.path(&format!("focus-{mark}")));
         command
+    }
+
+    /// The apps Lens gave the keyboard back to, in order, by the time of `mark`.
+    fn focus_returned(&self, mark: &str) -> Vec<String> {
+        self.tree("bar", mark);
+        std::fs::read_to_string(self.path(&format!("focus-{mark}")))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
     }
 
     fn clipboard(&self, mark: &str) -> PathBuf {
@@ -1187,6 +1199,29 @@ fn send_works_from_inside_the_editor() {
         is_pixelated(&run.path("frame-01.png")),
         "the sent frame is raw"
     );
+}
+
+#[test]
+fn every_way_a_capture_ends_gives_the_keyboard_back_to_the_app_the_user_was_in() {
+    let run = Run::new("focus-returns.json", ONE_SESSION);
+    // Each capture starts with another app in front, then ends a different way.
+    let ends = [
+        ("bar-sent", "the bar's ↩"),
+        ("hotkey-sent", "⌘⌥↩"),
+        ("escaped", "Esc in the bar"),
+        ("pick-cancelled", "Esc in the picker"),
+        ("editor-sent", "Send in the editor"),
+    ];
+    let apps = ["Terminal", "Browser", "Terminal", "Browser", "Browser"];
+    for (index, (mark, way)) in ends.iter().enumerate() {
+        assert_eq!(
+            run.focus_returned(mark),
+            apps[..=index],
+            "after {way}, the keyboard went back to each app in turn"
+        );
+    }
+    // The user switched apps before sending: Lens leaves their choice alone.
+    assert_eq!(run.focus_returned("moved-on"), apps);
 }
 
 #[test]

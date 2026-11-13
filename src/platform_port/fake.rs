@@ -31,6 +31,7 @@
 //! close:editor               presses the window's close button
 //! press:bar-edit  press:pick presses the bar's Edit, or picks the display, from a script
 //!                            driving another window
+//! front:NAME                 the app NAME has the keyboard, as when the user switches to it
 //! press:copy-last-dictation  the Dock menu's Copy Last Dictation
 //! ```
 //!
@@ -41,6 +42,10 @@
 //! it as `image.png` and `text.txt`, so a test can read what a user would paste.
 //! Each paste adds a JSON line to `pasted.jsonl` there: `{"text": …}`.
 //! `ATTN_LENS_FAKE_VIDEO_ENCODER` names a stand-in for the MP4 helper.
+//!
+//! The fake counts any Lens window taking the keyboard as Lens becoming the active app.
+//! When `ATTN_LENS_FAKE_FOCUS` names a file, each time Lens gives the keyboard back to an
+//! app, a line with the app's name lands in it.
 use super::{
     Chord, FAKE_TICK, KeyEvent, PillKey, PlatformPort, Press, Sink, Voice, VoiceEvent, VoiceSource,
     VoiceStatus, Watch, WatchEvent,
@@ -95,11 +100,18 @@ struct Script {
     /// `jobs:release` mark every one waiting, after which jobs run at once again.
     held: Option<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
     buttons: Vec<(&'static str, Sink<()>)>,
+    /// The app with the keyboard, set by `front:` marks and taken by Lens.
+    front: Option<String>,
+    /// The app `hold_front` noted.
+    held_front: Option<String>,
     /// Lens takes ↩ and Esc.
     pill_keys: bool,
     no_accessibility: bool,
     paste_error: Option<String>,
 }
+
+/// What the fake calls the app with the keyboard while a Lens window has it.
+const LENS_FRONT: &str = "Attn Lens";
 
 pub struct FakePort {
     script: Mutex<Script>,
@@ -251,6 +263,8 @@ impl FakePort {
                 .find(|(w, _)| *w == window)
                 .map(|(_, press)| press.clone());
             press.expect("close: or press: names a script button")(());
+        } else if let Some(app) = mark.strip_prefix("front:") {
+            self.script.lock().unwrap().front = Some(app.to_string());
         } else if let Some(answer) = mark.strip_prefix("pick:") {
             let sink = self.script.lock().unwrap().pick.take();
             if let Some(sink) = sink {
@@ -356,6 +370,33 @@ impl PlatformPort for FakePort {
         self.script.lock().unwrap().keys = Some(sink);
     }
     fn capture_keys(&self, _open: bool) {}
+    fn hold_front(&self) {
+        let mut script = self.script.lock().unwrap();
+        if let Some(app) = script.front.take().filter(|app| app != LENS_FRONT) {
+            script.held_front = Some(app);
+        }
+        script.front = Some(LENS_FRONT.into());
+    }
+    fn return_front(&self) {
+        let mut script = self.script.lock().unwrap();
+        let Some(app) = script.held_front.take() else {
+            return;
+        };
+        if script.front.as_deref() != Some(LENS_FRONT) {
+            return;
+        }
+        script.front = Some(app.clone());
+        drop(script);
+        if let Some(path) = std::env::var_os("ATTN_LENS_FAKE_FOCUS") {
+            use std::io::Write;
+            let mut log = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .expect("ATTN_LENS_FAKE_FOCUS names a file that can be written");
+            writeln!(log, "{app}").expect("write the focus log");
+        }
+    }
     fn pill_keys(&self, on: bool) {
         self.script.lock().unwrap().pill_keys = on;
     }
