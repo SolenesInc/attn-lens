@@ -25,6 +25,7 @@ pub mod permission_guide;
 pub mod platform;
 pub mod platform_port;
 pub mod selection;
+pub mod stand_in;
 #[cfg(test)]
 mod stress_tests;
 pub mod style;
