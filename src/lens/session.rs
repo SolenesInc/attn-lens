@@ -94,6 +94,9 @@ pub struct InkMark {
     pub still: u64,
     pub mark: Mark,
     pub times: (HostTime, HostTime),
+    /// The drag's own path when the straight rule made it an arrow, so a stroke
+    /// written right after it can turn it back into freehand.
+    pub drawn_as: Option<Vec<(f32, f32)>>,
     pub committed: bool,
     /// The screen under the mark has changed (D8 on the plan).
     pub stale: bool,
