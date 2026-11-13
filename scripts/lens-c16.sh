@@ -48,12 +48,12 @@ cat >"$OUT/open.txt" <<SCRIPT
 dock Attn Lens
 expect "editor":true
 wait 500
-chord cmd+opt x
+tap rcmd
 expect "picking":[
 lens {"cmd":"pick"}
 expect "capture":{
 lens {"cmd":"voice-wav","path":"$WAV"}
-chord cmd+opt s
+tap ropt
 SCRIPT
 "$OUT/driver" --front "Attn Lens" "$OUT/open.txt" | tee "$OUT/driver.log"
 

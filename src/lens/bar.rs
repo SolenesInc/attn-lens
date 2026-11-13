@@ -175,20 +175,61 @@ fn tool_button(key: &'static str, name: &str, tool: InkTool, armed: InkTool, t: 
         .on_press(move |s: &mut Bar| s.lens.arm_tool(tool))
 }
 
-fn chip_text(summary: &Summary) -> String {
+/// What the chip says: the target session, and where it runs once there is one.
+fn chip_parts(summary: &Summary) -> (String, Option<String>) {
     let target = summary
         .capture
         .as_ref()
         .and_then(|c| c.target.as_ref())
         .and_then(|id| summary.sessions.iter().find(|s| &s.id == id));
-    match (&summary.attn, target) {
-        (AttnStatus::Unpaired(_) | AttnStatus::Pairing(_), _) => "Not paired with attn".into(),
-        (AttnStatus::Unlisted(_), _) => "Sessions unavailable".into(),
-        (_, Some(session)) => format!("→ {} · {}", session.label, session.host_label()),
-        (AttnStatus::Loading, None) => "Loading sessions…".into(),
-        (AttnStatus::Ready, None) if summary.sessions.is_empty() => "No sessions in attn".into(),
-        (AttnStatus::Ready, None) => "Choose a session".into(),
-    }
+    let why = match (&summary.attn, target) {
+        (AttnStatus::Unpaired(_) | AttnStatus::Pairing(_), _) => "Not paired with attn",
+        (AttnStatus::Unlisted(_), _) => "Sessions unavailable",
+        (_, Some(session)) => {
+            return (format!("→ {}", session.label), Some(session.host_label()));
+        }
+        (AttnStatus::Loading, None) => "Loading sessions…",
+        (AttnStatus::Ready, None) if summary.sessions.is_empty() => "No sessions in attn",
+        (AttnStatus::Ready, None) => "Choose a session",
+    };
+    (why.into(), None)
+}
+
+/// The session chip. A long session label ends in "…" inside the chip, and the
+/// host after it stays whole; the full text is the chip's label and, while cut, its tooltip.
+fn chip(summary: &Summary, t: &tok::Theme) -> El {
+    let (target, host) = chip_parts(summary);
+    let full = match &host {
+        Some(host) => format!("{target} · {host}"),
+        None => target.clone(),
+    };
+    let on = summary.palette.is_some();
+    let color = if on { Color::WHITE } else { t.text };
+    row()
+        .key("chip")
+        .label(full.clone())
+        .h(CONTROL)
+        .max_w(240.)
+        .px(10.)
+        .gap(4.)
+        .center_y()
+        .radius(8.)
+        .fill(if on { t.indicator } else { t.control_track })
+        .child(
+            text(target)
+                .key("chip-target")
+                .font(tok::type_::LABEL)
+                .color(color)
+                .truncate()
+                .help_when_truncated(full),
+        )
+        .children(host.map(|host| {
+            text(format!("· {host}"))
+                .key("chip-host")
+                .font(tok::type_::LABEL)
+                .color(color)
+        }))
+        .on_press(|s: &mut Bar| s.lens.toggle_palette())
 }
 
 fn strip(summary: &Summary, t: &tok::Theme) -> El {
@@ -264,17 +305,21 @@ fn palette(summary: &Summary, selected: usize, t: &tok::Theme) -> El {
                 })
                 .child(
                     text(session.label.clone())
+                        .key(format!("palette-label-{index}"))
                         .grow(1.)
                         .font(tok::type_::BODY)
-                        .color(t.text),
+                        .color(t.text)
+                        .truncate()
+                        .help_when_truncated(session.label.clone()),
                 )
                 .child(
                     text(format!(
                         "{} · {} · {}",
                         session.agent,
-                        session.state,
+                        session.state_label(),
                         session.host_label()
                     ))
+                    .key(format!("palette-meta-{index}"))
                     .font(tok::type_::LABEL)
                     .color(t.text_secondary),
                 )
@@ -284,7 +329,9 @@ fn palette(summary: &Summary, selected: usize, t: &tok::Theme) -> El {
     list
 }
 
-/// Keys the field does not take for itself. Returns whether the key was used.
+/// Enter, Esc, Tab and the palette's arrows. The field hands them here when it has
+/// focus; the bar window does when anything else in the bar has. Returns whether the
+/// key was used.
 pub fn bar_key(s: &mut Bar, event: &KeyEvent, _: &mut Tx) -> bool {
     let (palette_open, placing) = s
         .lens
@@ -341,12 +388,7 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
             .h(CONTROL)
             .gap(GAP)
             .center_y()
-            .child(
-                button("chip", chip_text(summary), summary.palette.is_some(), &t)
-                    .label(chip_text(summary))
-                    .max_w(240.)
-                    .on_press(|s: &mut Bar| s.lens.toggle_palette()),
-            )
+            .child(chip(summary, &t))
             .child(
                 row()
                     .grow(1.)
@@ -459,10 +501,10 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
     })
 }
 
-/// Voice in the bar: what ⌘⌥S does now, or how far voice has got.
-fn voice_text(voice: VoiceState) -> String {
+/// Voice in the bar: what the voice key does now, or how far voice has got.
+pub(super) fn voice_text(voice: VoiceState) -> String {
     match voice {
-        VoiceState::Off => "⌘⌥S voice".into(),
+        VoiceState::Off => "right ⌥ voice".into(),
         VoiceState::Starting => "Starting voice…".into(),
         VoiceState::Running(VoiceStatus::Downloading { bytes, total }) => format!(
             "Downloading speech model {}%",
@@ -470,7 +512,7 @@ fn voice_text(voice: VoiceState) -> String {
         ),
         VoiceState::Running(VoiceStatus::Loading) => "Loading speech model…".into(),
         VoiceState::Running(VoiceStatus::WarmingUp) => "Starting microphone…".into(),
-        VoiceState::Running(VoiceStatus::Listening) => "Listening · ⌘⌥S to stop".into(),
+        VoiceState::Running(VoiceStatus::Listening) => "Listening · right ⌥ to stop".into(),
         VoiceState::Finishing => "Finishing…".into(),
     }
 }

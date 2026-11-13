@@ -2,7 +2,7 @@
 //! checks each phrase's times against when it was really spoken.
 //!
 //! Needs Metal and the models. Opt in with a cache that holds them, such as one
-//! a first ⌘⌥S filled:
+//! a first voice filled:
 //! `ATTN_SPEECH_CACHE=~/Library/Application\ Support/dev.attn.lens/speech cargo test --release -- --ignored`
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};

@@ -25,7 +25,7 @@ Lens is a Dock app. **⌘Q** quits, and a Dock click opens the editor.
 
 ## First capture
 
-1. Press **⌘⌥X** and drag an area. A click takes the whole display, and **Esc**
+1. Tap **right ⌘** alone and drag an area. A click takes the whole display, and **Esc**
    cancels.
 2. Hold **fn** and drag to draw on the area. A lone straight drag is an arrow;
    writing and underlining, strokes in quick succession, stay as drawn.
@@ -39,12 +39,18 @@ pairing, the corner tile and what the agent receives.
 
 ## Voice
 
-Press **⌘⌥S** during a capture to talk, and again to stop. Each phrase is
-transcribed on this Mac and placed on the capture's timeline.
+During a capture, tap **right ⌥** to talk and tap it again to stop, or hold it
+and talk until you let go. Each phrase is transcribed on this Mac and placed on
+the capture's timeline. A key pressed with right ⌘ or right ⌥, such as right ⌘+C
+or right ⌥+e, is left to the app in front and opens nothing.
 
-The first **⌘⌥S** downloads a 731 MB English speech model to
+With no capture open, right ⌥ dictates into the app in front instead: a pill
+shows the words, attn tidies them, and the text pastes at the cursor. **↩** pastes
+the raw text without waiting, **Esc** cancels. See [Dictation](docs/dictation.md).
+
+The first voice downloads a 731 MB English speech model to
 `~/Library/Application Support/dev.attn.lens/speech`, showing its progress in the
-bar. An interrupted download resumes on the next **⌘⌥S**.
+bar. An interrupted download resumes the next time you press right ⌥.
 
 ## Editor
 
@@ -55,20 +61,28 @@ JPEG. It has crop, pixelate, callouts, backdrops, OCR, and GIF and MP4 export. S
 
 ## Permissions
 
+Lens needs these accesses:
+
 - **Screen Recording**, to take stills. When it is missing, Lens opens System
-  Settings at the list as it launches, and again on **⌘⌥X**; enable Attn Lens there, then quit and reopen it.
-- **Microphone**, for voice. macOS asks on the first **⌘⌥S**.
+  Settings at the list as it launches, and again on the capture key, with a guide
+  that says what is being set up and the steps: drag Attn Lens into the list,
+  switch it on, then quit and reopen Lens.
+- **Accessibility**, for its keys: right ⌘, right ⌥ and fn, and to paste a
+  dictation. Without it the keys do nothing and a dictation goes to the clipboard. When it is missing, Lens opens the Accessibility list at launch with the
+  same guide; the grant takes effect within a few seconds, with no reopen.
+- **Microphone**, for voice. macOS asks the first time you press right ⌥.
 
 ## What stays on the Mac
 
 Captures, marks, transcription and OCR all happen on this Mac. A capture leaves it
-only when you send it, through `attn send`, to the session you chose. That session
+only when you send it, through `attn send`, to the session you chose. A
+dictation's text goes to attn for refinement through `attn refine`. That session
 may run on another machine. The only download Lens makes is the speech model, from
 Hugging Face.
 
 ## More
 
-- [Capture and send](docs/send.md) · [Editor](docs/usage.md) · [Tool options](TOOL_OPTIONS.md)
+- [Capture and send](docs/send.md) · [Dictation](docs/dictation.md) · [Editor](docs/usage.md) · [Tool options](TOOL_OPTIONS.md)
 - [Build from source](BUILD.md) · [Contribute](CONTRIBUTING.md) · [Architecture](docs/architecture.md)
 - [Report a bug](https://github.com/SolenesInc/attn-lens/issues) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 

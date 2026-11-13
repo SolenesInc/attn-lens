@@ -16,6 +16,7 @@
 typedef NS_ENUM(NSInteger, LensPermission) {
     LensPermissionScreenRecording = 1,
     LensPermissionMicrophone = 2,
+    LensPermissionAccessibility = 3,
 };
 
 static NSPanel *guidePanel;
@@ -54,9 +55,17 @@ static NSString *lensAppName(NSURL *bundleURL) {
     return name.length > 0 ? name : @"Attn Lens";
 }
 
+/// macOS 27 renames the Accessibility list (Hex's `accessibilityRenamed`).
+static BOOL accessibilityRenamed(void) {
+    NSOperatingSystemVersion version = {27, 0, 0};
+    return [NSProcessInfo.processInfo isOperatingSystemAtLeastVersion:version];
+}
+
 /// The name of the Privacy & Security list each permission lives in.
 static NSString *permissionListName(LensPermission permission) {
     switch (permission) {
+        case LensPermissionAccessibility:
+            return accessibilityRenamed() ? @"Device Control and Data Access" : @"Accessibility";
         case LensPermissionScreenRecording:
             return @"Screen & System Audio Recording";
         case LensPermissionMicrophone:
@@ -153,6 +162,55 @@ static void drawTile(NSRect bounds, NSImage *icon, NSString *name, BOOL dark) {
 }
 
 @end
+
+/// The guide's content, laid out top-down.
+@interface LensGuideContent : NSView
+@end
+
+@implementation LensGuideContent
+- (BOOL)isFlipped {
+    return YES;
+}
+@end
+
+static const CGFloat guideWidth = 480;
+static const CGFloat guideInset = 18;
+
+static NSAttributedString *guideText(NSString *lead, NSString *rest, CGFloat size) {
+    NSMutableAttributedString *text = [[NSMutableAttributedString alloc] init];
+    NSDictionary *strong = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:size weight:NSFontWeightSemibold],
+        NSForegroundColorAttributeName: NSColor.labelColor,
+    };
+    NSDictionary *plain = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:size],
+        NSForegroundColorAttributeName: NSColor.labelColor,
+    };
+    [text appendAttributedString:[[NSAttributedString alloc] initWithString:lead attributes:strong]];
+    [text appendAttributedString:[[NSAttributedString alloc] initWithString:rest attributes:plain]];
+    return text;
+}
+
+/// Adds wrapped text at `top` in `content` and returns the y below it.
+static CGFloat addGuideText(NSView *content, NSAttributedString *text, CGFloat left, CGFloat top) {
+    CGFloat width = guideWidth - guideInset - left;
+    NSTextField *field = [NSTextField wrappingLabelWithString:@""];
+    field.attributedStringValue = text;
+    CGFloat height = ceil([field.cell cellSizeForBounds:NSMakeRect(0, 0, width, CGFLOAT_MAX)].height);
+    field.frame = NSMakeRect(left, top, width, height);
+    [content addSubview:field];
+    return top + height;
+}
+
+/// A numbered step: its number in a column of its own, so wrapped lines align.
+static CGFloat addGuideStep(NSView *content, NSInteger number, NSAttributedString *text, CGFloat top) {
+    NSTextField *label = [NSTextField labelWithString:[NSString stringWithFormat:@"%ld", (long)number]];
+    label.font = [NSFont monospacedDigitSystemFontOfSize:13 weight:NSFontWeightSemibold];
+    label.textColor = NSColor.secondaryLabelColor;
+    label.frame = NSMakeRect(guideInset, top, 16, 18);
+    [content addSubview:label];
+    return addGuideText(content, text, guideInset + 22, top);
+}
 
 static CGRect currentSettingsFrame(void) {
     CFArrayRef windowInfo = CGWindowListCopyWindowInfo(
@@ -262,6 +320,9 @@ bool lens_permission_granted(int permission) {
         case LensPermissionMicrophone:
             return [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] ==
                    AVAuthorizationStatusAuthorized;
+        // What System Settings shows now; a grant reaches the running app.
+        case LensPermissionAccessibility:
+            return AXIsProcessTrusted();
     }
     return NO;
 }
@@ -478,6 +539,9 @@ void lens_show_permission_guide(int permission) {
         case LensPermissionMicrophone:
             pane = @"Privacy_Microphone";
             break;
+        case LensPermissionAccessibility:
+            pane = @"Privacy_Accessibility";
+            break;
     }
     NSURL *settingsURL = [NSURL URLWithString:[NSString stringWithFormat:
         @"x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?%@", pane]];
@@ -487,7 +551,66 @@ void lens_show_permission_guide(int permission) {
         return;
     }
 
-    NSSize panelSize = NSMakeSize(480, 116);
+    // What is being set up, every access it needs and why, then the steps for
+    // this one. Screen Recording is the only access that needs a reopen.
+    LensGuideContent *content = [[LensGuideContent alloc]
+        initWithFrame:NSMakeRect(0, 0, guideWidth, 0)];
+    content.wantsLayer = YES;
+    content.layer.backgroundColor = NSColor.controlBackgroundColor.CGColor;
+    content.layer.cornerRadius = 20;
+    content.layer.borderWidth = 1;
+    content.layer.borderColor = [NSColor colorWithWhite:0 alpha:0.10].CGColor;
+
+    CGFloat y = 16;
+    y = addGuideText(content,
+                     [[NSAttributedString alloc]
+                         initWithString:[NSString stringWithFormat:@"Setting up %@", appName]
+                             attributes:@{
+                                 NSFontAttributeName: [NSFont systemFontOfSize:15
+                                                                        weight:NSFontWeightBold],
+                                 NSForegroundColorAttributeName: NSColor.labelColor,
+                             }],
+                     guideInset, y) + 4;
+    y = addGuideText(content,
+                     [[NSAttributedString alloc]
+                         initWithString:[NSString stringWithFormat:@"%@ needs these accesses:", appName]
+                             attributes:@{
+                                 NSFontAttributeName: [NSFont systemFontOfSize:12],
+                                 NSForegroundColorAttributeName: NSColor.secondaryLabelColor,
+                             }],
+                     guideInset, y) + 6;
+    // One entry per access Lens asks for. A new one is a new row here.
+    NSArray<NSArray<NSString *> *> *accesses = @[
+        @[ @"Screen Recording", @" — to take stills of your screen." ],
+        @[ @"Accessibility", @" — for its keys: right ⌘, right ⌥ and fn. Without it, they do nothing." ],
+        @[ @"Microphone", @" — for voice. macOS asks the first time you press right ⌥." ],
+    ];
+    for (NSArray<NSString *> *access in accesses) {
+        y = addGuideText(content, guideText(access[0], access[1], 13), guideInset + 10, y) + 2;
+    }
+    y += 12;
+
+    y = addGuideStep(content, 1,
+                     guideText(@"Drag ", [NSString stringWithFormat:
+                         @"%@ into the %@ list above, then switch it on.", appName, listName], 13),
+                     y) + 6;
+    if (activePermission == LensPermissionScreenRecording) {
+        y = addGuideStep(content, 2,
+                         guideText(@"Quit and reopen ", [NSString stringWithFormat:
+                             @"%@. macOS applies the grant to a new process.", appName], 13),
+                         y) + 6;
+    }
+    y += 6;
+
+    LensDragView *dragView = [[LensDragView alloc]
+        initWithFrame:NSMakeRect(guideInset, y, guideWidth - 2 * guideInset, 44)
+             bundleURL:bundleURL];
+    [content addSubview:dragView];
+    guideTile = dragView;
+    CGFloat height = y + 44 + 17;
+    content.frame = NSMakeRect(0, 0, guideWidth, height);
+
+    NSSize panelSize = NSMakeSize(guideWidth, height);
     guidePanel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
                   styleMask:NSWindowStyleMaskBorderless |
@@ -504,27 +627,6 @@ void lens_show_permission_guide(int permission) {
     guidePanel.hasShadow = YES;
     guidePanel.hidesOnDeactivate = NO;
     guidePanel.releasedWhenClosed = NO;
-
-    NSView *content = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, panelSize.width, panelSize.height)];
-    content.wantsLayer = YES;
-    content.layer.backgroundColor = NSColor.controlBackgroundColor.CGColor;
-    content.layer.cornerRadius = 20;
-    content.layer.borderWidth = 1;
-    content.layer.borderColor = [NSColor colorWithWhite:0 alpha:0.10].CGColor;
-
-    NSString *text =
-        [NSString stringWithFormat:@"↑  Drag %@ into the %@ list above", appName, listName];
-    NSTextField *instruction = [NSTextField labelWithString:text];
-    instruction.frame = NSMakeRect(18, 73, panelSize.width - 36, 24);
-    instruction.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
-    instruction.textColor = NSColor.labelColor;
-    [content addSubview:instruction];
-
-    LensDragView *dragView = [[LensDragView alloc]
-        initWithFrame:NSMakeRect(18, 17, panelSize.width - 36, 44)
-             bundleURL:bundleURL];
-    [content addSubview:dragView];
-    guideTile = dragView;
     guidePanel.contentView = content;
     if (fly) {
         guideTile.hidden = YES;

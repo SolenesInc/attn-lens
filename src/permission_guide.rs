@@ -15,6 +15,8 @@ unsafe extern "C" {
 pub enum Permission {
     ScreenRecording,
     Microphone,
+    /// The capture, voice and draw keys: the key engine's event taps need it.
+    Accessibility,
 }
 
 impl Permission {
@@ -23,6 +25,7 @@ impl Permission {
         match self {
             Self::ScreenRecording => 1,
             Self::Microphone => 2,
+            Self::Accessibility => 3,
         }
     }
 }

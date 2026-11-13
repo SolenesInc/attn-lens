@@ -9,12 +9,15 @@ pub mod editor;
 pub mod effects;
 pub mod enhance;
 pub mod gif_export;
+pub mod keys;
 pub mod lens;
 #[cfg(target_os = "linux")]
 pub mod linux_compute;
 pub mod motion_shader;
 pub mod navigation;
 pub mod ocr;
+#[cfg(target_os = "macos")]
+pub mod paste;
 #[cfg(test)]
 mod performance;
 #[cfg(target_os = "macos")]

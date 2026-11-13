@@ -41,7 +41,8 @@ capture-core = { git = "https://github.com/anomalyco/hex", rev = "54d1ebfccfa981
 security-framework = "3"
 objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "AVCaptureDevice", "AVMediaFormat"] }
 objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "block2", "AVAudioBuffer", "AVAudioConverter", "AVAudioEngine", "AVAudioFormat", "AVAudioIONode", "AVAudioNode", "AVAudioTime", "AVAudioTypes"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSError", "NSNotification", "NSString"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "bitflags", "NSArray", "NSData", "NSError", "NSNotification", "NSProcessInfo", "NSString", "NSURL"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem", "NSRunningApplication", "NSWorkspace"] }
 
 [build-dependencies]
 cc = "1"

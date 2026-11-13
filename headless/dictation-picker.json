@@ -1,0 +1,19 @@
+{"displays":[{"id":1,"frame":[0,0,1280,800],"scale":2,"primary":true}],
+ "pointer":[400,300],
+ "events":[
+ {"t":0.1,"type":"mark","name":"key:voice"},
+ {"t":0.15,"type":"mark","name":"voice:listening"},
+ {"t":0.2,"type":"mark","name":"say:0.12:0.3:look at this"},
+ {"t":0.3,"type":"mark","name":"jobs:hold"},
+ {"t":0.35,"type":"mark","name":"key:voice"},
+ {"t":0.4,"type":"mark","name":"jobs:next"},
+ {"t":0.45,"type":"mark","name":"key:capture"},
+ {"t":0.5,"type":"mark","name":"picking"},
+ {"t":0.55,"type":"mark","name":"key:enter"},
+ {"t":0.6,"type":"key","name":"Escape"},
+ {"t":0.7,"type":"mark","name":"cancelled"},
+ {"t":0.75,"type":"mark","name":"key:esc"},
+ {"t":0.8,"type":"mark","name":"escaped"},
+ {"t":0.85,"type":"mark","name":"jobs:release"},
+ {"t":0.9,"type":"mark","name":"after"}
+]}
