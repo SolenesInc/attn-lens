@@ -11,8 +11,6 @@ assets retain their own licenses; the project license does not replace them.
 - **Lucide icons** are licensed under ISC, with some icons derived from Feather
   under MIT. See [source attribution](assets/lucide/SOURCE) and the
   [complete icon license notices](assets/lucide/LICENSE).
-- **The Glance app mark** comes from Modem's `agentpaste` project. Its source
-  and revision are recorded in [the icon design notes](assets/icons/DESIGN.md).
 - **Roboto Regular**, by Google, is embedded as an offline annotation fallback
   font under Apache-2.0. See [source attribution](assets/fonts/SOURCE) and the
   [font license](assets/fonts/LICENSE).

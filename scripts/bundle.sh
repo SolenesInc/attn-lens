@@ -21,11 +21,11 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cargo run --release --locked --example icon -- target/Glance.iconset
+cargo run --release --locked --example icon -- target/AttnLens.iconset
 # A new resource name prevents macOS from reusing an earlier design's icon cache.
-ICON_HASH="$(shasum -a 256 target/Glance.iconset/icon_512x512@2x.png | cut -c 1-12)"
-ICON_NAME="Glance-$ICON_HASH.icns"
-iconutil -c icns target/Glance.iconset -o "$APP/Contents/Resources/$ICON_NAME"
+ICON_HASH="$(shasum -a 256 target/AttnLens.iconset/icon_512x512@2x.png | cut -c 1-12)"
+ICON_NAME="AttnLens-$ICON_HASH.icns"
+iconutil -c icns target/AttnLens.iconset -o "$APP/Contents/Resources/$ICON_NAME"
 /usr/bin/swiftc -target "$(uname -m)-apple-macosx15.0" -O native/video_encoder.swift -o target/glance-video-encoder
 /usr/bin/swiftc -target "$(uname -m)-apple-macosx15.0" -O native/video_frame.swift -o target/glance-video-frame
 /usr/bin/swiftc -target "$(uname -m)-apple-macosx15.0" -O native/ocr.swift -o target/glance-ocr
@@ -48,7 +48,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>AttnLens</string>
 <key>CFBundleIdentifier</key><string>dev.attn.lens</string>
-<key>CFBundleIconFile</key><string>Glance.icns</string>
+<key>CFBundleIconFile</key><string>AttnLens.icns</string>
 <key>CFBundleName</key><string>Attn Lens</string>
 <key>CFBundleDisplayName</key><string>Attn Lens</string>
 <key>CFBundlePackageType</key><string>APPL</string>
