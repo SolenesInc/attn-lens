@@ -2,15 +2,16 @@
 //! the still strip, Edit and Send, and the Tab palette. It takes keys without
 //! activating Lens, and shows who has them (D6 on the plan).
 use super::{
-    AttnStatus, KeyOwner, Lens, SendStatus, Summary, VoiceState, attn, ink::InkTool,
-    session::DisplayFrame,
+    AttnStatus, KeyOwner, Lens, SendStatus, Summary, VoiceState, attn,
+    ink::InkTool,
+    session::{DisplayFrame, HostTime},
 };
 use crate::platform_port::VoiceStatus;
 use image::RgbaImage;
 use rune::{
     Color, Cx, Drag, El, Key, KeyEvent, Phase, TextEdit, Tx, col, el, row, text, text_input, tok,
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 pub const WIDTH: f32 = 760.;
 /// Every control on the bar stands this tall.
@@ -22,6 +23,11 @@ const PALETTE_ROW: f32 = 36.;
 /// How many rows the palette shows before it scrolls.
 const PALETTE_ROWS: usize = 8;
 const THUMB: (u32, u32) = (104, 64);
+/// How soon after the bar takes the keys a press on its background counts as the
+/// press that took them. A tripwire: the focus and the press arrive in one event
+/// dispatch (no gap in the headless runs), and a second, deliberate press, such as
+/// one into the field and then one to drag, cannot follow within it.
+const SAME_PRESS: Duration = Duration::from_millis(50);
 /// Keeps the bar off the area and the display's edge.
 const MARGIN: f64 = 8.;
 
@@ -85,9 +91,9 @@ fn palette_height(summary: &Summary) -> f32 {
     PALETTE_ROW * summary.sessions.len().clamp(1, PALETTE_ROWS) as f32 + GAP
 }
 
-/// Where the bar goes: where the user dragged it, kept whole on the display and
-/// clear of the menu bar and the Dock. Otherwise under the area if it fits, then
-/// over it, then (a whole display) inside the bottom edge. Stills leave Lens's
+/// Where the bar goes: where the user dragged it, or under the area if it fits,
+/// then over it, then (a whole display) inside the bottom edge. Either way it stays
+/// whole on the display, clear of the menu bar and the Dock. Stills leave Lens's
 /// windows out.
 pub fn placement(
     area: [f64; 4],
@@ -99,25 +105,21 @@ pub fn placement(
     let width = f64::from(WIDTH).min(display_w - MARGIN * 2.);
     let height = f64::from(height);
     let right = (display_w - width - MARGIN).max(MARGIN);
-    let (x, y) = match dragged {
-        Some((x, y)) => {
-            let top = display.menu_bar + MARGIN;
-            let bottom = (display_h - display.dock - height - MARGIN).max(top);
-            (x.clamp(MARGIN, right), y.clamp(top, bottom))
-        }
-        None => {
-            let below = area[1] + area[3] + MARGIN;
-            let above = area[1] - MARGIN - height;
-            let y = if below + height + MARGIN <= display_h {
-                below
-            } else if above >= MARGIN {
-                above
-            } else {
-                display_h - height - MARGIN
-            };
-            (area[0].clamp(MARGIN, right), y)
-        }
-    };
+    let top = display.menu_bar + MARGIN;
+    let bottom = (display_h - display.dock - height - MARGIN).max(top);
+    let (x, y) = dragged.unwrap_or_else(|| {
+        let below = area[1] + area[3] + MARGIN;
+        let above = area[1] - MARGIN - height;
+        let y = if below <= bottom {
+            below
+        } else if above >= top {
+            above
+        } else {
+            bottom
+        };
+        (area[0], y)
+    });
+    let (x, y) = (x.clamp(MARGIN, right), y.clamp(top, bottom));
     [x as f32, y as f32, width as f32, height as f32]
 }
 
@@ -140,9 +142,8 @@ pub struct Bar {
     /// window last reported it.
     origin: (f32, f32),
     grab: Option<Grab>,
-    /// The bar has the keyboard because a click took it from the page, and nothing
-    /// has been typed in the bar since.
-    pub keys_from_page: bool,
+    /// When a press focused the bar while the page had the keys.
+    pub keys_from_page: Option<HostTime>,
     placing_label: bool,
     message: TextEdit,
     label: TextEdit,
@@ -158,7 +159,7 @@ impl Bar {
             capture: None,
             origin: (0., 0.),
             grab: None,
-            keys_from_page: false,
+            keys_from_page: None,
             placing_label: false,
             message,
             label: TextEdit::new(""),
@@ -373,7 +374,6 @@ fn palette(summary: &Summary, selected: usize, t: &tok::Theme) -> El {
 /// focus; the bar window does when anything else in the bar has. Returns whether the
 /// key was used.
 pub fn bar_key(s: &mut Bar, event: &KeyEvent, _: &mut Tx) -> bool {
-    s.keys_from_page = false;
     let (palette_open, placing) = s
         .lens
         .read(|summary| (summary.palette.is_some(), summary.placing_label));
@@ -414,7 +414,6 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
                 )
                 .on_edit(|s: &mut Bar| &mut s.message)
                 .on_input_change(|s: &mut Bar, _: &mut Tx| {
-                    s.keys_from_page = false;
                     s.lens.set_message(&s.message.text);
                 })
         }
@@ -559,7 +558,10 @@ fn drag_bar(s: &mut Bar, d: &mut Drag, _: &mut Tx) {
             s.grab = Some(Grab {
                 offset: (d.x, d.y),
                 was: bar_at,
-                from_page: std::mem::take(&mut s.keys_from_page),
+                from_page: s
+                    .keys_from_page
+                    .take()
+                    .is_some_and(|at| s.lens.port().now().since(at) < SAME_PRESS),
             });
         }
         Phase::Move => {

@@ -157,22 +157,49 @@
    "y": 1104
   },
   {
+   "t": 1.47,
+   "focus": false
+  },
+  {
    "t": 1.5,
    "type": "mark",
    "name": "at-edge"
   },
   {
-   "t": 1.52,
-   "type": "mark",
-   "name": "key:keyboard"
+   "t": 1.505,
+   "type": "tap",
+   "key": "message"
   },
   {
-   "t": 1.55,
+   "t": 1.6,
+   "type": "down",
+   "x": 1270,
+   "y": 704
+  },
+  {
+   "t": 1.61,
+   "type": "move",
+   "x": 1270,
+   "y": 704
+  },
+  {
+   "t": 1.62,
+   "type": "up",
+   "x": 1270,
+   "y": 704
+  },
+  {
+   "t": 1.63,
+   "type": "mark",
+   "name": "field-then-drag"
+  },
+  {
+   "t": 1.64,
    "type": "key",
    "name": "Tab"
   },
   {
-   "t": 1.65,
+   "t": 1.68,
    "type": "mark",
    "name": "palette-at-edge"
   },

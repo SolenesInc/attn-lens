@@ -403,8 +403,9 @@ impl PlatformPort for FakePort {
         drop(script);
         focus_log(&app);
     }
-    fn release_keys(&self) {
+    fn release_keys(&self) -> bool {
         focus_log("released");
+        true
     }
     fn pill_keys(&self, on: bool) {
         self.script.lock().unwrap().pill_keys = on;

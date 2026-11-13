@@ -194,11 +194,32 @@ const HANDLES: [&str; 4] = [
     "handle-bottom-right",
 ];
 
-/// The outline on the ink layer, and a handle window at each corner, inside the area.
+/// The outline on the ink layer, and a handle window at each corner the bar does not
+/// cover, inside the area. A covered corner's handle hides: it would stand above the
+/// bar and take its clicks.
 fn has_area_frame(tree: &Value) {
     assert!(element(tree, "area-outline").is_some(), "no outline");
     let ink = frame(tree, "ink");
+    let bar = visible(tree, "bar").then(|| frame(tree, "bar"));
     for key in HANDLES {
+        // The corner's 24-point square, from the area: a hidden handle is not placed.
+        let x = if key.ends_with("left") {
+            ink[0]
+        } else {
+            ink[0] + ink[2] - 24.
+        };
+        let y = if key.contains("top") {
+            ink[1]
+        } else {
+            ink[1] + ink[3] - 24.
+        };
+        let covered = bar.as_ref().is_some_and(|bar| {
+            x < bar[0] + bar[2] && bar[0] < x + 24. && y < bar[1] + bar[3] && bar[1] < y + 24.
+        });
+        if covered {
+            assert!(!visible(tree, key), "{key} shows over the bar");
+            continue;
+        }
         assert!(visible(tree, key), "{key} is hidden");
         let handle = frame(tree, key);
         assert!(
@@ -1560,12 +1581,18 @@ fn the_bar_drags_out_of_the_way_and_stays_on_its_display() {
 
     // The area is too tall for the bar above or below it, so it starts inside the
     // bottom edge, over the area.
-    assert_eq!(bar("open"), [100., 700., 760., 92.]);
+    // The handles stand above the bar, so the corners it covers hide.
+    let open = run.tree("bar", "open");
+    assert_eq!(frame(&open, "bar"), [100., 700., 760., 92.]);
+    assert!(!visible(&open, "handle-bottom-left"));
+    assert!(!visible(&open, "handle-bottom-right"));
+    assert!(visible(&open, "handle-top-left"));
 
     // A drag on its background moves it with the pointer. Nothing is drawn, no still
     // is taken, and the field keeps the keys.
     let dragged = run.tree("bar", "dragged");
     assert_eq!(frame(&dragged, "bar"), [100., 400., 760., 92.]);
+    assert!(visible(&dragged, "handle-bottom-left"));
     assert_eq!(text(&dragged, "keys"), Some("Typing here"));
     let capture = capture_state(&run, "dragged");
     assert_eq!(capture["stills"].as_array().unwrap().len(), 0);
@@ -1590,6 +1617,15 @@ fn the_bar_drags_out_of_the_way_and_stays_on_its_display() {
     let edge = run.tree("bar", "at-edge");
     assert_eq!(frame(&edge, "bar"), [512., 700., 760., 92.]);
     assert_eq!(text(&edge, "keys"), Some("Typing on the page"));
+
+    // A click into the field gives the bar the keys on purpose: a drag after it keeps
+    // them. Rune cannot take focus from a headless window, so the script blurs the bar
+    // after the hand-back above, as ordering the panel out does on the Mac.
+    assert_eq!(run.focus_returned("field-then-drag"), ["released"]);
+    assert_eq!(
+        text(&run.tree("bar", "field-then-drag"), "keys"),
+        Some("Typing here")
+    );
 
     // The palette grows the bar, which rises to stay on the display.
     let palette = run.tree("bar", "palette-at-edge");

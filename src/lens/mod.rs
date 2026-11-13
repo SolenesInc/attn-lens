@@ -547,8 +547,9 @@ impl Lens {
 
     /// Gives the page back the keyboard a press on the bar took from it.
     pub fn release_keys(&self) {
-        self.port.release_keys();
-        self.set_key_owner(KeyOwner::Page);
+        if self.port.release_keys() {
+            self.set_key_owner(KeyOwner::Page);
+        }
     }
 
     fn set_input(&self, input: Input) {
