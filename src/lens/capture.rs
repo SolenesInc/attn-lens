@@ -4,39 +4,53 @@
 use super::session::{Area, DisplayFrame};
 use image::RgbaImage;
 
-/// The display the pointer is on, as a `CGDirectDisplayID`.
-pub fn display_under_pointer() -> u32 {
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    struct CGPoint {
-        x: f64,
-        y: f64,
-    }
-    #[link(name = "CoreGraphics", kind = "framework")]
-    unsafe extern "C" {
-        fn CGEventCreate(source: *const std::ffi::c_void) -> *const std::ffi::c_void;
-        fn CGEventGetLocation(event: *const std::ffi::c_void) -> CGPoint;
-        fn CGGetDisplaysWithPoint(
-            point: CGPoint,
-            max: u32,
-            displays: *mut u32,
-            count: *mut u32,
-        ) -> i32;
-        fn CGMainDisplayID() -> u32;
-    }
-    #[link(name = "CoreFoundation", kind = "framework")]
-    unsafe extern "C" {
-        fn CFRelease(cf: *const std::ffi::c_void);
-    }
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CGPoint {
+    x: f64,
+    y: f64,
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGEventCreate(source: *const std::ffi::c_void) -> *const std::ffi::c_void;
+    fn CGEventGetLocation(event: *const std::ffi::c_void) -> CGPoint;
+    fn CGGetDisplaysWithPoint(point: CGPoint, max: u32, displays: *mut u32, count: *mut u32)
+    -> i32;
+    fn CGMainDisplayID() -> u32;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFRelease(cf: *const std::ffi::c_void);
+}
+
+/// Where the pointer is, in global points with the origin at the main display's
+/// top left. None if the system gives no event to read it from.
+pub fn pointer() -> Option<(f64, f64)> {
+    // SAFETY: a new event from no source only reads the current pointer; it is released.
     unsafe {
         let event = CGEventCreate(std::ptr::null());
         if event.is_null() {
-            return CGMainDisplayID();
+            return None;
         }
         let point = CGEventGetLocation(event);
         CFRelease(event);
-        let (mut display, mut count) = (0u32, 0u32);
-        if CGGetDisplaysWithPoint(point, 1, &mut display, &mut count) == 0 && count == 1 {
+        Some((point.x, point.y))
+    }
+}
+
+/// The display the pointer is on, as a `CGDirectDisplayID`.
+pub fn display_under_pointer() -> u32 {
+    let Some((x, y)) = pointer() else {
+        // SAFETY: no arguments; always returns a display id.
+        return unsafe { CGMainDisplayID() };
+    };
+    let (mut display, mut count) = (0u32, 0u32);
+    // SAFETY: room for one display id and its count.
+    unsafe {
+        if CGGetDisplaysWithPoint(CGPoint { x, y }, 1, &mut display, &mut count) == 0 && count == 1
+        {
             display
         } else {
             CGMainDisplayID()

@@ -9,6 +9,11 @@
 //! key:enter  key:esc         ↩ or Esc, which reach Lens only while it takes them
 //!                            (`pill_keys`); otherwise they go to the app in front,
 //!                            recorded in app-keys.jsonl beside the clipboard
+//! key:1 … key:6              a digit, with fn when the draw key is down: it reaches
+//!                            Lens only while it takes them (`tool_keys`), and
+//!                            otherwise goes to the app in front, as above
+//! pointer:X:Y                the pointer is at X, Y in global points from now on;
+//!                            until then it is at the first display's centre
 //! accessibility:off          Accessibility is not allowed from now on
 //! paste:fail:the reason      the next paste fails with this
 //! jobs:hold  jobs:next  jobs:last  jobs:drain  jobs:release
@@ -106,6 +111,9 @@ struct Script {
     held_front: Option<String>,
     /// Lens takes ↩ and Esc.
     pill_keys: bool,
+    /// Lens takes fn with a digit.
+    tool_keys: bool,
+    pointer: Option<(f64, f64)>,
     no_accessibility: bool,
     paste_error: Option<String>,
 }
@@ -173,6 +181,20 @@ impl FakePort {
                 Some(sink) => sink(KeyEvent::Pill(key)),
                 None => append_line("app-keys.jsonl", serde_json::json!({ "key": mark })),
             }
+        } else if let Some(digit) = tool_digit(mark) {
+            let script = self.script.lock().unwrap();
+            let sink = script.keys.clone().filter(|_| script.tool_keys);
+            drop(script);
+            match sink {
+                Some(sink) => sink(KeyEvent::Tool(digit)),
+                None => append_line("app-keys.jsonl", serde_json::json!({ "key": mark })),
+            }
+        } else if let Some(at) = mark.strip_prefix("pointer:") {
+            let (x, y) = at.split_once(':').expect("pointer: mark holds X:Y");
+            self.script.lock().unwrap().pointer = Some((
+                x.parse().expect("pointer: X is a number"),
+                y.parse().expect("pointer: Y is a number"),
+            ));
         } else if mark == "accessibility:off" {
             self.script.lock().unwrap().no_accessibility = true;
         } else if let Some(reason) = mark.strip_prefix("paste:fail:") {
@@ -309,6 +331,11 @@ fn pill_key(mark: &str) -> Option<PillKey> {
     }
 }
 
+fn tool_digit(mark: &str) -> Option<u8> {
+    let digit: u8 = mark.strip_prefix("key:")?.parse().ok()?;
+    (1..=6).contains(&digit).then_some(digit)
+}
+
 fn watch_event(mark: &str) -> Option<WatchEvent> {
     let event = mark.strip_prefix("watch:")?;
     Some(match event {
@@ -399,6 +426,16 @@ impl PlatformPort for FakePort {
     }
     fn pill_keys(&self, on: bool) {
         self.script.lock().unwrap().pill_keys = on;
+    }
+    fn tool_keys(&self, on: bool) {
+        self.script.lock().unwrap().tool_keys = on;
+    }
+    fn pointer(&self) -> (f64, f64) {
+        let set = self.script.lock().unwrap().pointer;
+        set.unwrap_or_else(|| {
+            let display = self.displays.lock().unwrap()[0].frame;
+            (display[0] + display[2] / 2., display[1] + display[3] / 2.)
+        })
     }
     fn pointer_display(&self) -> Result<Area, String> {
         Ok(DISPLAY)

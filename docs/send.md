@@ -10,11 +10,11 @@ scrolls and typing keep reaching your apps.
 1. Tap **right ⌘** alone. Drag for an area, click for the whole display, press **↩** for
    the last area, or **Esc** to cancel. The area stays outlined; drag a corner to
    adjust it.
-2. Hold **fn** and drag to draw. A lone straight drag is an arrow, any other stays
-   freehand, and **⇧** makes a box. Strokes written in quick succession, each
-   starting within 1.5 s of the last and within 150 pt of it, are handwriting: they
-   all stay freehand, and the stroke before them turns back to freehand if it was
-   an arrow. The bar's Highlight, Label and Counter buttons set the next stroke.
+2. Hold **fn** and drag to draw. While fn is down, the tool strip stands beside
+   the pointer: Pen, Arrow, Box, Highlight, Label and Counter. Click one, or press
+   **fn+1** to **fn+6**, to pick it; it stays picked until you change it, and Lens
+   starts on Pen. With Pen or Arrow, **⇧** makes a box. Without fn, the digits go
+   to the app in front as usual.
 3. Type your message in the bar. Click the page to give it the keyboard; **⌘⌥C**
    takes it back.
 4. Tap **right ⌥** to talk: what you say is transcribed on this Mac, phrase by
@@ -147,13 +147,3 @@ AttnLens lens '{"cmd":"state"}'
 ```
 
 The header of `src/lens/automation.rs` lists the requests.
-
-## Why handwriting limits are 1.5 s and 150 pt
-
-The user wrote "Hi", "hello world" and an underlined word with a trackpad on a
-page that timed each stroke (2026-11-13). Between strokes of one word the pause
-was 350–983 ms, and the strokes' bounds were 0–62 pt apart. The underline started
-717 ms after its word, 120 pt below it. New words after a break came 1.6–7.8 s
-later and 125–396 pt away. Both limits sit past the slowest and widest stroke
-that belongs to the writing, so writing never meets them. A stroke that comes
-later or farther stays apart, so a lone straight drag is still an arrow.

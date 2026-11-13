@@ -127,18 +127,6 @@ impl Document {
             self.marks.push(mark);
         }
     }
-    /// Replaces the live mark drawn over the same span as `mark`, in the history
-    /// too, so undo never brings back the form it replaced.
-    pub fn replace_drawn(&mut self, mark: Mark) {
-        let marks = std::iter::once(&mut self.marks)
-            .chain(self.undo.iter_mut().map(|s| &mut s.marks))
-            .chain(self.redo.iter_mut().map(|s| &mut s.marks));
-        for marks in marks {
-            for m in marks.iter_mut().filter(|m| m.drawn == mark.drawn) {
-                *m = mark.clone();
-            }
-        }
-    }
     /// Whether undo would bring back a different image, not only different marks.
     pub fn undo_replaces_image(&self) -> bool {
         self.undo

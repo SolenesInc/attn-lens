@@ -52,6 +52,8 @@ pub enum KeyEvent {
     Pressed(Chord),
     Voice(Press),
     Pill(PillKey),
+    /// fn with a digit, 1 to 6, taken from the app in front while `tool_keys` is on.
+    Tool(u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -153,6 +155,12 @@ pub trait PlatformPort: Send + Sync {
     /// Lens calls it under its state lock, so it follows the dictation's state exactly;
     /// it only sets a flag.
     fn pill_keys(&self, on: bool);
+    /// Takes fn with 1 to 6 from the app in front, as [`KeyEvent::Tool`], or gives
+    /// them back. Lens calls it under its state lock, while the ink layer takes the
+    /// pointer; it only sets a flag.
+    fn tool_keys(&self, on: bool);
+    /// Where the pointer is, in points in the global display space.
+    fn pointer(&self) -> (f64, f64);
     /// The whole display under the pointer.
     fn pointer_display(&self) -> Result<Area, String>;
     /// The displays connected now, which may differ from those at launch.

@@ -370,14 +370,14 @@ fn an_area_on_the_second_display_adjusts_by_its_corners() {
 }
 
 #[test]
-fn the_draw_key_gives_an_arrow_a_freehand_stroke_and_a_box() {
+fn the_draw_key_draws_the_picked_tool_and_shift_makes_a_box() {
     let run = Run::new("capture.json", ONE_SESSION);
 
     // With the draw key up, nothing is drawn.
     let open = run.tree("ink", "area-picked");
     assert_eq!(label(&open, "mark-0"), None);
 
-    // A straight drag is an arrow, and the first press took the still, before ink.
+    // fn+2 picks Arrow, and the first press took the still, before ink.
     let arrow = run.tree("ink", "arrow-drawn");
     assert_eq!(label(&arrow, "mark-0"), Some("arrow"));
     let bar = run.tree("bar", "arrow-drawn");
@@ -391,7 +391,7 @@ fn the_draw_key_gives_an_arrow_a_freehand_stroke_and_a_box() {
         assert!(!visible(&mid, key), "{key} shows while drawing");
     }
 
-    // A crooked drag stays freehand, and joins the still that press began.
+    // fn+1 goes back to Pen, and its stroke joins the still that press began.
     let freehand = run.tree("ink", "freehand-drawn");
     assert_eq!(label(&freehand, "mark-1"), Some("freehand"));
     assert_eq!(label(&run.tree("bar", "freehand-drawn"), "still-1"), None);
@@ -419,7 +419,7 @@ fn the_draw_key_gives_an_arrow_a_freehand_stroke_and_a_box() {
     // So does moving a corner: the next stroke's still covers the new area.
     let resized = run.tree("ink", "drawn-after-resize");
     assert_eq!(frame(&resized, "ink"), [200., 100., 440., 330.]);
-    assert_eq!(label(&resized, "mark-4"), Some("arrow"));
+    assert_eq!(label(&resized, "mark-4"), Some("freehand"));
     let bar = run.tree("bar", "drawn-after-resize");
     assert_eq!(label(&bar, "still-3"), Some("Draw 880×660"));
 
@@ -441,44 +441,78 @@ fn ink_kinds(run: &Run, mark: &str) -> Vec<String> {
         .collect()
 }
 
+/// The tool strip as the ink layer shows it: its rect, in the layer's points, and the tool it names.
+fn strip(run: &Run, mark: &str) -> Option<([f64; 4], String)> {
+    let tree = run.tree("ink", mark);
+    element(&tree, "tool-strip")?;
+    Some((
+        rect(&tree, "tool-strip"),
+        label(&tree, "tool-strip")?.to_owned(),
+    ))
+}
+
 #[test]
-fn strokes_written_in_quick_succession_stay_freehand_and_a_lone_drag_is_an_arrow() {
-    let run = Run::new("handwriting.json", ONE_SESSION);
+fn fn_shows_the_tool_strip_and_each_stroke_is_its_tool() {
+    let run = Run::new("tool-strip.json", ONE_SESSION);
 
-    // Alone, the H's first upright is an arrow, and it is on the still.
-    assert_eq!(ink_kinds(&run, "first-stroke"), ["arrow"]);
-    assert_eq!(
-        state(&run, "first-stroke")["capture"]["stills"][0]["kinds"],
-        json!(["arrow"])
-    );
+    // Without fn, a digit belongs to the app in front, and the tool stays Pen.
+    assert_eq!(state(&run, "digit-before-fn")["tool"], "Pen");
+    assert_eq!(run.app_keys("digit-before-fn"), ["key:2"]);
 
-    // The second upright, close after it, makes both freehand, on the still too.
-    assert_eq!(ink_kinds(&run, "second-stroke"), ["freehand", "freehand"]);
-    assert_eq!(
-        state(&run, "second-stroke")["capture"]["stills"][0]["kinds"],
-        json!(["freehand", "freehand"])
-    );
+    // fn shows the strip up and right of where the pointer was: (220, 260) on the layer.
+    let (at, tool) = strip(&run, "strip-shown").expect("no strip while fn is down");
+    assert_eq!(tool, "Pen");
+    assert!(at[0] >= 220. && at[1] + at[3] <= 260., "strip at {at:?}");
+    for tool in ["pen", "arrow", "box", "highlight", "label", "counter"] {
+        let tree = run.tree("ink", "strip-shown");
+        assert!(
+            element(&tree, &format!("tool-{tool}")).is_some(),
+            "no {tool}"
+        );
+    }
 
-    // "Hi" and its underline, every stroke straight, all stay freehand.
-    assert_eq!(ink_kinds(&run, "hi-underlined"), ["freehand"; 5]);
+    // A straight drag with Pen stays freehand: nothing is guessed from its shape.
+    assert_eq!(ink_kinds(&run, "pen-drawn"), ["freehand"]);
 
-    // A straight drag after a pause is an arrow, and so is one soon after it
-    // that is too far away to be part of the same word.
-    assert_eq!(ink_kinds(&run, "lone-drag")[5..], ["arrow"]);
-    // A slip of the pointer beside it makes no mark, so the arrow stays.
-    assert_eq!(ink_kinds(&run, "tapped")[5..], ["arrow"]);
-    assert_eq!(
-        state(&run, "tapped")["capture"]["stills"][0]["kinds"][5],
-        "arrow"
-    );
-    assert_eq!(ink_kinds(&run, "quick-but-far")[5..], ["arrow", "arrow"]);
-    let still = &state(&run, "quick-but-far")["capture"]["stills"][0];
+    // fn+2 picks Arrow without reaching the app in front, and the strip says so.
+    assert_eq!(strip(&run, "arrow-picked").unwrap().1, "Arrow");
+    assert_eq!(run.app_keys("arrow-picked"), ["key:2"]);
+    assert_eq!(ink_kinds(&run, "arrow-drawn")[1..], ["arrow"]);
+
+    // ⇧ makes a box with Pen or Arrow.
+    assert_eq!(ink_kinds(&run, "shift-boxed")[2..], ["box"]);
+
+    // A click on the strip picks its tool and draws nothing.
+    assert_eq!(state(&run, "box-clicked")["tool"], "Box");
+    assert_eq!(ink_kinds(&run, "box-clicked").len(), 3);
+    assert_eq!(ink_kinds(&run, "box-drawn")[3..], ["box"]);
+
+    assert_eq!(ink_kinds(&run, "highlight-drawn")[4..], ["highlight"]);
+    assert_eq!(ink_kinds(&run, "counted")[5..], ["counter", "counter"]);
+    let still = &state(&run, "counted")["capture"]["stills"][0];
     assert_eq!(
         still["kinds"],
         json!([
-            "freehand", "freehand", "freehand", "freehand", "freehand", "arrow", "arrow"
+            "freehand",
+            "arrow",
+            "box",
+            "box",
+            "highlight",
+            "counter",
+            "counter"
         ])
     );
+
+    // Letting go of fn hides the strip and gives the digits back.
+    assert!(strip(&run, "strip-gone").is_none(), "the strip stayed");
+    assert_eq!(state(&run, "digit-after-fn")["tool"], "Counter");
+    assert_eq!(run.app_keys("digit-after-fn"), ["key:2", "key:1"]);
+
+    // The tool sticks until changed.
+    assert_eq!(strip(&run, "counter-sticks").unwrap().1, "Counter");
+
+    // Label places a label that takes its text in the bar.
+    assert!(element(&run.tree("bar", "label-placed"), "label").is_some());
 }
 
 #[test]
@@ -658,7 +692,7 @@ fn a_corner_drag_keeps_the_opposite_corner_where_it_was() {
 }
 
 #[test]
-fn the_bar_arms_tools_and_owns_the_keyboard() {
+fn the_bar_owns_the_keyboard_and_takes_a_label_s_text() {
     let run = Run::new("bar.json", TWO_SESSIONS);
 
     // The bar starts on the session last focused in attn, with the keys.
@@ -670,25 +704,17 @@ fn the_bar_arms_tools_and_owns_the_keyboard() {
         "a short label was cut"
     );
     assert_eq!(text(&open, "keys"), Some("Typing here"));
-    for key in [
-        "message",
-        "tool-highlight",
-        "tool-label",
-        "tool-counter",
-        "edit",
-        "send",
-    ] {
+    for key in ["message", "edit", "send"] {
         assert!(element(&open, key).is_some(), "{key} is missing");
     }
-    // Edit, Send and the tools stand at one height.
+    // Edit, Send and the chip stand at one height.
     let height = |key: &str| element(&open, key).unwrap()["rect"][3].as_f64().unwrap();
     assert_eq!(height("edit"), height("send"));
-    assert_eq!(height("tool-label"), height("send"));
     assert_eq!(height("chip"), height("send"));
 
     assert_eq!(text(&run.tree("bar", "typed"), "message"), Some("hi"));
 
-    // A tool lasts for one stroke.
+    // fn and a digit pick a tool, and it stays picked.
     let highlighted = run.tree("ink", "highlighted");
     assert_eq!(label(&highlighted, "mark-0"), Some("highlight"));
 

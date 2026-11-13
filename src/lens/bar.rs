@@ -1,9 +1,8 @@
-//! The bar beside the area: the session chip, the message, voice, the tool row,
-//! the still strip, Edit and Send, and the Tab palette. It takes keys without
+//! The bar beside the area: the session chip, the message, voice, the still
+//! strip, Edit and Send, and the Tab palette. It takes keys without
 //! activating Lens, and shows who has them (D6 on the plan).
 use super::{
-    AttnStatus, KeyOwner, Lens, SendStatus, Summary, VoiceState, attn, ink::InkTool,
-    session::DisplayFrame,
+    AttnStatus, KeyOwner, Lens, SendStatus, Summary, VoiceState, attn, session::DisplayFrame,
 };
 use crate::platform_port::VoiceStatus;
 use image::RgbaImage;
@@ -168,11 +167,6 @@ fn button(key: &str, content: String, on: bool, t: &tok::Theme) -> El {
                 .font(tok::type_::LABEL)
                 .color(if on { Color::WHITE } else { t.text }),
         )
-}
-
-fn tool_button(key: &'static str, name: &str, tool: InkTool, armed: InkTool, t: &tok::Theme) -> El {
-    button(key, name.to_string(), armed == tool, t)
-        .on_press(move |s: &mut Bar| s.lens.arm_tool(tool))
 }
 
 /// What the chip says: the target session, and where it runs once there is one.
@@ -409,32 +403,11 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
                 .font(tok::type_::LABEL)
                 .color(t.text_secondary),
             );
-        let tools = row()
+        let stills = row()
             .w_full()
             .h(CONTROL)
             .gap(GAP)
             .center_y()
-            .child(tool_button(
-                "tool-highlight",
-                "Highlight",
-                InkTool::Highlight,
-                summary.tool,
-                &t,
-            ))
-            .child(tool_button(
-                "tool-label",
-                "Label",
-                InkTool::Label,
-                summary.tool,
-                &t,
-            ))
-            .child(tool_button(
-                "tool-counter",
-                "Counter",
-                InkTool::Counter,
-                summary.tool,
-                &t,
-            ))
             .child(strip(summary, &t))
             .children(segments.last().map(|segment| {
                 text(segment.text.clone())
@@ -477,7 +450,7 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
             .radius(14.)
             .fill(t.card)
             .child(controls)
-            .child(tools);
+            .child(stills);
         if let Some(line) = status(summary) {
             bar = bar.child(
                 text(line)
