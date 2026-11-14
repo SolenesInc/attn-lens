@@ -300,10 +300,13 @@ struct Context {
 
 impl Context {
     fn send(&self, event: InputEvent, at: HostTime) {
-        // Input went unseen, fn's release perhaps with it: as the engine does for
-        // the draw key, count fn up until a modifier event says otherwise.
+        // Input went unseen, releases perhaps with it: as the engine does for the
+        // draw key, count fn up until a modifier event says otherwise, and forget
+        // the keys taken, so a missed release never takes the next plain press.
+        // A key still held then only lets its release reach the app.
         if event == InputEvent::TapDisabled {
             self.fn_down.store(false, Ordering::Release);
+            self.taken.store(0, Ordering::Release);
         }
         let _ = self.send.send(Tapped::Input(event, at));
     }
@@ -758,6 +761,21 @@ mod tests {
         assert!(!context.take(DIGIT_2, true, 0));
         assert!(!context.take(DIGIT_2, false, 0));
         assert!(taken(&events).is_empty());
+    }
+
+    #[test]
+    fn a_key_whose_release_the_interruption_hid_does_not_take_the_next_press() {
+        let (context, events) = context(true, true);
+        assert!(context.take(DIGIT_2, true, FN));
+        assert!(context.take(36, true, 0));
+        context.send(InputEvent::TapDisabled, HostTime(0));
+        context.takes.pill.store(false, Ordering::Release);
+        assert!(!context.take(DIGIT_2, true, 0));
+        assert!(!context.take(36, true, 0));
+        assert_eq!(
+            taken(&events),
+            [KeyEvent::Tool(2), KeyEvent::Pill(PillKey::Enter)]
+        );
     }
 
     #[test]
