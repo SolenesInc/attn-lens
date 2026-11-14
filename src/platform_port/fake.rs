@@ -9,6 +9,11 @@
 //! key:enter  key:esc         ↩ or Esc, which reach Lens only while it takes them
 //!                            (`pill_keys`); otherwise they go to the app in front,
 //!                            recorded in app-keys.jsonl beside the clipboard
+//! key:1 … key:6              a digit, with fn when the draw key is down: it reaches
+//!                            Lens only with fn down during a capture (`capture_keys`),
+//!                            and otherwise goes to the app in front, as above
+//! pointer:X:Y                the pointer is at X, Y in global points from now on;
+//!                            until then it is at the first display's centre
 //! accessibility:off          Accessibility is not allowed from now on
 //! paste:fail:the reason      the next paste fails with this
 //! jobs:hold  jobs:next  jobs:last  jobs:drain  jobs:release
@@ -106,6 +111,11 @@ struct Script {
     held_front: Option<String>,
     /// Lens takes ↩ and Esc.
     pill_keys: bool,
+    /// A capture is open, so Lens takes fn with a digit.
+    capture_keys: bool,
+    /// The draw key, fn, is down.
+    fn_down: bool,
+    pointer: Option<(f64, f64)>,
     no_accessibility: bool,
     paste_error: Option<String>,
 }
@@ -173,12 +183,36 @@ impl FakePort {
                 Some(sink) => sink(KeyEvent::Pill(key)),
                 None => append_line("app-keys.jsonl", serde_json::json!({ "key": mark })),
             }
+        } else if let Some(digit) = tool_digit(mark) {
+            let script = self.script.lock().unwrap();
+            let sink = script
+                .keys
+                .clone()
+                .filter(|_| script.capture_keys && script.fn_down);
+            drop(script);
+            match sink {
+                Some(sink) => sink(KeyEvent::Tool(digit)),
+                None => append_line("app-keys.jsonl", serde_json::json!({ "key": mark })),
+            }
+        } else if let Some(at) = mark.strip_prefix("pointer:") {
+            let (x, y) = at.split_once(':').expect("pointer: mark holds X:Y");
+            self.script.lock().unwrap().pointer = Some((
+                x.parse().expect("pointer: X is a number"),
+                y.parse().expect("pointer: Y is a number"),
+            ));
         } else if mark == "accessibility:off" {
             self.script.lock().unwrap().no_accessibility = true;
         } else if let Some(reason) = mark.strip_prefix("paste:fail:") {
             self.script.lock().unwrap().paste_error = Some(reason.into());
         } else if let Some(event) = key_event(mark) {
-            let sink = self.script.lock().unwrap().keys.clone();
+            let mut script = self.script.lock().unwrap();
+            match event {
+                KeyEvent::DrawDown => script.fn_down = true,
+                KeyEvent::DrawUp => script.fn_down = false,
+                _ => {}
+            }
+            let sink = script.keys.clone();
+            drop(script);
             if let Some(sink) = sink {
                 sink(event);
             }
@@ -309,6 +343,11 @@ fn pill_key(mark: &str) -> Option<PillKey> {
     }
 }
 
+fn tool_digit(mark: &str) -> Option<u8> {
+    let digit: u8 = mark.strip_prefix("key:")?.parse().ok()?;
+    (1..=6).contains(&digit).then_some(digit)
+}
+
 fn watch_event(mark: &str) -> Option<WatchEvent> {
     let event = mark.strip_prefix("watch:")?;
     Some(match event {
@@ -357,6 +396,20 @@ fn picked(answer: &str) -> Option<[u8; 3]> {
     Some([(hex >> 16) as u8, (hex >> 8) as u8, hex as u8])
 }
 
+/// Writes `line` to the log a test named in `ATTN_LENS_FAKE_FOCUS`: who Lens gave
+/// the keyboard back to.
+fn focus_log(line: &str) {
+    if let Some(path) = std::env::var_os("ATTN_LENS_FAKE_FOCUS") {
+        use std::io::Write;
+        let mut log = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .expect("ATTN_LENS_FAKE_FOCUS names a file that can be written");
+        writeln!(log, "{line}").expect("write the focus log");
+    }
+}
+
 /// Where the fake's clipboard writes land, when a test asked for them.
 fn clipboard_file(name: &str) -> Option<std::path::PathBuf> {
     Some(std::path::Path::new(&std::env::var_os("ATTN_LENS_FAKE_CLIPBOARD")?).join(name))
@@ -369,7 +422,9 @@ impl PlatformPort for FakePort {
     fn keys(&self, sink: Sink<KeyEvent>) {
         self.script.lock().unwrap().keys = Some(sink);
     }
-    fn capture_keys(&self, _open: bool) {}
+    fn capture_keys(&self, open: bool) {
+        self.script.lock().unwrap().capture_keys = open;
+    }
     fn hold_front(&self) {
         let mut script = self.script.lock().unwrap();
         if let Some(app) = script.front.take().filter(|app| app != LENS_FRONT) {
@@ -387,18 +442,21 @@ impl PlatformPort for FakePort {
         }
         script.front = Some(app.clone());
         drop(script);
-        if let Some(path) = std::env::var_os("ATTN_LENS_FAKE_FOCUS") {
-            use std::io::Write;
-            let mut log = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)
-                .expect("ATTN_LENS_FAKE_FOCUS names a file that can be written");
-            writeln!(log, "{app}").expect("write the focus log");
-        }
+        focus_log(&app);
+    }
+    fn release_keys(&self) -> bool {
+        focus_log("released");
+        true
     }
     fn pill_keys(&self, on: bool) {
         self.script.lock().unwrap().pill_keys = on;
+    }
+    fn pointer(&self) -> (f64, f64) {
+        let set = self.script.lock().unwrap().pointer;
+        set.unwrap_or_else(|| {
+            let display = self.displays.lock().unwrap()[0].frame;
+            (display[0] + display[2] / 2., display[1] + display[3] / 2.)
+        })
     }
     fn pointer_display(&self) -> Result<Area, String> {
         Ok(DISPLAY)

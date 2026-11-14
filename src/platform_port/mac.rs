@@ -243,6 +243,30 @@ impl PlatformPort for MacPort {
         });
     }
 
+    fn release_keys(&self) -> bool {
+        on_main_wait(|| {
+            let Some(class) = AnyClass::get(c"NSApplication") else {
+                return false;
+            };
+            // SAFETY: AppKit calls on the main thread; `keyWindow` is a live window or nil.
+            // Ordering the key panel out hands the keyboard back to the window that had
+            // it, as a hide does: the active app's, or the editor's when Lens is in
+            // front. Ordering it straight back in shows it again without taking keys,
+            // within one turn of the run loop, so it never leaves the screen.
+            unsafe {
+                let app: Retained<AnyObject> = msg_send![class, sharedApplication];
+                let window: Option<Retained<AnyObject>> = msg_send![&app, keyWindow];
+                let Some(window) = window else {
+                    return false;
+                };
+                let none: *const AnyObject = std::ptr::null();
+                let _: () = msg_send![&window, orderOut: none];
+                let _: () = msg_send![&window, orderFrontRegardless];
+            }
+            true
+        })
+    }
+
     fn capture_keys(&self, open: bool) {
         if let Some(tap) = self.tap.get() {
             tap.capture_open(open);
@@ -271,6 +295,12 @@ impl PlatformPort for MacPort {
         if let Some(tap) = self.tap.get() {
             tap.pill_keys(on);
         }
+    }
+
+    /// The origin if the system gives no pointer: the strip then stands at the
+    /// area's corner, still on screen.
+    fn pointer(&self) -> (f64, f64) {
+        capture::pointer().unwrap_or_default()
     }
 
     fn pointer_display(&self) -> Result<Area, String> {

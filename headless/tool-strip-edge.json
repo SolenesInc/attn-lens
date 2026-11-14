@@ -1,0 +1,15 @@
+{"displays":[
+  {"id":1,"frame":[0,0,1280,800],"scale":2,"primary":true}
+ ],
+ "pointer":[400,300],
+ "events":[
+ {"t":0.1,"type":"mark","name":"key:capture"},
+ {"t":0.2,"type":"drag","x":200,"y":100,"dx":600,"dy":450,"dur":0.2},
+ {"t":0.5,"type":"mark","name":"pointer:210:110"},
+ {"t":0.55,"type":"mark","name":"key:draw-down"},
+ {"t":0.85,"type":"mark","name":"strip-shown"},
+ {"t":0.9,"type":"drag","x":210,"y":110,"dx":40,"dy":30,"dur":0.1},
+ {"t":1.05,"type":"mark","name":"drawn"},
+ {"t":1.1,"type":"mark","name":"key:draw-up"},
+ {"t":1.2,"type":"mark","name":"end"}
+ ]}

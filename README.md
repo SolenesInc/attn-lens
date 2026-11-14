@@ -27,8 +27,9 @@ Lens is a Dock app. **⌘Q** quits, and a Dock click opens the editor.
 
 1. Tap **right ⌘** alone and drag an area. A click takes the whole display, and **Esc**
    cancels.
-2. Hold **fn** and drag to draw on the area. A lone straight drag is an arrow;
-   writing and underlining, strokes in quick succession, stay as drawn.
+2. Hold **fn** and drag to draw on the area. While fn is down, the tool strip by
+   the pointer picks Pen, Arrow, Box, Highlight, Label or Counter: click one, or
+   press **fn+1** to **fn+6**.
 3. Type a message in the bar. Click the page to give it the keyboard; **⌘⌥C** takes
    it back.
 4. Press **↩** in the bar, or **⌘⌥↩** from anywhere.
