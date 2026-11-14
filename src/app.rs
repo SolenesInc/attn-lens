@@ -135,8 +135,9 @@ struct Shown {
     picking: Option<Vec<DisplayFrame>>,
     area: Option<Area>,
     input: Input,
-    /// Each corner handle's window, while the draw key is up.
-    handles: Option<[[f32; 4]; 4]>,
+    /// Each corner handle's window, while the draw key is up and the bar does not
+    /// cover it: the handles stand above the bar and would take its clicks.
+    handles: [Option<[f32; 4]>; 4],
     resizing: bool,
     bar_rect: Option<[f32; 4]>,
     bar_key_requests: u64,
@@ -151,15 +152,20 @@ impl Shown {
             .capture
             .as_ref()
             .filter(|_| summary.editing.is_none());
+        let bar_rect =
+            capture.map(|c| bar::placement(c.area.rect, c.display, bar::height(summary), c.bar_at));
         Self {
             picking: summary.picking.clone(),
             area: capture.map(|c| c.area),
             input: summary.input,
-            handles: capture
-                .filter(|_| summary.input == Input::None)
-                .map(|c| Corner::ALL.map(|corner| corner.rect(c.area, c.display))),
+            handles: Corner::ALL.map(|corner| {
+                capture
+                    .filter(|_| summary.input == Input::None)
+                    .map(|c| corner.rect(c.area, c.display))
+                    .filter(|rect| !bar_rect.is_some_and(|bar| overlaps(*rect, bar)))
+            }),
             resizing: summary.resizing,
-            bar_rect: capture.map(|c| bar::placement(c.area.rect, c.display, bar::height(summary))),
+            bar_rect,
             bar_key_requests: summary.bar_key_requests,
             tile: summary
                 .tile
@@ -172,6 +178,11 @@ impl Shown {
                 .map(|display| (display.id, pill::placement(display))),
         }
     }
+}
+
+/// Whether two `[x, y, width, height]` rects on one display share any point.
+fn overlaps(a: [f32; 4], b: [f32; 4]) -> bool {
+    a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]
 }
 
 struct Surfaces {
@@ -234,9 +245,8 @@ impl Surfaces {
         let landed = was.resizing && !now.resizing;
         if !now.resizing && (was.handles != now.handles || landed) {
             for (index, handle) in self.handles.iter().enumerate() {
-                match (now.area, now.handles) {
-                    (Some(area), Some(rects)) => {
-                        let [x, y, width, height] = rects[index];
+                match (now.area, now.handles[index]) {
+                    (Some(area), Some([x, y, width, height])) => {
                         handle.place(
                             area.display,
                             OverlayPlacement::Rect {
@@ -246,7 +256,8 @@ impl Surfaces {
                                 height,
                             },
                         );
-                        if was.handles.is_none() {
+                        // A resize holds the handles, so one it uncovered shows as it lands.
+                        if landed || was.handles[index].is_none() {
                             handle.show();
                         }
                     }
@@ -549,6 +560,11 @@ pub fn run() -> Result<(), String> {
         let bar = bar
             .init(move || Bar::new(state))
             .on_focus(move |s, focused, _| {
+                // Lens hands the keys to the bar itself (a capture opening, ⌘⌥C), so
+                // the page still having them means a click on the bar took them.
+                s.keys_from_page = (focused
+                    && s.lens.read(|summary| summary.keys == KeyOwner::Page))
+                .then(|| (rune::time::Instant::now(), s.lens.port().now()));
                 s.lens.set_key_owner(if focused {
                     KeyOwner::Bar
                 } else {

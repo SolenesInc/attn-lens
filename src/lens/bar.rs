@@ -2,11 +2,15 @@
 //! strip, Edit and Send, and the Tab palette. It takes keys without
 //! activating Lens, and shows who has them (D6 on the plan).
 use super::{
-    AttnStatus, KeyOwner, Lens, SendStatus, Summary, VoiceState, attn, session::DisplayFrame,
+    AttnStatus, KeyOwner, Lens, SendStatus, Summary, VoiceState, attn,
+    session::{DisplayFrame, HostTime},
 };
 use crate::platform_port::VoiceStatus;
 use image::RgbaImage;
-use rune::{Color, Cx, El, Key, KeyEvent, TextEdit, Tx, col, el, row, text, text_input, tok};
+use rune::time::Instant;
+use rune::{
+    Color, Cx, Drag, El, Key, KeyEvent, Phase, TextEdit, Tx, col, el, row, text, text_input, tok,
+};
 use std::sync::Arc;
 
 pub const WIDTH: f32 = 760.;
@@ -19,6 +23,9 @@ const PALETTE_ROW: f32 = 36.;
 /// How many rows the palette shows before it scrolls.
 const PALETTE_ROWS: usize = 8;
 const THUMB: (u32, u32) = (104, 64);
+/// One frame of a headless run: how far the press lags the focus it caused where
+/// input carries no arrival time (measured: 16.67 ms of script time).
+const UNSTAMPED_FRAME: std::time::Duration = std::time::Duration::from_micros(16_667);
 /// Keeps the bar off the area and the display's edge.
 const MARGIN: f64 = 8.;
 
@@ -82,29 +89,60 @@ fn palette_height(summary: &Summary) -> f32 {
     PALETTE_ROW * summary.sessions.len().clamp(1, PALETTE_ROWS) as f32 + GAP
 }
 
-/// Where the bar goes: under the area if it fits, otherwise over it, otherwise
-/// (a whole display) inside the bottom edge. Stills leave Lens's windows out.
-pub fn placement(area: [f64; 4], display: DisplayFrame, height: f32) -> [f32; 4] {
+/// Where the bar goes: where the user dragged it, or under the area if it fits,
+/// then over it, then (a whole display) inside the bottom edge. Either way it stays
+/// whole on the display, clear of the menu bar and the Dock. Stills leave Lens's
+/// windows out.
+pub fn placement(
+    area: [f64; 4],
+    display: DisplayFrame,
+    height: f32,
+    dragged: Option<(f64, f64)>,
+) -> [f32; 4] {
     let (display_w, display_h) = (display.frame[2], display.frame[3]);
     let width = f64::from(WIDTH).min(display_w - MARGIN * 2.);
     let height = f64::from(height);
-    let below = area[1] + area[3] + MARGIN;
-    let above = area[1] - MARGIN - height;
-    let y = if below + height + MARGIN <= display_h {
-        below
-    } else if above >= MARGIN {
-        above
-    } else {
-        display_h - height - MARGIN
-    };
-    let x = area[0].clamp(MARGIN, (display_w - width - MARGIN).max(MARGIN));
+    let right = (display_w - width - MARGIN).max(MARGIN);
+    let top = display.menu_bar + MARGIN;
+    let bottom = (display_h - display.dock - height - MARGIN).max(top);
+    let (x, y) = dragged.unwrap_or_else(|| {
+        let below = area[1] + area[3] + MARGIN;
+        let above = area[1] - MARGIN - height;
+        let y = if below <= bottom {
+            below
+        } else if above >= top {
+            above
+        } else {
+            bottom
+        };
+        (area[0], y)
+    });
+    let (x, y) = (x.clamp(MARGIN, right), y.clamp(top, bottom));
     [x as f32, y as f32, width as f32, height as f32]
+}
+
+/// A drag on the bar's background: where the press sat in the bar, so the bar
+/// moves with the pointer and does not jump.
+#[derive(Clone, Copy)]
+struct Grab {
+    offset: (f32, f32),
+    /// Where the bar was, for a drag that is cancelled.
+    was: Option<(f64, f64)>,
+    /// The press took the keyboard from the page, which gets it back when the drag ends.
+    from_page: bool,
 }
 
 pub struct Bar {
     pub lens: Arc<Lens>,
     pub seen: u64,
     capture: Option<u64>,
+    /// The bar's top-left in points from the primary display's top-left, as the
+    /// window last reported it.
+    origin: (f32, f32),
+    grab: Option<Grab>,
+    /// When the bar took the keys from the page, which only a press on it does: by
+    /// Rune's clock, and by the port's for a host that does not stamp input.
+    pub keys_from_page: Option<(Instant, HostTime)>,
     placing_label: bool,
     message: TextEdit,
     label: TextEdit,
@@ -118,6 +156,9 @@ impl Bar {
             lens,
             seen: 0,
             capture: None,
+            origin: (0., 0.),
+            grab: None,
+            keys_from_page: None,
             placing_label: false,
             message,
             label: TextEdit::new(""),
@@ -385,13 +426,16 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
             .child(chip(summary, &t))
             .child(
                 row()
+                    .key("field")
                     .grow(1.)
                     .h(CONTROL)
                     .px(10.)
                     .center_y()
                     .radius(8.)
                     .border(1., if keys_here { t.indicator } else { t.separator })
-                    .child(field),
+                    .child(field)
+                    // A press inside the border is a press on the field, not a drag.
+                    .on_press(|_: &mut Bar| {}),
             )
             .child(
                 text(if keys_here {
@@ -470,8 +514,61 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
         if let Some(selected) = summary.palette {
             bar = bar.child(palette(summary, selected, &t));
         }
-        bar
+        bar.on_screen_layout(|s: &mut Bar, rect| s.origin = (rect[0], rect[1]))
+            .on_drag(drag_bar)
     })
+}
+
+/// A drag on the bar's background moves the bar: the field and the buttons take
+/// their own presses. Where the pointer is comes from where the window is now, so
+/// the bar follows it although the drag moves the window it is in.
+fn drag_bar(s: &mut Bar, d: &mut Drag, tx: &mut Tx) {
+    let capture = s
+        .lens
+        .read(|summary| summary.capture.as_ref().map(|c| (c.display, c.bar_at)));
+    let Some((display, bar_at)) = capture else {
+        return;
+    };
+    match d.phase {
+        Phase::Down => {
+            s.grab = Some(Grab {
+                offset: (d.x, d.y),
+                was: bar_at,
+                // This press took them if it arrived before they moved: the focus
+                // runs while the press that caused it is dispatched, and a later
+                // press (into the field, then this drag) arrives after it. A host
+                // that does not stamp input (headless) runs the press on the frame
+                // after the focus.
+                from_page: s.keys_from_page.take().is_some_and(|(focused, at)| {
+                    tx.input_time().map_or_else(
+                        || s.lens.port().now().since(at) <= UNSTAMPED_FRAME,
+                        |pressed| pressed <= focused,
+                    )
+                }),
+            });
+        }
+        Phase::Move => {
+            if let Some(grab) = s.grab {
+                let x = s.origin.0 + d.x - grab.offset.0;
+                let y = s.origin.1 + d.y - grab.offset.1;
+                s.lens.move_bar(Some((
+                    f64::from(x) - display.frame[0],
+                    f64::from(y) - display.frame[1],
+                )));
+            }
+        }
+        Phase::Up => {
+            let Some(grab) = s.grab.take() else {
+                return;
+            };
+            if d.cancelled() {
+                s.lens.move_bar(grab.was);
+            }
+            if grab.from_page {
+                s.lens.release_keys();
+            }
+        }
+    }
 }
 
 /// Voice in the bar: what the voice key does now, or how far voice has got.

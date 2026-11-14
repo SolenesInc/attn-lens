@@ -152,6 +152,12 @@ pub trait PlatformPort: Send + Sync {
     /// app noted by [`Self::hold_front`] so the user can keep typing there. If the
     /// user has gone to another app since, leaves it alone.
     fn return_front(&self) {}
+    /// A press on the bar took the keyboard from the window that had it without
+    /// meaning to (a drag on its background). Gives it back, and keeps the bar on
+    /// screen. Returns false, leaving the keys with the bar, when it could not.
+    fn release_keys(&self) -> bool {
+        false
+    }
     /// Takes ↩ and Esc from the app in front, as [`KeyEvent::Pill`], or gives them back.
     /// Lens calls it under its state lock, so it follows the dictation's state exactly;
     /// it only sets a flag.

@@ -16,7 +16,10 @@ scrolls and typing keep reaching your apps.
    starts on Pen. With Pen or Arrow, **⇧** makes a box. Without fn, the digits go
    to the app in front as usual.
 3. Type your message in the bar. Click the page to give it the keyboard; **⌘⌥C**
-   takes it back.
+   takes it back. Drag the bar by its background to see or click what is behind
+   it. It stays whole on the capture's display, keeps the keyboard where it was,
+   and holds its place until the capture ends; the next capture starts it beside
+   the area again.
 4. Tap **right ⌥** to talk: what you say is transcribed on this Mac, phrase by
    phrase. Tap it again to stop, or hold it instead and talk until you let go. The
    first use downloads a 731 MB speech model, and macOS asks for Microphone access.

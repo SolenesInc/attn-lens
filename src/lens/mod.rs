@@ -553,6 +553,13 @@ impl Lens {
         }
     }
 
+    /// Gives the page back the keyboard a press on the bar took from it.
+    pub fn release_keys(&self) {
+        if self.port.release_keys() {
+            self.set_key_owner(KeyOwner::Page);
+        }
+    }
+
     fn set_input(&self, input: Input) {
         let mut state = self.state.lock().unwrap();
         // The ink layer exists only during a capture.
@@ -701,6 +708,21 @@ impl Lens {
         self.changed();
     }
 
+    /// The user dragged the bar: `at` is its top-left in points from the capture
+    /// display's top-left, or None for its place beside the area. It stays there
+    /// for the rest of the capture.
+    pub fn move_bar(&self, at: Option<(f64, f64)>) {
+        let mut state = self.state.lock().unwrap();
+        let Some(capture) = state.capture.as_mut() else {
+            return;
+        };
+        if capture.bar_at != at {
+            capture.bar_at = at;
+            drop(state);
+            self.changed();
+        }
+    }
+
     fn start_capture(self: &Arc<Self>, area: Area, display: DisplayFrame) {
         // Automation can pick while a capture is open.
         let state = self.state.lock().unwrap();
@@ -738,6 +760,7 @@ impl Lens {
                 target,
                 message: String::new(),
                 voice,
+                bar_at: None,
             });
             state.picking = None;
             state.last_area = Some(area);
@@ -1681,6 +1704,7 @@ impl Lens {
                 segments: c.segments.clone(),
                 target: c.target.clone(),
                 message: c.message.clone(),
+                bar_at: c.bar_at,
             }),
             picking: state.picking.clone(),
             last_area: state.last_area,
@@ -1784,6 +1808,7 @@ impl Lens {
                 "segments": c.segments,
                 "target": c.target,
                 "message": c.message,
+                "bar_at": c.bar_at,
             })),
         })
     }
@@ -1867,6 +1892,7 @@ pub struct CaptureSummary {
     pub segments: Vec<Segment>,
     pub target: Option<String>,
     pub message: String,
+    pub bar_at: Option<(f64, f64)>,
 }
 
 pub struct TileSummary {
