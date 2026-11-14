@@ -300,6 +300,11 @@ struct Context {
 
 impl Context {
     fn send(&self, event: InputEvent, at: HostTime) {
+        // Input went unseen, fn's release perhaps with it: as the engine does for
+        // the draw key, count fn up until a modifier event says otherwise.
+        if event == InputEvent::TapDisabled {
+            self.fn_down.store(false, Ordering::Release);
+        }
         let _ = self.send.send(Tapped::Input(event, at));
     }
 
@@ -741,6 +746,15 @@ mod tests {
     fn a_digit_typed_after_fn_comes_up_reaches_the_app() {
         let (context, events) = context(false, true);
         context.fn_down.store(false, Ordering::Release);
+        assert!(!context.take(DIGIT_2, true, 0));
+        assert!(!context.take(DIGIT_2, false, 0));
+        assert!(taken(&events).is_empty());
+    }
+
+    #[test]
+    fn after_the_tap_is_interrupted_a_digit_reaches_the_app_until_fn_is_seen_again() {
+        let (context, events) = context(false, true);
+        context.send(InputEvent::TapDisabled, HostTime(0));
         assert!(!context.take(DIGIT_2, true, 0));
         assert!(!context.take(DIGIT_2, false, 0));
         assert!(taken(&events).is_empty());

@@ -1642,7 +1642,7 @@ fn the_bar_drags_out_of_the_way_and_stays_on_its_display() {
         Some("hi!")
     );
 
-    // Ink lands where the bar was, and the bar stays where it was dragged.
+    // Ink lands where the bar was (fn+2 picked Arrow), and the bar stays where it was dragged.
     let drawn = run.tree("ink", "drawn-under");
     assert_eq!(label(&drawn, "mark-0"), Some("arrow"));
     assert_eq!(frame(&drawn, "bar"), [100., 400., 760., 92.]);

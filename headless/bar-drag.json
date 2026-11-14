@@ -101,6 +101,11 @@
    "name": "key:draw-down"
   },
   {
+   "t": 0.97,
+   "type": "mark",
+   "name": "key:2"
+  },
+  {
    "t": 1.0,
    "type": "drag",
    "x": 200,
