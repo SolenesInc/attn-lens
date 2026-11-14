@@ -8,10 +8,11 @@ use super::{
 };
 use crate::platform_port::VoiceStatus;
 use image::RgbaImage;
+use rune::time::Instant;
 use rune::{
     Color, Cx, Drag, El, Key, KeyEvent, Phase, TextEdit, Tx, col, el, row, text, text_input, tok,
 };
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 pub const WIDTH: f32 = 760.;
 /// Every control on the bar stands this tall.
@@ -23,11 +24,9 @@ const PALETTE_ROW: f32 = 36.;
 /// How many rows the palette shows before it scrolls.
 const PALETTE_ROWS: usize = 8;
 const THUMB: (u32, u32) = (104, 64);
-/// How soon after the bar takes the keys a press on its background counts as the
-/// press that took them. A tripwire: the focus and the press arrive in one event
-/// dispatch (no gap in the headless runs), and a second, deliberate press, such as
-/// one into the field and then one to drag, cannot follow within it.
-const SAME_PRESS: Duration = Duration::from_millis(50);
+/// One frame of a headless run: how far the press lags the focus it caused where
+/// input carries no arrival time (measured: 16.67 ms of script time).
+const UNSTAMPED_FRAME: std::time::Duration = std::time::Duration::from_micros(16_667);
 /// Keeps the bar off the area and the display's edge.
 const MARGIN: f64 = 8.;
 
@@ -142,8 +141,9 @@ pub struct Bar {
     /// window last reported it.
     origin: (f32, f32),
     grab: Option<Grab>,
-    /// When a press focused the bar while the page had the keys.
-    pub keys_from_page: Option<HostTime>,
+    /// When the bar took the keys from the page, which only a press on it does: by
+    /// Rune's clock, and by the port's for a host that does not stamp input.
+    pub keys_from_page: Option<(Instant, HostTime)>,
     placing_label: bool,
     message: TextEdit,
     label: TextEdit,
@@ -549,7 +549,7 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
 /// A drag on the bar's background moves the bar: the field and the buttons take
 /// their own presses. Where the pointer is comes from where the window is now, so
 /// the bar follows it although the drag moves the window it is in.
-fn drag_bar(s: &mut Bar, d: &mut Drag, _: &mut Tx) {
+fn drag_bar(s: &mut Bar, d: &mut Drag, tx: &mut Tx) {
     let capture = s
         .lens
         .read(|summary| summary.capture.as_ref().map(|c| (c.display, c.bar_at)));
@@ -561,10 +561,17 @@ fn drag_bar(s: &mut Bar, d: &mut Drag, _: &mut Tx) {
             s.grab = Some(Grab {
                 offset: (d.x, d.y),
                 was: bar_at,
-                from_page: s
-                    .keys_from_page
-                    .take()
-                    .is_some_and(|at| s.lens.port().now().since(at) < SAME_PRESS),
+                // This press took them if it arrived before they moved: the focus
+                // runs while the press that caused it is dispatched, and a later
+                // press (into the field, then this drag) arrives after it. A host
+                // that does not stamp input (headless) runs the press on the frame
+                // after the focus.
+                from_page: s.keys_from_page.take().is_some_and(|(focused, at)| {
+                    tx.input_time().map_or_else(
+                        || s.lens.port().now().since(at) <= UNSTAMPED_FRAME,
+                        |pressed| pressed <= focused,
+                    )
+                }),
             });
         }
         Phase::Move => {

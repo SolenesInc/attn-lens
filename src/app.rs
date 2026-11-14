@@ -564,7 +564,7 @@ pub fn run() -> Result<(), String> {
                 // the page still having them means a click on the bar took them.
                 s.keys_from_page = (focused
                     && s.lens.read(|summary| summary.keys == KeyOwner::Page))
-                .then(|| s.lens.port().now());
+                .then(|| (rune::time::Instant::now(), s.lens.port().now()));
                 s.lens.set_key_owner(if focused {
                     KeyOwner::Bar
                 } else {
