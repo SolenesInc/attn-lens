@@ -59,6 +59,9 @@ Notable user-visible changes are recorded here.
 
 ### Changed
 
+- Attn Lens has a new app icon: attn's cat holding a magnifying glass, in place
+  of Glance's pixel eye.
+
 - Attn Lens now runs on Rune instead of GPUI. A tap of right ⌘ replaces ⌘⌥2 and starts a capture
   of the display under the pointer; a Dock click opens the editor. The in-place
   overlay and the full editor return in later changes.

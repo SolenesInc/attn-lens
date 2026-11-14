@@ -1,12 +1,18 @@
-# Glance app icon
+# Attn Lens app icon
 
-`glance.svg` is the production master. It uses glance.sh's existing white and
-green pixel eye on a dark rounded tile, with transparent margins for macOS.
-The source mark is from `modem-dev/agentpaste/app/icon.svg` at commit
-`698ab598477e809f2f75ae624e63cbc6a20b0846`.
+`lens.png` is the production master: 1024 pixels square, a rounded macOS tile
+with transparent margins. It is attn's cat, a black cat with neon circuit lines
+in its ears on a magenta, violet and cyan aurora, holding a magnifying glass to
+one eye. attn's own app icon is the same cat without the glass, so the two read
+as one family in the Dock.
 
-`examples/icon.rs` renders the SVG at 1024 pixels, then creates all ten standard
-macOS iconset PNGs with premultiplied filtering to preserve alpha edges.
-`scripts/bundle.sh` packages them into a hash-named Glance ICNS resource.
+The artwork was generated with Codex image generation from attn's chosen logo
+and masked to a superellipse tile. The prompts, the rounds the user chose from
+and the generator scripts are attached to attn's seed `s-7eyt9h`
+(make-new-attn-logo).
 
-Prior artwork and its original generation prompts are preserved in `archive/`.
+`examples/icon.rs` resizes the master into all ten standard macOS iconset PNGs
+with premultiplied filtering to preserve alpha edges. `scripts/bundle.sh`
+packages them into a hash-named Attn Lens ICNS resource.
+
+Earlier artwork and its generation prompts are preserved in `archive/`.
