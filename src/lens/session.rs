@@ -159,4 +159,7 @@ pub struct Capture {
     pub target: Option<String>,
     pub message: String,
     pub voice: CaptureVoice,
+    /// Where the user dragged the bar: its top-left in points from the display's
+    /// top-left. None keeps it beside the area.
+    pub bar_at: Option<(f64, f64)>,
 }
