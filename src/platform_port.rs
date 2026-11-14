@@ -52,7 +52,7 @@ pub enum KeyEvent {
     Pressed(Chord),
     Voice(Press),
     Pill(PillKey),
-    /// fn with a digit, 1 to 6, taken from the app in front while `tool_keys` is on.
+    /// fn with a digit, 1 to 6, taken from the app in front during a capture.
     Tool(u8),
 }
 
@@ -142,7 +142,8 @@ pub trait PlatformPort: Send + Sync {
     /// Starts reporting the draw key, the capture key and the voice key. Called
     /// once, on the UI thread.
     fn keys(&self, sink: Sink<KeyEvent>);
-    /// Registers or releases the keys that exist only during a capture.
+    /// Registers or releases the keys that exist only during a capture: the
+    /// draw key, ⌘⌥C and ⌘⌥↩, and fn with 1 to 6.
     fn capture_keys(&self, open: bool);
     /// Lens is about to take the keyboard for one of its windows. Notes the app that
     /// has it, unless that is Lens, so [`Self::return_front`] can give it back.
@@ -155,10 +156,6 @@ pub trait PlatformPort: Send + Sync {
     /// Lens calls it under its state lock, so it follows the dictation's state exactly;
     /// it only sets a flag.
     fn pill_keys(&self, on: bool);
-    /// Takes fn with 1 to 6 from the app in front, as [`KeyEvent::Tool`], or gives
-    /// them back. Lens calls it under its state lock, while the ink layer takes the
-    /// pointer; it only sets a flag.
-    fn tool_keys(&self, on: bool);
     /// Where the pointer is, in points in the global display space.
     fn pointer(&self) -> (f64, f64);
     /// The whole display under the pointer.

@@ -569,8 +569,7 @@ impl Lens {
     }
 
     /// Sets whether the ink layer takes the pointer. While it does, the tool strip
-    /// stands where the pointer was when the draw key went down, and fn with a digit
-    /// picks a tool instead of reaching the app in front.
+    /// stands where the pointer was when the draw key went down.
     fn input_now(&self, state: &mut State, input: Input) {
         state.input = input;
         state.strip = match (input, &state.capture) {
@@ -581,7 +580,6 @@ impl Lens {
             }
             _ => None,
         };
-        self.port.tool_keys(input == Input::All);
     }
 
     fn fail(&self, error: String) {

@@ -6,7 +6,7 @@
 //! License, Copyright (c) 2026 Christopher Langton. See THIRD_PARTY_NOTICES.md.
 //! The HID tap only listens. The session tap passes every event on, except ↩
 //! and Esc while a dictation's pill waits for them (`pill_keys`, F7 on the plan),
-//! and fn with 1 to 6 while the ink layer takes the pointer (`tool_keys`): those
+//! and fn with 1 to 6 while a capture is open (`capture_open`): those
 //! it takes, so ↩ never also runs a line in the terminal in front, and a digit
 //! that picks a tool is not also typed.
 use super::{COMMAND, CONTROL, InputEvent, Keys, OPTION, Physical, SHIFT};
@@ -99,8 +99,8 @@ enum Tapped {
 struct Takes {
     /// ↩ and Esc, while a dictation's pill waits for them.
     pill: Arc<AtomicBool>,
-    /// fn with 1 to 6, while the ink layer takes the pointer.
-    tools: Arc<AtomicBool>,
+    /// fn with 1 to 6, while a capture is open. The draw key is reported only then too.
+    capture: Arc<AtomicBool>,
 }
 
 #[link(name = "ApplicationServices", kind = "framework")]
@@ -184,8 +184,6 @@ fn session_flags() -> u64 {
 /// The running key engine. Its threads live as long as the app.
 pub struct Tap {
     sink: Sink<KeyEvent>,
-    /// The draw key is reported only while a capture is open.
-    open: Arc<AtomicBool>,
     draw: Arc<AtomicBool>,
     takes: Takes,
 }
@@ -202,9 +200,9 @@ impl Tap {
             .name("lens-key-tap".into())
             .spawn(move || run_taps(send, tap_takes))
             .map_err(|e| format!("the key tap cannot start: {e}"))?;
-        let open = Arc::new(AtomicBool::new(false));
         let draw = Arc::new(AtomicBool::new(false));
-        let (engine_open, engine_draw, engine_sink) = (open.clone(), draw.clone(), sink.clone());
+        let (engine_open, engine_draw, engine_sink) =
+            (takes.capture.clone(), draw.clone(), sink.clone());
         std::thread::Builder::new()
             .name("lens-keys".into())
             .spawn(move || {
@@ -225,12 +223,7 @@ impl Tap {
                 })
             })
             .map_err(|e| format!("the key engine cannot start: {e}"))?;
-        Ok(Self {
-            sink,
-            open,
-            draw,
-            takes,
-        })
+        Ok(Self { sink, draw, takes })
     }
 
     /// Takes ↩ and Esc from the app in front from now on, or gives them back.
@@ -238,15 +231,10 @@ impl Tap {
         self.takes.pill.store(on, Ordering::Release);
     }
 
-    /// Takes fn with 1 to 6 from the app in front from now on, or gives them back.
-    pub fn tool_keys(&self, on: bool) {
-        self.takes.tools.store(on, Ordering::Release);
-    }
-
     /// Reports the draw key from now on, or stops. A draw key already down when
     /// the capture opens counts at once.
     pub fn capture_open(&self, open: bool) {
-        self.open.store(open, Ordering::Release);
+        self.takes.capture.store(open, Ordering::Release);
         if open && self.draw.load(Ordering::Acquire) {
             (self.sink)(KeyEvent::DrawDown);
         }
@@ -305,8 +293,8 @@ struct Context {
     /// [`TAKEN_KEYS`], so their repeats and release are taken too.
     taken: AtomicU16,
     /// Whether fn is down, from the modifier events this tap has passed on. The
-    /// key events that follow arrive in the same order, so a digit typed just
-    /// after fn comes up is never taken while Lens has yet to hear of the release.
+    /// key events that follow arrive in the same order, so this is fn's state when
+    /// each digit was typed, whatever Lens has heard so far.
     fn_down: AtomicBool,
 }
 
@@ -317,8 +305,9 @@ impl Context {
 
     /// Whether the session tap takes this key event from the app in front: a
     /// bare ↩ or Esc pressed while the pill waits, or a digit pressed with fn
-    /// (and maybe ⇧) while the ink layer takes the pointer, and its repeats and
-    /// release.
+    /// (and maybe ⇧) while a capture is open, and its repeats and release. Both
+    /// conditions are known here when the key arrives, so a quick fn+digit is
+    /// taken before Lens has heard of fn.
     fn take(&self, code: u16, down: bool, flags: u64) -> bool {
         let Some(index) = TAKEN_KEYS.iter().position(|(c, _)| *c == code) else {
             return false;
@@ -341,7 +330,7 @@ impl Context {
             _ => {
                 flags & (CONTROL | OPTION | COMMAND) == 0
                     && self.fn_down.load(Ordering::Acquire)
-                    && self.takes.tools.load(Ordering::Acquire)
+                    && self.takes.capture.load(Ordering::Acquire)
             }
         };
         if !takes {
@@ -682,7 +671,7 @@ mod tests {
         let (send, events) = mpsc::channel();
         let takes = Takes::default();
         takes.pill.store(pill, Ordering::Release);
-        takes.tools.store(tools, Ordering::Release);
+        takes.capture.store(tools, Ordering::Release);
         let context = Context {
             send,
             taps: [
@@ -710,7 +699,7 @@ mod tests {
     const DIGIT_2: u16 = 19;
 
     #[test]
-    fn a_digit_is_taken_only_while_tools_are_on_and_without_command_keys() {
+    fn a_digit_is_taken_only_during_a_capture_and_without_command_keys() {
         // (pill, tools, flags, taken?)
         let cases = [
             (false, true, FN, true),
@@ -735,10 +724,10 @@ mod tests {
     }
 
     #[test]
-    fn a_taken_digit_keeps_its_repeats_and_release_after_tools_go_off() {
+    fn a_taken_digit_keeps_its_repeats_and_release_after_fn_comes_up() {
         let (context, events) = context(false, true);
         assert!(context.take(DIGIT_2, true, FN));
-        context.takes.tools.store(false, Ordering::Release);
+        context.fn_down.store(false, Ordering::Release);
         assert!(context.take(DIGIT_2, true, FN), "repeat");
         assert!(context.take(DIGIT_2, false, 0), "release");
         assert!(
@@ -749,8 +738,7 @@ mod tests {
     }
 
     #[test]
-    fn a_digit_typed_after_fn_comes_up_reaches_the_app_before_lens_hears_of_it() {
-        // Lens still takes tool keys: the release is on its way to it.
+    fn a_digit_typed_after_fn_comes_up_reaches_the_app() {
         let (context, events) = context(false, true);
         context.fn_down.store(false, Ordering::Release);
         assert!(!context.take(DIGIT_2, true, 0));
