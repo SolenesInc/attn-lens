@@ -10,6 +10,7 @@ mod dispatch;
 mod export;
 mod gesture;
 mod icons;
+pub(crate) mod kit;
 mod keys;
 mod live;
 pub mod menus;

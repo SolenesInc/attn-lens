@@ -1,6 +1,11 @@
 //! The sidebar's small controls.
 use super::super::{Editor, actions::Action, live::rgba};
-use rune::{Cursor, Cx, El, Icon, Key, Tx, col, el, icon, row, text, text_input, tok};
+use rune::{Cursor, Cx, El, Icon, Key, Tx, col, el, row, text, text_input, tok};
+use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, SegmentedControl, State};
+
+fn k(cx: &Cx<Editor>) -> &'static rune_kit::Kit {
+    super::super::kit::kit(cx.system_dark())
+}
 
 fn theme(cx: &Cx<Editor>) -> tok::Theme {
     tok::theme(cx.system_dark())
@@ -11,13 +16,10 @@ pub(crate) fn slug(label: &str) -> String {
 }
 
 pub(crate) fn field(cx: &Cx<Editor>, label: &str, control: El) -> El {
+    let k = k(cx);
     col()
         .gap(6.)
-        .child(
-            text(label.to_string())
-                .font(tok::type_::LABEL)
-                .color(theme(cx).text_secondary),
-        )
+        .child(text(label.to_string()).font(k.ty.small_medium).color(k.c.text_muted))
         .child(control)
 }
 
@@ -28,31 +30,13 @@ pub(crate) fn button(
     enabled: bool,
     on_press: impl Fn(&mut Editor, &mut Tx) + 'static,
 ) -> El {
-    let t = theme(cx);
-    let mut button = row()
-        .key(key.to_string())
-        .role("button")
-        .label(label.to_string())
-        .px(10.)
-        .py(6.)
-        .radius(6.)
-        .center()
-        .fill(t.control_off)
+    Button::new(label)
+        .variant(ButtonVariant::Neutral)
+        .control_size(ControlSize::Regular)
         .disabled(!enabled)
-        .child(
-            text(label.to_string())
-                .font(tok::type_::LABEL)
-                .color(if enabled { t.text } else { t.text_secondary })
-                .inert(),
-        );
-    if enabled {
-        button = button
-            .cursor(Cursor::Pointer)
-            .hover(t.hover)
-            .press(t.press)
-            .on_press_tx(on_press);
-    }
-    button
+        .on_press_tx(on_press)
+        .build(k(cx))
+        .key(key.to_string())
 }
 
 /// An icon button in the toolbar; `active` marks the tool in use.
@@ -64,32 +48,21 @@ pub(crate) fn icon_button(
     toggle: Option<bool>,
     action: Action,
 ) -> El {
-    let t = theme(cx);
     let active = toggle == Some(true);
-    let accent = rgba(super::super::live::ACCENT);
-    let mut button = el()
-        .key(key.to_string())
-        .role("button")
-        .label(label.clone())
-        .help(label)
-        .size(32., 32.)
-        .radius(7.)
-        .center()
-        .cursor(Cursor::Pointer)
-        .hover(t.hover)
-        .press(t.press)
+    let mut button = IconButton::new(glyph)
+        .variant(IconButtonVariant::Ghost)
+        .control_size(ControlSize::ExtraLarge)
+        .help(label);
+    // The kit has no toggled icon button; the spike shows the active tool as pressed.
+    if active {
+        button = button.state(State::Pressed);
+    }
+    let mut button = button
         .on_press_tx(move |s: &mut Editor, tx| s.dispatch_ui(action.clone(), tx))
-        .child(
-            icon(glyph, 18.)
-                .color(if active { accent } else { t.text })
-                .inert(),
-        );
-    // Only a toggle has a checked state; an action button reads as a plain button.
+        .build(k(cx))
+        .key(key.to_string());
     if let Some(checked) = toggle {
         button = button.checked(checked);
-    }
-    if active {
-        button = button.fill(accent.alpha(0.16));
     }
     button
 }
@@ -103,40 +76,16 @@ pub(crate) fn choices<T>(
 where
     T: Into<String>,
 {
-    let t = theme(cx);
-    let accent = rgba(super::super::live::ACCENT);
-    let mut bar = row()
+    let options: Vec<(String, Action, bool)> =
+        options.into_iter().map(|(l, a, on)| (l.into(), a, on)).collect();
+    let labels: Vec<&str> = options.iter().map(|(l, _, _)| l.as_str()).collect();
+    let selected = options.iter().position(|(_, _, on)| *on);
+    let actions: Vec<Action> = options.iter().map(|(_, a, _)| a.clone()).collect();
+    SegmentedControl::new(&labels, selected)
+        .label(group.to_string())
+        .on_pick(move |s: &mut Editor, i: usize, tx: &mut Tx| s.dispatch_ui(actions[i].clone(), tx))
+        .build(k(cx))
         .key(format!("{group}-choices"))
-        .gap(2.)
-        .radius(7.)
-        .fill(t.control_track)
-        .flex_wrap();
-    for (label, action, active) in options {
-        let label: String = label.into();
-        let mut choice = el()
-            .key(format!("{group}-{}", slug(&label)))
-            .role("radio")
-            .label(label.clone())
-            .checked(active)
-            .px(9.)
-            .py(5.)
-            .radius(6.)
-            .center()
-            .cursor(Cursor::Pointer)
-            .hover(t.hover)
-            .on_press_tx(move |s: &mut Editor, tx| s.dispatch_ui(action.clone(), tx))
-            .child(
-                text(label)
-                    .font(tok::type_::LABEL)
-                    .color(if active { t.text } else { t.text_secondary })
-                    .inert(),
-            );
-        if active {
-            choice = choice.fill(accent.alpha(0.22));
-        }
-        bar = bar.child(choice);
-    }
-    bar
 }
 
 /// A number with step arrows; a press on it opens it for typing.

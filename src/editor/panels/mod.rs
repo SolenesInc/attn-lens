@@ -56,13 +56,13 @@ impl Editor {
     }
 
     pub(crate) fn sidebar(&self, cx: &mut Cx<Editor>) -> El {
-        let t = tok::theme(cx.system_dark());
+        let k = super::kit::kit(cx.system_dark());
         col()
             .key("sidebar")
             .w(WIDTH)
             .h_full()
-            .fill(t.card)
-            .border(1., t.card_border)
+            .fill(k.c.bg_base)
+            .border(1., k.c.border_muted)
             .scroll(rune::ScrollSpec {
                 stick_bottom: false,
             })
