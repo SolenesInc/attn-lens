@@ -13,6 +13,7 @@ pub mod ink;
 pub mod pill;
 pub mod select;
 pub mod session;
+pub mod strip;
 pub mod tile;
 pub mod voice;
 #[cfg(target_os = "macos")]
@@ -164,6 +165,9 @@ struct State {
     /// Counts requests to hand the keyboard to the bar.
     bar_key_requests: u64,
     tool: InkTool,
+    /// Where the tool strip stands, in points on the capture's display, while
+    /// the ink layer takes the pointer.
+    strip: Option<(f32, f32)>,
     label: Option<LabelDraft>,
     attn: AttnStatus,
     sessions: Vec<attn::Session>,
@@ -324,6 +328,11 @@ impl Lens {
             KeyEvent::Pressed(Chord::Keyboard) => self.give_keys_to_bar(),
             KeyEvent::Pressed(Chord::Send) => self.send_or_recover(),
             KeyEvent::Pill(key) => self.pill_key(key),
+            KeyEvent::Tool(digit) => {
+                if let Some(tool) = InkTool::from_digit(digit) {
+                    self.pick_tool(tool);
+                }
+            }
         }
     }
 
@@ -400,7 +409,7 @@ impl Lens {
                 mark.stale = true;
             }
             state.editing = Some(id);
-            state.input = Input::None;
+            self.input_now(state, Input::None);
             state.palette = None;
             state.watch = None;
             state.watch_generation += 1;
@@ -508,7 +517,6 @@ impl Lens {
             state.last_area = Some(area);
             state.keys = KeyOwner::Bar;
             state.bar_key_requests += 1;
-            state.tool = InkTool::default();
             state.error = None;
             if state.send != SendStatus::Sending {
                 state.send = SendStatus::Idle;
@@ -561,10 +569,24 @@ impl Lens {
             Input::None
         };
         if state.input != input {
-            state.input = input;
+            self.input_now(&mut state, input);
             drop(state);
             self.changed();
         }
+    }
+
+    /// Sets whether the ink layer takes the pointer. While it does, the tool strip
+    /// stands where the pointer was when the draw key went down.
+    fn input_now(&self, state: &mut State, input: Input) {
+        state.input = input;
+        state.strip = match (input, &state.capture) {
+            (Input::All, Some(capture)) => {
+                let (x, y) = self.port.pointer();
+                let origin = capture.display.frame;
+                Some(((x - origin[0]) as f32, (y - origin[1]) as f32))
+            }
+            _ => None,
+        };
     }
 
     fn fail(&self, error: String) {
@@ -746,7 +768,6 @@ impl Lens {
             state.error = None;
             state.keys = KeyOwner::Bar;
             state.bar_key_requests += 1;
-            state.tool = InkTool::default();
             state.label = None;
             state.palette = None;
             // A send still running reports its own result, and holds off this capture's.
@@ -918,14 +939,13 @@ impl Lens {
         self.changed();
     }
 
-    /// Arms a tool for the next stroke; arming it again goes back to plain drawing.
-    pub fn arm_tool(&self, tool: InkTool) {
+    /// Picks the tool strokes make from now on.
+    pub fn pick_tool(&self, tool: InkTool) {
         let mut state = self.state.lock().unwrap();
-        state.tool = if state.tool == tool {
-            InkTool::default()
-        } else {
-            tool
-        };
+        if state.tool == tool {
+            return;
+        }
+        state.tool = tool;
         drop(state);
         self.changed();
     }
@@ -978,7 +998,6 @@ impl Lens {
         if start.tool == InkTool::Label {
             if let Some(at) = points.first().copied() {
                 state.label = Some(LabelDraft { start, at, end });
-                state.tool = InkTool::default();
                 state.keys = KeyOwner::Bar;
                 state.bar_key_requests += 1;
             }
@@ -988,38 +1007,16 @@ impl Lens {
                 .iter()
                 .filter(|m| m.still == start.still && m.mark.tool == crate::document::Tool::Counter)
                 .count();
-            let previous = capture.ink.last_mut().filter(|prev| {
-                prev.still == start.still
-                    && (prev.drawn_as.is_some() || prev.mark.tool == crate::document::Tool::Pen)
-                    && start.at.since(prev.times.1) <= ink::BURST_GAP
-            });
-            let writing = start.tool == InkTool::Stroke
-                && !start.boxed
-                && previous.as_ref().is_some_and(|prev| {
-                    let path = prev.drawn_as.as_deref().unwrap_or(&prev.mark.points);
-                    ink::near(path, &points)
-                });
-            let mark = ink::mark_from_stroke(&start, &points, counter, writing);
-            // Only a stroke that makes a mark is writing: a slip leaves the arrow be.
-            if writing
-                && mark.is_some()
-                && let Some(prev) = previous
-            {
-                unarrow(prev, &mut capture.stills);
-            }
-            if let Some(mark) = mark {
+            if let Some(mark) = ink::mark_from_stroke(&start, &points, counter) {
                 let stale = capture.view_still != Some(start.still);
-                let drawn_as = (mark.tool == crate::document::Tool::Arrow).then(|| points.clone());
                 capture.ink.push(InkMark {
                     still: start.still,
                     mark,
                     times: (start.at, end),
-                    drawn_as,
                     committed: false,
                     stale,
                     fade_from: None,
                 });
-                state.tool = InkTool::default();
                 join_finished_ink(capture);
             }
         }
@@ -1040,7 +1037,6 @@ impl Lens {
                 still: draft.start.still,
                 mark: ink::label_mark(draft.at, text.trim()),
                 times: (draft.start.at, draft.end),
-                drawn_as: None,
                 committed: false,
                 stale,
                 fade_from: None,
@@ -1147,7 +1143,7 @@ impl Lens {
                 }),
             };
         }
-        state.input = Input::None;
+        self.input_now(&mut state, Input::None);
         state.resizing = false;
         state.watch = None;
         state.label = None;
@@ -1715,6 +1711,7 @@ impl Lens {
             keys: state.keys,
             bar_key_requests: state.bar_key_requests,
             tool: state.tool,
+            strip: state.strip,
             placing_label: state.label.is_some(),
             attn: state.attn.clone(),
             sessions: state.sessions.clone(),
@@ -1849,20 +1846,6 @@ fn capture_by_id<'a>(
     open.iter_mut().chain(closed).find(|c| c.id == id)
 }
 
-/// Turns a stroke the straight rule made an arrow back into the freehand it was
-/// drawn as, on its still too when it has joined one.
-fn unarrow(ink: &mut InkMark, stills: &mut [Still]) {
-    let Some(points) = ink.drawn_as.take() else {
-        return;
-    };
-    ink.mark = ink::pen_mark(&points);
-    if ink.committed
-        && let Some(still) = stills.iter_mut().find(|s| s.id == ink.still)
-    {
-        still.doc.replace_drawn(on_still(ink, still));
-    }
-}
-
 /// `ink`'s mark as it is on `still`'s document.
 fn on_still(ink: &InkMark, still: &Still) -> crate::document::Mark {
     let scale = still.doc.base.width() as f32 / still.area.rect[2] as f32;
@@ -1926,6 +1909,7 @@ pub struct Summary {
     pub keys: KeyOwner,
     pub bar_key_requests: u64,
     pub tool: InkTool,
+    pub strip: Option<(f32, f32)>,
     pub placing_label: bool,
     pub attn: AttnStatus,
     pub sessions: Vec<attn::Session>,

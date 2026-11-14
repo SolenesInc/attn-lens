@@ -15,22 +15,11 @@ use crate::{
 use rune::{Color, Cursor, Cx, Drag, El, Phase, Shape, Tx, canvas, el, text};
 use std::sync::Arc;
 
-const INK: [u8; 4] = [255, 61, 46, 255];
+pub(super) const INK: [u8; 4] = [255, 61, 46, 255];
 const STROKE_POINTS: f32 = 4.;
 const LABEL_POINTS: f32 = 3.2;
 /// Glance's limit for a mark that was meant, not a slip of the pointer.
 const MIN_TRAVEL: f32 = 8.;
-/// How far a drag strays from its chord and still counts as straight: a feel
-/// choice, judged in the user's session (C15), not a measured limit.
-const STRAIGHT_MIN: f32 = 6.;
-const STRAIGHT_RATIO: f32 = 0.08;
-/// A longer path than this means the hand went back along the line.
-const STRAIGHT_PATH_RATIO: f32 = 1.15;
-/// A stroke that starts this soon after the last one ended, this close to it,
-/// is writing, so neither stays an arrow. Tripwires past the pauses and distances
-/// measured in the user's handwriting; the receipt is in `docs/send.md`.
-pub const BURST_GAP: std::time::Duration = std::time::Duration::from_millis(1500);
-const BURST_REACH: f32 = 150.;
 /// `validate_mark`'s limit: past it the editor would refuse the mark.
 const MAX_POINTS: usize = 2000;
 const OUTLINE: f32 = 2.;
@@ -39,15 +28,60 @@ const OUTLINE: f32 = 2.;
 pub const HANDLE_ZONE: f32 = 24.;
 const HANDLE_DOT: f32 = 10.;
 
-/// What the next stroke makes, set on the bar's tool row.
+/// What a stroke makes. The user picks it on the tool strip, or with fn and its
+/// digit; it stays until changed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum InkTool {
-    /// An arrow when a lone drag is straight, otherwise freehand; ⇧ makes a box.
     #[default]
-    Stroke,
+    Pen,
+    Arrow,
+    Box,
     Highlight,
     Label,
     Counter,
+}
+
+impl InkTool {
+    /// In the strip's order: fn+1 picks the first.
+    pub const ALL: [Self; 6] = [
+        Self::Pen,
+        Self::Arrow,
+        Self::Box,
+        Self::Highlight,
+        Self::Label,
+        Self::Counter,
+    ];
+
+    /// The tool fn and `digit` pick, 1 to 6.
+    pub fn from_digit(digit: u8) -> Option<Self> {
+        Self::ALL.get(usize::from(digit.checked_sub(1)?)).copied()
+    }
+
+    pub fn digit(self) -> u8 {
+        Self::ALL.iter().position(|&t| t == self).unwrap_or(0) as u8 + 1
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Pen => "Pen",
+            Self::Arrow => "Arrow",
+            Self::Box => "Box",
+            Self::Highlight => "Highlight",
+            Self::Label => "Label",
+            Self::Counter => "Counter",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Pen => "pen",
+            Self::Arrow => "arrow",
+            Self::Box => "box",
+            Self::Highlight => "highlight",
+            Self::Label => "label",
+            Self::Counter => "counter",
+        }
+    }
 }
 
 fn mark(tool: Tool, points: Vec<(f32, f32)>, width: f32, text: String) -> Mark {
@@ -63,40 +97,8 @@ fn mark(tool: Tool, points: Vec<(f32, f32)>, width: f32, text: String) -> Mark {
     }
 }
 
-fn is_straight(points: &[(f32, f32)]) -> bool {
-    let (a, b) = (points[0], points[points.len() - 1]);
-    let chord = (b.0 - a.0).hypot(b.1 - a.1);
-    if chord == 0. {
-        return false;
-    }
-    let stray = points
-        .iter()
-        .map(|p| ((b.0 - a.0) * (a.1 - p.1) - (a.0 - p.0) * (b.1 - a.1)).abs() / chord)
-        .fold(0., f32::max);
-    let path: f32 = points
-        .windows(2)
-        .map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1))
-        .sum();
-    stray <= STRAIGHT_MIN.max(chord * STRAIGHT_RATIO) && path <= chord * STRAIGHT_PATH_RATIO
-}
-
-/// Whether two strokes are close enough to be parts of one word: their bounds
-/// are at most `BURST_REACH` apart.
-pub fn near(a: &[(f32, f32)], b: &[(f32, f32)]) -> bool {
-    let bounds = |points: &[(f32, f32)]| {
-        points.iter().fold(
-            [f32::MAX, f32::MAX, f32::MIN, f32::MIN],
-            |[x0, y0, x1, y1], &(x, y)| [x0.min(x), y0.min(y), x1.max(x), y1.max(y)],
-        )
-    };
-    let (a, b) = (bounds(a), bounds(b));
-    let dx = (a[0] - b[2]).max(b[0] - a[2]).max(0.);
-    let dy = (a[1] - b[3]).max(b[1] - a[3]).max(0.);
-    dx.hypot(dy) <= BURST_REACH
-}
-
 /// A freehand mark along `points`, thinned to what the editor accepts.
-pub fn pen_mark(points: &[(f32, f32)]) -> Mark {
+fn pen_mark(points: &[(f32, f32)]) -> Mark {
     let mut points = points.to_vec();
     while points.len() > MAX_POINTS {
         points = points.iter().step_by(2).copied().collect();
@@ -104,16 +106,14 @@ pub fn pen_mark(points: &[(f32, f32)]) -> Mark {
     mark(Tool::Pen, points, STROKE_POINTS, String::new())
 }
 
-/// The mark a finished stroke makes, in the same space as `points`. None when
-/// the stroke was too short to mean anything. A straight plain drag is an arrow,
-/// unless it is `writing`: part of a burst of strokes.
+/// The mark a finished stroke makes, in the same space as `points`: what its
+/// tool draws. None when the stroke was too short to mean anything.
 pub fn mark_from_stroke(
     start: &StrokeStart,
     points: &[(f32, f32)],
     counter: usize,
-    writing: bool,
 ) -> Option<Mark> {
-    let (first, last) = (*points.first()?, *points.last()?);
+    let last = *points.last()?;
     if start.tool == InkTool::Counter {
         return Some(mark(
             Tool::Counter,
@@ -129,32 +129,18 @@ pub fn mark_from_stroke(
     if path < MIN_TRAVEL {
         return None;
     }
-    let shaped = draft_mark(start, points).filter(|mark| mark.tool != Tool::Pen);
-    Some(shaped.unwrap_or_else(|| {
-        if !writing && is_straight(points) {
-            return mark(Tool::Arrow, vec![first, last], STROKE_POINTS, String::new());
-        }
-        pen_mark(points)
-    }))
+    draft_mark(start, points)
 }
 
-/// What a stroke shows while it is being drawn.
+/// What a stroke shows while it is being drawn. ⇧ makes a pen or arrow stroke a box.
 fn draft_mark(start: &StrokeStart, points: &[(f32, f32)]) -> Option<Mark> {
     let (first, last) = (*points.first()?, *points.last()?);
+    let corners = |tool| mark(tool, vec![first, last], STROKE_POINTS, String::new());
     Some(match (start.tool, start.boxed) {
-        (InkTool::Highlight, _) => mark(
-            Tool::Highlight,
-            vec![first, last],
-            STROKE_POINTS,
-            String::new(),
-        ),
-        (InkTool::Stroke, true) => mark(
-            Tool::Rectangle,
-            vec![first, last],
-            STROKE_POINTS,
-            String::new(),
-        ),
-        (InkTool::Stroke, false) => mark(Tool::Pen, points.to_vec(), STROKE_POINTS, String::new()),
+        (InkTool::Box, _) | (InkTool::Pen | InkTool::Arrow, true) => corners(Tool::Rectangle),
+        (InkTool::Pen, false) => pen_mark(points),
+        (InkTool::Arrow, false) => corners(Tool::Arrow),
+        (InkTool::Highlight, _) => corners(Tool::Highlight),
         (InkTool::Label | InkTool::Counter, _) => return None,
     })
 }
@@ -282,7 +268,7 @@ impl Ink {
     }
 }
 
-fn color(rgba: [u8; 4], alpha: f32) -> Color {
+pub(super) fn color(rgba: [u8; 4], alpha: f32) -> Color {
     rune::color::hex(&format!("#{:02x}{:02x}{:02x}", rgba[0], rgba[1], rgba[2]))
         .expect("six hex digits")
         .alpha(rgba[3] as f32 / 255. * alpha)
@@ -293,7 +279,7 @@ fn at(point: (f32, f32), origin: (f32, f32)) -> [f32; 2] {
 }
 
 /// Draws `mark` in the same shapes the still's raster paints.
-fn draw(mut shape: Shape, mark: &Mark, origin: (f32, f32)) -> Shape {
+pub(super) fn draw(mut shape: Shape, mark: &Mark, origin: (f32, f32)) -> Shape {
     let ink = color(mark.color, 1.);
     let path = |points: Vec<(f32, f32)>| -> Vec<[f32; 2]> {
         points.into_iter().map(|p| at(p, origin)).collect()
@@ -383,7 +369,7 @@ fn capture_state(s: &Ink) -> El {
         .size(1., 1.)
 }
 
-pub fn ink_view(s: &Ink, _: &mut Cx<Ink>) -> El {
+pub fn ink_view(s: &Ink, cx: &mut Cx<Ink>) -> El {
     let area = s
         .lens
         .read(|summary| summary.capture.as_ref().map(|c| c.area));
@@ -425,6 +411,16 @@ pub fn ink_view(s: &Ink, _: &mut Cx<Ink>) -> El {
     }
     if s.lens.port().exposes_state() {
         root = root.child(capture_state(s));
+    }
+    let (tool, strip) = s.lens.read(|summary| (summary.tool, summary.strip));
+    if let Some(at) = strip {
+        root = root.child(super::strip::tool_strip(
+            tool,
+            (at.0 - origin.0, at.1 - origin.1),
+            (width, height),
+            s.stroke.is_some(),
+            &rune::tok::theme(cx.system_dark()),
+        ));
     }
     if let Some(mark) = &draft {
         root = root.child(

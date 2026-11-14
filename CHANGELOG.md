@@ -35,9 +35,10 @@ Notable user-visible changes are recorded here.
 - **Attn Lens**: a tap of right ⌘ alone, the capture key, opens a crosshair over the live screen: drag for an area,
   click for the whole display, ↩ for the last area, Esc to cancel. The area stays
   outlined for the whole capture, its corners adjust it, and the page under it
-  keeps working. Hold fn and drag to draw: a lone straight drag is an arrow, any other
-  stays freehand, strokes in quick succession stay as written, and ⇧ makes a box; the bar's tool row sets highlight, label or
-  counter for the next stroke. Type a message in the bar, or click the page to give
+  keeps working. Hold fn and drag to draw. While fn is down, a tool strip by the pointer
+  shows Pen, Arrow, Box, Highlight, Label and Counter, each drawn as the ink it
+  makes; click one or press fn+1 to fn+6 to pick it, and it stays picked. ⇧ makes
+  a box with Pen or Arrow. Type a message in the bar, or click the page to give
   it the keys and ⌘⌥C to take them back. The capture key takes a still, × drops one, Tab opens a
   palette of sessions, and ↩ or ⌘⌥↩ sends to an attn session, local or on an
   outpost. Lens pairs with attn once and keeps the token in the Keychain.

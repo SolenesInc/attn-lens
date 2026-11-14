@@ -297,6 +297,12 @@ impl PlatformPort for MacPort {
         }
     }
 
+    /// The origin if the system gives no pointer: the strip then stands at the
+    /// area's corner, still on screen.
+    fn pointer(&self) -> (f64, f64) {
+        capture::pointer().unwrap_or_default()
+    }
+
     fn pointer_display(&self) -> Result<Area, String> {
         let display = capture::display_under_pointer();
         let (width, height) = capture::display_size(display);
