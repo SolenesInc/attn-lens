@@ -5,7 +5,7 @@
 use super::{
     Lens, Summary, VoiceState, bar::voice_text, dictation::DictationSummary, session::DisplayFrame,
 };
-use rune::{Cx, El, col, el, text, tok};
+use rune::{Cx, El, col, el, text};
 use std::sync::Arc;
 
 pub const SIZE: (f32, f32) = (520., 72.);
@@ -65,7 +65,7 @@ fn tail(words: &str) -> String {
 }
 
 pub fn pill_view(s: &Pill, cx: &mut Cx<Pill>) -> El {
-    let t = tok::theme(cx.system_dark());
+    let k = crate::kit::surface_kit(cx.system_dark());
     s.lens.read(|summary: &Summary| {
         let Some(dictation) = &summary.dictation else {
             return el().key("pill-empty");
@@ -77,8 +77,9 @@ pub fn pill_view(s: &Pill, cx: &mut Cx<Pill>) -> El {
             .h_full()
             .padding(12.)
             .gap(4.)
-            .radius(14.)
-            .fill(t.card)
+            .radius(k.radius.xl + 2.)
+            .fill(k.c.bg_base)
+            .border(1., k.c.border_strong)
             .child(
                 text(if words.is_empty() {
                     "…".into()
@@ -86,14 +87,14 @@ pub fn pill_view(s: &Pill, cx: &mut Cx<Pill>) -> El {
                     tail(&words)
                 })
                 .key("pill-words")
-                .font(tok::type_::BODY)
-                .color(t.text),
+                .font(k.ty.body)
+                .color(k.c.text_base),
             )
             .child(
                 text(status)
                     .key("pill-status")
-                    .font(tok::type_::LABEL)
-                    .color(t.text_secondary),
+                    .font(k.ty.small_medium)
+                    .color(k.c.text_accent),
             )
     })
 }

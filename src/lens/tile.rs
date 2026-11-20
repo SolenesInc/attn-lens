@@ -2,7 +2,7 @@
 //! tile leaves after a few seconds unless hovered; an unsent one stays. A click
 //! reopens the capture.
 use super::{Lens, Summary, session::DisplayFrame};
-use rune::{Color, Cx, El, col, el, text, tok};
+use rune::{Color, Cx, El, col, el, text};
 use std::sync::Arc;
 
 const SIZE: (f32, f32) = (176., 128.);
@@ -23,7 +23,7 @@ pub struct Tile {
 }
 
 pub fn tile_view(s: &Tile, cx: &mut Cx<Tile>) -> El {
-    let t = tok::theme(cx.system_dark());
+    let k = crate::kit::surface_kit(cx.system_dark());
     s.lens.read(|summary: &Summary| {
         let Some(tile) = &summary.tile else {
             return el().key("tile-empty");
@@ -40,15 +40,16 @@ pub fn tile_view(s: &Tile, cx: &mut Cx<Tile>) -> El {
             .h_full()
             .padding(8.)
             .gap(6.)
-            .radius(12.)
-            .fill(t.card)
+            .radius(k.radius.xl + 2.)
+            .fill(k.c.bg_base)
+            .border(1., k.c.border_strong)
             .on_hover_change(|s: &mut Tile, inside, _| s.lens.hover_tile(inside))
             .on_press(|s: &mut Tile| s.lens.reopen_tile())
             .child(
                 el().grow(1.)
                     .w_full()
-                    .radius(6.)
-                    .fill(t.control_track)
+                    .radius(k.radius.md)
+                    .fill(k.c.layer_01)
                     .children(
                         tile.thumb
                             .as_ref()
@@ -58,8 +59,8 @@ pub fn tile_view(s: &Tile, cx: &mut Cx<Tile>) -> El {
             .child(
                 text(caption)
                     .key("tile-caption")
-                    .font(tok::type_::LABEL)
-                    .color(t.text),
+                    .font(k.ty.small_medium)
+                    .color(k.c.text_muted),
             )
             .child(
                 el().key("tile-discard")
@@ -69,7 +70,7 @@ pub fn tile_view(s: &Tile, cx: &mut Cx<Tile>) -> El {
                     .center()
                     .radius(10.)
                     .fill(Color::BLACK.alpha(0.6))
-                    .child(text("×").font(tok::type_::LABEL).color(Color::WHITE))
+                    .child(text("×").font(k.ty.small_medium).color(Color::WHITE))
                     .on_press(|s: &mut Tile| s.lens.discard_tile()),
             )
     })

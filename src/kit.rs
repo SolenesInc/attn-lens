@@ -130,3 +130,11 @@ fn painted(dark: bool, s: &Scheme) -> Kit {
     kit.elevation = std::mem::take(&mut kit.elevation).with_input(vec![ring]);
     kit
 }
+
+/// PROTOTYPE (s-pkv5v1, branch proto/lens-capture-look, not for merging): which look
+/// the capture surfaces (bar, palette, tile, pill) take. `LENS_LOOK=hud` paints them
+/// always with the dark kit, as a heads-up display; anything else follows the system
+/// appearance, as the editor does.
+pub(crate) fn surface_kit(system_dark: bool) -> &'static Kit {
+    kit(std::env::var("LENS_LOOK").is_ok_and(|look| look == "hud") || system_dark)
+}

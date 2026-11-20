@@ -9,8 +9,9 @@ use crate::platform_port::VoiceStatus;
 use image::RgbaImage;
 use rune::time::Instant;
 use rune::{
-    Color, Cx, Drag, El, Key, KeyEvent, Phase, TextEdit, Tx, col, el, row, text, text_input, tok,
+    Color, Cx, Drag, El, Key, KeyEvent, Phase, TextEdit, Tx, col, el, row, text, text_input,
 };
+use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 use std::sync::Arc;
 
 pub const WIDTH: f32 = 760.;
@@ -196,18 +197,16 @@ impl Bar {
     }
 }
 
-fn button(key: &str, content: String, on: bool, t: &tok::Theme) -> El {
-    el().key(key)
-        .h(CONTROL)
-        .px(10.)
-        .center()
-        .radius(8.)
-        .fill(if on { t.indicator } else { t.control_track })
-        .child(
-            text(content)
-                .font(tok::type_::LABEL)
-                .color(if on { Color::WHITE } else { t.text }),
-        )
+fn button(key: &str, content: String, on: bool, k: &Kit) -> El {
+    Button::new(content)
+        .variant(if on {
+            ButtonVariant::Submit
+        } else {
+            ButtonVariant::Neutral
+        })
+        .control_size(ControlSize::Large)
+        .build(k)
+        .key(key.to_string())
 }
 
 /// What the chip says: the target session, and where it runs once there is one.
@@ -232,42 +231,47 @@ fn chip_parts(summary: &Summary) -> (String, Option<String>) {
 
 /// The session chip. A long session label ends in "…" inside the chip, and the
 /// host after it stays whole; the full text is the chip's label and, while cut, its tooltip.
-fn chip(summary: &Summary, t: &tok::Theme) -> El {
+fn chip(summary: &Summary, k: &Kit) -> El {
     let (target, host) = chip_parts(summary);
     let full = match &host {
         Some(host) => format!("{target} · {host}"),
         None => target.clone(),
     };
     let on = summary.palette.is_some();
-    let color = if on { Color::WHITE } else { t.text };
     row()
         .key("chip")
         .label(full.clone())
         .h(CONTROL)
-        .max_w(240.)
+        .max_w(260.)
         .px(10.)
         .gap(4.)
         .center_y()
-        .radius(8.)
-        .fill(if on { t.indicator } else { t.control_track })
+        .radius(k.radius.lg)
+        .fill(if on {
+            k.c.surface_raised_hover
+        } else {
+            k.c.bg_button_neutral
+        })
+        .hover(k.c.surface_raised_hover)
         .child(
             text(target)
                 .key("chip-target")
-                .font(tok::type_::LABEL)
-                .color(color)
+                .shrink()
+                .font(k.ty.ui_medium)
+                .color(k.c.text_base)
                 .truncate()
                 .help_when_truncated(full),
         )
         .children(host.map(|host| {
             text(format!("· {host}"))
                 .key("chip-host")
-                .font(tok::type_::LABEL)
-                .color(color)
+                .font(k.ty.ui)
+                .color(k.c.text_faint)
         }))
         .on_press(|s: &mut Bar| s.lens.toggle_palette())
 }
 
-fn strip(summary: &Summary, t: &tok::Theme) -> El {
+fn strip(summary: &Summary, k: &Kit) -> El {
     let mut strip = row().key("strip").grow(1.).h(CONTROL).gap(6.).scroll_x();
     let stills = summary.capture.as_ref().map_or(&[][..], |c| &c.stills);
     for (index, still) in stills.iter().enumerate() {
@@ -279,8 +283,9 @@ fn strip(summary: &Summary, t: &tok::Theme) -> El {
                     still.cause, still.width, still.height
                 ))
                 .size(52., CONTROL)
-                .radius(4.)
-                .fill(t.control_track)
+                .radius(k.radius.sm)
+                .fill(k.c.layer_01)
+                .border(1., k.c.border_base)
                 .on_press(move |s: &mut Bar| {
                     s.finish_label();
                     s.lens.edit_still(id);
@@ -294,7 +299,7 @@ fn strip(summary: &Summary, t: &tok::Theme) -> El {
                         .center()
                         .radius(8.)
                         .fill(Color::BLACK.alpha(0.6))
-                        .child(text("×").font(tok::type_::LABEL).color(Color::WHITE))
+                        .child(text("×").font(k.ty.small_medium).color(Color::WHITE))
                         .on_press(move |s: &mut Bar| s.lens.drop_still(id)),
                 ),
         );
@@ -302,7 +307,7 @@ fn strip(summary: &Summary, t: &tok::Theme) -> El {
     strip
 }
 
-fn palette(summary: &Summary, selected: usize, t: &tok::Theme) -> El {
+fn palette(summary: &Summary, selected: usize, k: &Kit) -> El {
     let mut list = col()
         .key("palette")
         .w_full()
@@ -319,8 +324,8 @@ fn palette(summary: &Summary, selected: usize, t: &tok::Theme) -> El {
         return list.child(
             text(empty)
                 .key("palette-empty")
-                .font(tok::type_::BODY)
-                .color(t.text_secondary),
+                .font(k.ty.ui)
+                .color(k.c.text_muted),
         );
     }
     for (index, session) in summary.sessions.iter().enumerate() {
@@ -332,18 +337,20 @@ fn palette(summary: &Summary, selected: usize, t: &tok::Theme) -> El {
                 .px(8.)
                 .gap(12.)
                 .center_y()
-                .radius(6.)
+                .radius(k.radius.md)
                 .fill(if index == selected {
-                    t.indicator
+                    k.c.surface_raised_hover
                 } else {
                     Color::TRANSPARENT
                 })
+                .hover(k.c.hover)
                 .child(
                     text(session.label.clone())
                         .key(format!("palette-label-{index}"))
                         .grow(1.)
-                        .font(tok::type_::BODY)
-                        .color(t.text)
+                        .shrink()
+                        .font(k.ty.ui_medium)
+                        .color(k.c.text_base)
                         .truncate()
                         .help_when_truncated(session.label.clone()),
                 )
@@ -355,8 +362,8 @@ fn palette(summary: &Summary, selected: usize, t: &tok::Theme) -> El {
                         session.host_label()
                     ))
                     .key(format!("palette-meta-{index}"))
-                    .font(tok::type_::LABEL)
-                    .color(t.text_secondary),
+                    .font(k.ty.ui)
+                    .color(k.c.text_faint),
                 )
                 .on_press(move |s: &mut Bar| s.lens.choose_session(Some(index))),
         );
@@ -387,16 +394,16 @@ pub fn bar_key(s: &mut Bar, event: &KeyEvent, _: &mut Tx) -> bool {
 }
 
 pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
-    let t = tok::theme(cx.system_dark());
+    let k = crate::kit::surface_kit(cx.system_dark());
     s.lens.read(|summary: &Summary| {
         let keys_here = summary.keys == KeyOwner::Bar;
         let field = if summary.placing_label {
-            text_input(&s.label, tok::type_::BODY.lh(22.))
+            text_input(&s.label, k.ty.ui.lh(22.))
                 .key("label")
-                .placeholder("Label text, then ↩", t.text_secondary)
+                .placeholder("Label text, then ↩", k.c.text_faint)
                 .on_edit(|s: &mut Bar| &mut s.label)
         } else {
-            text_input(&s.message, tok::type_::BODY.lh(22.))
+            text_input(&s.message, k.ty.ui.lh(22.))
                 .key("message")
                 .placeholder(
                     if keys_here {
@@ -404,7 +411,7 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
                     } else {
                         "The page has the keys · ⌘⌥C to type here"
                     },
-                    t.text_secondary,
+                    k.c.text_faint,
                 )
                 .on_edit(|s: &mut Bar| &mut s.message)
                 .on_input_change(|s: &mut Bar, _: &mut Tx| {
@@ -413,7 +420,7 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
         }
         .single_line()
         .grow(1.)
-        .color(t.text)
+        .color(k.c.text_base)
         .on_input_key(bar_key);
 
         let voice = voice_text(summary.voice);
@@ -423,7 +430,7 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
             .h(CONTROL)
             .gap(GAP)
             .center_y()
-            .child(chip(summary, &t))
+            .child(chip(summary, k))
             .child(
                 row()
                     .key("field")
@@ -431,8 +438,16 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
                     .h(CONTROL)
                     .px(10.)
                     .center_y()
-                    .radius(8.)
-                    .border(1., if keys_here { t.indicator } else { t.separator })
+                    .radius(k.radius.lg)
+                    .fill(k.c.bg_deep)
+                    .border(
+                        1.,
+                        if keys_here {
+                            k.c.text_accent
+                        } else {
+                            k.c.border_base
+                        },
+                    )
                     .child(field)
                     // A press inside the border is a press on the field, not a drag.
                     .on_press(|_: &mut Bar| {}),
@@ -444,30 +459,42 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
                     "Typing on the page"
                 })
                 .key("keys")
-                .font(tok::type_::LABEL)
-                .color(t.text_secondary),
+                .font(k.ty.small_medium)
+                .color(if keys_here {
+                    k.c.text_accent
+                } else {
+                    k.c.text_faint
+                }),
             );
         let stills = row()
             .w_full()
             .h(CONTROL)
             .gap(GAP)
             .center_y()
-            .child(strip(summary, &t))
+            .child(strip(summary, k))
             .children(segments.last().map(|segment| {
                 text(segment.text.clone())
                     .key(format!("segment-{}", segments.len() - 1))
                     .max_w(160.)
-                    .font(tok::type_::LABEL)
-                    .color(t.text_secondary)
+                    .shrink()
+                    .truncate()
+                    .font(k.ty.small)
+                    .color(k.c.text_muted)
             }))
             .child(
                 text(voice)
                     .key("voice")
-                    .font(tok::type_::LABEL)
-                    .color(t.text_secondary),
+                    .shrink()
+                    .truncate()
+                    .font(k.ty.small_medium)
+                    .color(if summary.voice == VoiceState::Off {
+                        k.c.text_faint
+                    } else {
+                        k.c.text_accent
+                    }),
             )
             .child(
-                button("edit", "Edit".into(), false, &t).on_press(|s: &mut Bar| {
+                button("edit", "Edit".into(), false, k).on_press(|s: &mut Bar| {
                     s.finish_label();
                     s.lens.edit_latest();
                 }),
@@ -481,7 +508,7 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
                         _ => "Send ↩".to_string(),
                     },
                     true,
-                    &t,
+                    k,
                 )
                 .on_press(|s: &mut Bar| s.lens.send_or_recover()),
             );
@@ -491,28 +518,24 @@ pub fn bar_view(s: &Bar, cx: &mut Cx<Bar>) -> El {
             .h_full()
             .padding(PADDING)
             .gap(GAP)
-            .radius(14.)
-            .fill(t.card)
+            .radius(k.radius.xl + 2.)
+            .fill(k.c.bg_base)
+            .border(1., k.c.border_strong)
             .child(controls)
             .child(stills);
         if let Some(line) = status(summary) {
-            bar = bar.child(
-                text(line)
-                    .key("status")
-                    .font(tok::type_::LABEL)
-                    .color(t.text_secondary),
-            );
+            bar = bar.child(text(line).key("status").font(k.ty.ui).color(k.c.text_muted));
         }
         if let Some(error) = &summary.error {
             bar = bar.child(
                 text(error.clone())
                     .key("error")
-                    .font(tok::type_::LABEL)
-                    .color(t.text_secondary),
+                    .font(k.ty.ui_medium)
+                    .color(k.c.danger.fg),
             );
         }
         if let Some(selected) = summary.palette {
-            bar = bar.child(palette(summary, selected, &t));
+            bar = bar.child(palette(summary, selected, k));
         }
         bar.on_screen_layout(|s: &mut Bar, rect| s.origin = (rect[0], rect[1]))
             .on_drag(drag_bar)
