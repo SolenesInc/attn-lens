@@ -60,17 +60,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Lint, the rest of the suite and the editor's script runs, the longest part,
-        # split over two, each in a job of its own so no job builds twice.
-        part: [lint, tests, editor 1/2, editor 2/2]
+        # Lint and the suite, each in a job of its own so no job builds twice.
+        part: [lint, tests]
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
-    # Receipt (2026-11-22, lens-linux-ci-runs-near-60, s-963mn3): with an empty Rust
-    # cache the slowest job took 25 min (tests: 12 to build, 12 to test, run 44965010214);
-    # with main's cache the build takes about 1. Runners have varied by 1.5x, so 40 is
-    # the tripwire.
-    timeout-minutes: 40
+    # Receipt (2026-11-24, lens-tests-opt-headless-speed-ups, s-yq030x): the slowest job,
+    # tests, took 5.4 min with a part-warm cache (3 to build, 1.6 to test, run 45303064957).
+    # An empty cache builds in about 12 (run 44965010214), so about 15 min, and runners
+    # have varied by 1.5x: 25 is the tripwire.
+    timeout-minutes: 25
     steps:
       - name: Install build and runtime dependencies
         run: |
@@ -85,7 +84,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           # Each part builds its own targets, so each keeps its own cache.
-          key: ${{ startsWith(matrix.part, 'editor') && 'editor' || matrix.part }}
+          key: ${{ matrix.part }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Check formatting
         if: matrix.part == 'lint'
@@ -95,14 +94,9 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Run tests
         if: matrix.part == 'tests'
-        run: cargo test --locked -- --skip every_script_holds
+        run: cargo test --locked
       - name: Test FFmpeg encode and frame decode
         if: matrix.part == 'tests'
         run: |
           cp native/linux/glance-video-* target/
           cargo test --locked native_video_roundtrip -- --ignored
-      - name: Run the editor's scripts
-        if: startsWith(matrix.part, 'editor')
-        env:
-          EDITOR_SHARD: ${{ matrix.part == 'editor 1/2' && '1/2' || '2/2' }}
-        run: cargo test --locked --test editor every_script_holds

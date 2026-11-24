@@ -83,7 +83,7 @@ echo '{{"id":"cap"}}'
             .env("RUNE_PREFS_DIR", self.path("prefs"))
             .arg("--desktop")
             .arg(self.path("backdrop.png"))
-            .args(["--scale", "1"])
+            .args(["--scale", "1", "--no-draw"])
             .arg("--script")
             .arg(script)
             .arg("--at")
@@ -1839,7 +1839,8 @@ fn scene_tree(window: &str, scene: &str, theme: &str) -> Value {
             "--desktop",
             &format!("{root}/tools/scenes/desktop-light.png"),
         ])
-        .args(["--size", "1440x900", "--scale", "1", "--at", "1", "--tree"])
+        .args(["--size", "1440x900", "--scale", "1", "--no-draw"])
+        .args(["--at", "1", "--tree"])
         .arg(&out)
         .output()
         .unwrap();
