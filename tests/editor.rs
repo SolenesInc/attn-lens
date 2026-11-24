@@ -231,38 +231,31 @@ fn gif_facts(path: &Path) -> Result<Value, String> {
     Ok(serde_json::json!({"size": size, "frames": frames, "delay": delay}))
 }
 
-/// Runs the script up to one mark and checks what it asserts there.
-fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Value) -> Vec<String> {
-    let at = expected["at"].as_str().unwrap();
-    let tree_path = dir.join(format!("{name}-{at}.json"));
-    let run = Command::new(env!("CARGO_BIN_EXE_attn-lens"))
-        .env("ATTN_LENS_FAKE_CLIPBOARD", clipboard)
-        .env(
-            "ATTN_LENS_FAKE_VIDEO_ENCODER",
-            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/video-encoder"),
-        )
-        .args(["--script"])
-        .arg(script)
-        .args(["--window", "editor", "--scale", "1", "--chrome", "--at"])
-        .arg(format!("mark:{at}"))
-        .arg("--tree")
-        .arg(&tree_path)
-        .output()
-        .unwrap();
-    if !run.status.success() {
-        return vec![format!(
-            "{name} at {at}: {}",
-            String::from_utf8_lossy(&run.stderr)
-        )];
+/// The overlap lines `--chrome` printed for `at`. Rune reports overlaps once, at the
+/// run's latest tree request, so only a run's last mark is checked; the marks before it
+/// in the same run go unchecked. When Rune reports at every tree request, this reads
+/// that per-mark report instead.
+fn overlaps(stderr: &str, at: &str, last: &str) -> Vec<String> {
+    if at != last {
+        return vec![];
     }
-    // Nothing may sit under the window buttons, with or without Back.
-    let stderr = String::from_utf8_lossy(&run.stderr);
-    let mut fail: Vec<String> = stderr
+    stderr
         .lines()
         .filter(|line| line.contains("overlaps the traffic lights"))
         .map(str::to_string)
-        .collect();
-    let tree: Value = serde_json::from_slice(&std::fs::read(&tree_path).unwrap()).unwrap();
+        .collect()
+}
+
+/// Checks what one assertion holds at its mark, from the tree the run wrote there. A file
+/// assertion is read after its run ends, so its mark is always the run's last.
+fn check(
+    name: &str,
+    tree: &Value,
+    clipboard: &Path,
+    expected: &Value,
+    mut fail: Vec<String>,
+) -> Vec<String> {
+    let at = expected["at"].as_str().unwrap();
     let elements = tree["elements"].as_array().unwrap();
     let element = |key: &str| elements.iter().find(|e| names(key, &e["key"], &e["path"]));
     let mut a11y = vec![];
@@ -438,9 +431,52 @@ fn check(name: &str, script: &Path, dir: &Path, clipboard: &Path, expected: &Val
         .collect()
 }
 
-/// Runs one script up to its `index`th assertion's mark, in a folder of its own, so
-/// assertions of one script run in parallel without sharing a clipboard.
-fn run_assertion(name: &str, index: usize) -> Vec<String> {
+/// Keys of an assertion that read a file the app wrote: the clipboard or an export.
+const FILE_READS: [&str; 6] = [
+    "png",
+    "gif",
+    "clipboard",
+    "clipboard_text",
+    "file_text",
+    "no_file",
+];
+
+/// A script's assertions as runs: in mark order, a run ending at each assertion that reads
+/// a file, so the file is read when the run that wrote it stopped at that mark.
+fn runs(name: &str) -> Vec<Vec<usize>> {
+    let body = std::fs::read_to_string(format!("{SCRIPTS}/{name}.json")).unwrap();
+    let parsed: Value = serde_json::from_str(&body).unwrap();
+    let asserts = parsed["asserts"].as_array().map_or(&[][..], Vec::as_slice);
+    assert!(!asserts.is_empty(), "{name} asserts nothing");
+    let time = |mark: &str| {
+        let events = parsed["events"].as_array().unwrap();
+        let event = events
+            .iter()
+            .find(|e| e["type"] == "mark" && e["name"] == mark);
+        event
+            .and_then(|e| e["t"].as_f64())
+            .unwrap_or_else(|| panic!("{name} has no mark {mark}"))
+    };
+    let mut order: Vec<usize> = (0..asserts.len()).collect();
+    order.sort_by(|a, b| {
+        time(asserts[*a]["at"].as_str().unwrap())
+            .total_cmp(&time(asserts[*b]["at"].as_str().unwrap()))
+    });
+    let mut runs = vec![vec![]];
+    for index in order {
+        runs.last_mut().unwrap().push(index);
+        if FILE_READS.iter().any(|key| !asserts[index][*key].is_null()) {
+            runs.push(vec![]);
+        }
+    }
+    runs.retain(|run| !run.is_empty());
+    runs
+}
+
+/// Plays one script once, draw-free, in a folder of its own, writing the tree at each of
+/// its assertions' marks, then checks them. Runs of one script go in parallel without
+/// sharing a clipboard or an export folder.
+fn run_script(name: &str, indices: &[usize]) -> Vec<String> {
     let dir = tempfile::tempdir().unwrap();
     let dir = dir.path();
     let clipboard = dir.join("clipboard");
@@ -452,20 +488,56 @@ fn run_assertion(name: &str, index: usize) -> Vec<String> {
     let parsed: Value = serde_json::from_str(&body).unwrap();
     let script = dir.join("script.json");
     std::fs::write(&script, &body).unwrap();
-    check(name, &script, dir, &clipboard, &parsed["asserts"][index])
-}
-
-fn assertions(name: &str) -> usize {
-    let body = std::fs::read_to_string(format!("{SCRIPTS}/{name}.json")).unwrap();
-    let parsed: Value = serde_json::from_str(&body).unwrap();
-    let count = parsed["asserts"].as_array().map_or(0, Vec::len);
-    assert!(count > 0, "{name} asserts nothing");
-    count
+    let at = |index: usize| parsed["asserts"][index]["at"].as_str().unwrap();
+    let tree_path = |index: usize| dir.join(format!("tree-{index}.json"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_attn-lens"));
+    command
+        .env("ATTN_LENS_FAKE_CLIPBOARD", &clipboard)
+        .env(
+            "ATTN_LENS_FAKE_VIDEO_ENCODER",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/video-encoder"),
+        )
+        .arg("--script")
+        .arg(&script)
+        .args([
+            "--window",
+            "editor",
+            "--scale",
+            "1",
+            "--chrome",
+            "--no-draw",
+        ]);
+    for &index in indices {
+        command
+            .arg("--tree-at")
+            .arg(format!("mark:{}={}", at(index), tree_path(index).display()));
+    }
+    let run = command.output().unwrap();
+    if !run.status.success() {
+        let marks: Vec<&str> = indices.iter().map(|&index| at(index)).collect();
+        return vec![format!(
+            "{name} at {}: {}",
+            marks.join(", "),
+            String::from_utf8_lossy(&run.stderr)
+        )];
+    }
+    // Nothing may sit under the window buttons, with or without Back.
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    let last = at(*indices.last().unwrap());
+    indices
+        .iter()
+        .flat_map(|&index| {
+            let tree: Value =
+                serde_json::from_slice(&std::fs::read(tree_path(index)).unwrap()).unwrap();
+            let fail = overlaps(&stderr, at(index), last);
+            check(name, &tree, &clipboard, &parsed["asserts"][index], fail)
+        })
+        .collect()
 }
 
 #[test]
 fn every_script_holds() {
-    let runs: Vec<(String, usize)> = documented()
+    let runs: Vec<(String, Vec<usize>)> = documented()
         .into_iter()
         .chain(PROSE.iter().map(|name| name.to_string()))
         // `EDITOR_SCRIPTS=a,b cargo test --test editor` runs only those scripts.
@@ -473,19 +545,7 @@ fn every_script_holds() {
             std::env::var("EDITOR_SCRIPTS")
                 .map_or(true, |only| only.split(',').any(|wanted| wanted == name))
         })
-        .flat_map(|name| (0..assertions(&name)).map(move |index| (name.clone(), index)))
-        .collect();
-    // `EDITOR_SHARD=K/N` runs every Nth assertion from the Kth, so CI spreads the runs
-    // over N jobs; a script's assertions alternate between them.
-    let shard = std::env::var("EDITOR_SHARD").ok().map(|shard| {
-        let (k, n) = shard.split_once('/').expect("EDITOR_SHARD is K/N");
-        (k.parse::<usize>().unwrap(), n.parse::<usize>().unwrap())
-    });
-    let runs: Vec<(String, usize)> = runs
-        .into_iter()
-        .enumerate()
-        .filter(|(i, _)| shard.is_none_or(|(k, n)| i % n == k - 1))
-        .map(|(_, run)| run)
+        .flat_map(|name| runs(&name).into_iter().map(move |run| (name.clone(), run)))
         .collect();
     let queue = std::sync::Mutex::new(runs);
     let failures = std::sync::Mutex::new(Vec::new());
@@ -493,10 +553,10 @@ fn every_script_holds() {
         for _ in 0..std::thread::available_parallelism().map_or(2, |n| n.get().min(8)) {
             scope.spawn(|| {
                 loop {
-                    let Some((name, index)) = queue.lock().unwrap().pop() else {
+                    let Some((name, indices)) = queue.lock().unwrap().pop() else {
                         return;
                     };
-                    let failed = run_assertion(&name, index);
+                    let failed = run_script(&name, &indices);
                     failures.lock().unwrap().extend(failed);
                 }
             });
