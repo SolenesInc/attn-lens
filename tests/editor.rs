@@ -231,31 +231,35 @@ fn gif_facts(path: &Path) -> Result<Value, String> {
     Ok(serde_json::json!({"size": size, "frames": frames, "delay": delay}))
 }
 
-/// The overlap lines `--chrome` printed for `at`. Rune reports overlaps once, at the
-/// run's latest tree request, so only a run's last mark is checked; the marks before it
-/// in the same run go unchecked. When Rune reports at every tree request, this reads
-/// that per-mark report instead.
-fn overlaps(stderr: &str, at: &str, last: &str) -> Vec<String> {
-    if at != last {
-        return vec![];
+/// Nothing may sit under the window buttons, with or without Back: the failures from the
+/// `chrome` report `--chrome` writes into every tree. The editor window has traffic lights,
+/// so a tree without them means the scan did not happen, and that fails too.
+fn overlaps(tree: &Value) -> Vec<String> {
+    let chrome = &tree["chrome"];
+    if !chrome["trafficLights"].is_array() {
+        return vec![format!(
+            "no traffic lights in the tree's chrome report: {chrome}"
+        )];
     }
-    stderr
-        .lines()
-        .filter(|line| line.contains("overlaps the traffic lights"))
-        .map(str::to_string)
+    let Some(found) = chrome["overlaps"].as_array() else {
+        return vec![format!("no overlaps in the tree's chrome report: {chrome}")];
+    };
+    found
+        .iter()
+        .map(|o| {
+            format!(
+                "{} overlaps the traffic lights, visible {}",
+                o["path"], o["visible"]
+            )
+        })
         .collect()
 }
 
 /// Checks what one assertion holds at its mark, from the tree the run wrote there. A file
 /// assertion is read after its run ends, so its mark is always the run's last.
-fn check(
-    name: &str,
-    tree: &Value,
-    clipboard: &Path,
-    expected: &Value,
-    mut fail: Vec<String>,
-) -> Vec<String> {
+fn check(name: &str, tree: &Value, clipboard: &Path, expected: &Value) -> Vec<String> {
     let at = expected["at"].as_str().unwrap();
+    let mut fail = overlaps(tree);
     let elements = tree["elements"].as_array().unwrap();
     let element = |key: &str| elements.iter().find(|e| names(key, &e["key"], &e["path"]));
     let mut a11y = vec![];
@@ -521,16 +525,12 @@ fn run_script(name: &str, indices: &[usize]) -> Vec<String> {
             String::from_utf8_lossy(&run.stderr)
         )];
     }
-    // Nothing may sit under the window buttons, with or without Back.
-    let stderr = String::from_utf8_lossy(&run.stderr);
-    let last = at(*indices.last().unwrap());
     indices
         .iter()
         .flat_map(|&index| {
             let tree: Value =
                 serde_json::from_slice(&std::fs::read(tree_path(index)).unwrap()).unwrap();
-            let fail = overlaps(&stderr, at(index), last);
-            check(name, &tree, &clipboard, &parsed["asserts"][index], fail)
+            check(name, &tree, &clipboard, &parsed["asserts"][index])
         })
         .collect()
 }
