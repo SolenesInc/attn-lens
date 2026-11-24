@@ -65,11 +65,11 @@ jobs:
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
-    # Receipt (2026-11-22, lens-linux-ci-runs-near-60, s-963mn3): with an empty Rust
-    # cache the slowest job took 25 min (tests: 12 to build, 12 to test, run 44965010214);
-    # with main's cache the build takes about 1. Runners have varied by 1.5x, so 40 is
-    # the tripwire.
-    timeout-minutes: 40
+    # Receipt (2026-11-24, lens-tests-opt-headless-speed-ups, s-yq030x): the slowest job,
+    # tests, took 5.4 min with a part-warm cache (3 to build, 1.6 to test, run 45303064957).
+    # An empty cache builds in about 12 (run 44965010214), so about 15 min, and runners
+    # have varied by 1.5x: 25 is the tripwire.
+    timeout-minutes: 25
     steps:
       - name: Install build and runtime dependencies
         run: |
