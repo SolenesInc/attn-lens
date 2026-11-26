@@ -1825,6 +1825,59 @@ fn a_setting_that_cannot_be_saved_holds_for_the_run_and_the_window_says_why() {
     assert!(state["settings_error"].is_string());
 }
 
+#[test]
+fn the_timings_setting_appends_each_dictation_step_beside_prefs_json() {
+    let run = Run::new("dictation.json", ONE_SESSION);
+    let log = run.path("prefs/dev.attn.lens/timings.log");
+    // Off by default: no log.
+    assert_eq!(dictation(&run, "refined")["note"], "Pasted");
+    assert!(!log.exists());
+
+    // Set by hand in prefs.json, read at launch.
+    std::fs::create_dir_all(run.path("prefs/dev.attn.lens")).unwrap();
+    std::fs::write(
+        run.path("prefs/dev.attn.lens/prefs.json"),
+        r#"{"diagnostics.timings": true}"#,
+    )
+    .unwrap();
+    assert_eq!(dictation(&run, "refined")["note"], "Pasted");
+    let lines = std::fs::read_to_string(&log).unwrap();
+    let steps = [
+        "timings log opens",
+        "voice key: dictation 1 starts",
+        "dictation 1: voice reports Listening",
+        "dictation 1: voice stops, ",
+        "dictation 1: voice finished ",
+        "dictation 1: 300 ms recorded, asking attn",
+        "dictation 1: attn answered ",
+        "dictation 1: settled, Pasted",
+        "dictation 1: pasted in ",
+    ];
+    let mut from = 0;
+    for step in steps {
+        let at = lines[from..]
+            .find(step)
+            .unwrap_or_else(|| panic!("{step:?} missing after byte {from} of:\n{lines}"));
+        from += at + step.len();
+    }
+    // Every line has the format scripts/lens-dictation.sh parses.
+    for line in lines.lines() {
+        assert!(line.starts_with("Attn Lens dictation "), "{line}");
+        assert!(line.contains(" ms (unix "), "{line}");
+    }
+    // Times and states, never the words.
+    assert!(
+        !lines.contains("deploy") && !lines.contains("staging"),
+        "{lines}"
+    );
+
+    // Each launch appends.
+    dictation(&run, "refined");
+    let again = std::fs::read_to_string(&log).unwrap();
+    assert!(again.starts_with(&lines));
+    assert_eq!(again.matches("timings log opens").count(), 2);
+}
+
 /// A scene's tree, rendered as `scripts/snap.sh` does: the stand-in `attn` of
 /// `tools/scenes`, on a 1440×900 desktop.
 fn scene_tree(window: &str, scene: &str, theme: &str) -> Value {

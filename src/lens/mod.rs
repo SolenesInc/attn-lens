@@ -18,6 +18,7 @@ pub mod select;
 pub mod session;
 pub mod strip;
 pub mod tile;
+pub mod timings;
 pub mod voice;
 #[cfg(target_os = "macos")]
 pub mod watch;
@@ -237,10 +238,13 @@ pub struct Lens {
 impl Lens {
     /// A Lens whose settings are kept in `prefs`.
     pub fn new(port: Arc<dyn PlatformPort>, prefs: Prefs) -> Arc<Self> {
+        let settings = Settings::load(&prefs);
+        let beside_prefs = prefs.path().and_then(std::path::Path::parent);
+        timings::start(beside_prefs.filter(|_| settings.timings));
         Arc::new(Self {
             port,
             state: Mutex::new(State {
-                settings: Settings::load(&prefs),
+                settings,
                 ..Default::default()
             }),
             prefs: Mutex::new(prefs),

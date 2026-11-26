@@ -46,8 +46,10 @@ This file's Glance rules still apply to the code that remains.
   the refinement (`attn model call` with `src/lens/refiner.rs`'s request; its corpus
   is `probes/refine`, `cargo run --example refine-probe`), the one paste
   (`src/paste.rs`, from Hex, behind `PlatformPort::paste`) and the hand-over to a
-  capture. See `docs/dictation.md`. `LENS_DICTATION_LOG=1`
-  prints each step's time; `--pill-in-capture` lets a recording show the pill.
+  capture. See `docs/dictation.md`. `LENS_DICTATION_LOG=1` prints each step's time
+  (`src/lens/timings.rs`), and `"diagnostics.timings": true` in `prefs.json` appends
+  the same lines to `timings.log` beside it; `--pill-in-capture` lets a recording
+  show the pill.
 - `src/kit.rs`: `kit(dark)`, the one rune-kit `Kit`, painted with attn's default scheme
   (values copied from attn, with the file and commit named above them). Views take
   colours, type, radii and shadows from it; `src/editor/panels/controls.rs` wraps the

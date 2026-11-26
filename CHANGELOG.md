@@ -11,6 +11,11 @@ Notable user-visible changes are recorded here.
   come out spelled right, with words on screen that sound like a misheard one.
   Settings › Use words on screen turns it off; without Screen Recording the
   dictation runs as before.
+- **Attn Lens** can keep a timings log: with `"diagnostics.timings": true` in
+  `~/Library/Application Support/dev.attn.lens/prefs.json`, Lens appends where each
+  dictation's time goes (voice, the speech helper's transcription, attn's
+  refinement, the paste) to `timings.log` beside it, from the next launch. Times
+  and states only, never the words. See `docs/dictation.md` › Checking it.
 - **Attn Lens** has a Settings window: **Settings…** (⌘,) in the app menu or the
   Dock menu. Its first setting, Dictation › Use words on screen, is on by default
   and is saved at once in `~/Library/Application Support/dev.attn.lens/prefs.json`.
