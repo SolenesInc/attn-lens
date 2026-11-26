@@ -18,6 +18,7 @@
 use super::{
     AttnStatus, Lens, State, attn, refiner, screen_words,
     session::{CaptureVoice, DisplayFrame, HostTime, RunningVoice, Segment, VoiceOwner},
+    timings,
 };
 use crate::platform_port::{PillKey, Press, Sink, VoiceEvent, VoiceSource, VoiceStatus, Watch};
 use std::{
@@ -244,12 +245,17 @@ impl Lens {
                 if let Some(screen) = &mut screen {
                     screen.stop_watching();
                 }
+                let stopped = self.port.now();
+                timings::line(format_args!(
+                    "dictation {run}: voice stops, {} ms after it started",
+                    stopped.since(started).as_millis()
+                ));
                 state.dictation = Some(Dictation::Finishing {
                     run,
                     owner: owner.clone(),
                     segments,
                     started,
-                    stopped: self.port.now(),
+                    stopped,
                     screen,
                 });
                 self.release(state);
@@ -331,9 +337,9 @@ impl Lens {
             },
         );
         let recording = matches!(state.dictation, Some(Dictation::Recording { .. }));
-        dictation_log(format_args!("voice key: dictation {run} starts"));
+        timings::line(format_args!("voice key: dictation {run} starts"));
         if recording && front == Some(None) {
-            dictation_log(format_args!("dictation {run}: no window in front to read"));
+            timings::line(format_args!("dictation {run}: no window in front to read"));
         }
         self.release(state);
         if let Some(front) = front.flatten() {
@@ -381,11 +387,11 @@ impl Lens {
         self.port.ordinary_word("the");
         let ms = start.elapsed().as_millis();
         match &read {
-            Ok(text) => dictation_log(format_args!(
+            Ok(text) => timings::line(format_args!(
                 "dictation {run}: screen read {index} in {ms} ms, {} words",
                 text.split_whitespace().count()
             )),
-            Err(error) => dictation_log(format_args!(
+            Err(error) => timings::line(format_args!(
                 "dictation {run}: screen read {index} failed in {ms} ms: {error}"
             )),
         }
@@ -405,7 +411,7 @@ impl Lens {
             ) if *r == run => {
                 screen.windows[index].1 = read.map_or(ScreenRead::Failed, ScreenRead::Read);
             }
-            _ => dictation_log(format_args!(
+            _ => timings::line(format_args!(
                 "dictation {run}: screen read {index} came back after the dictation moved on, dropped"
             )),
         }
@@ -427,8 +433,10 @@ impl Lens {
             ) if voice.run == run => match event {
                 VoiceEvent::Segment(segment) => segments.push(segment),
                 VoiceEvent::Status(status) => {
-                    if voice.status.is_none() {
-                        dictation_log(format_args!("dictation {run}: voice reports {status:?}"));
+                    // Each new kind once: a download reports its bytes many times.
+                    let kind = std::mem::discriminant(&status);
+                    if voice.status.as_ref().map(std::mem::discriminant) != Some(kind) {
+                        timings::line(format_args!("dictation {run}: voice reports {status:?}"));
                     }
                     voice.status = Some(status);
                 }
@@ -500,6 +508,10 @@ impl Lens {
             return;
         };
         debug_assert_eq!(finishing, run);
+        timings::line(format_args!(
+            "dictation {run}: voice finished {} ms after it stopped",
+            self.port.now().since(stopped).as_millis()
+        ));
         let raw = words(&segments);
         if raw.is_empty() {
             let how = finished.err().map_or(Settled::Empty, Settled::VoiceFailed);
@@ -525,7 +537,7 @@ impl Lens {
         });
         self.sync_pill_keys(&state);
         self.release(state);
-        dictation_log(format_args!(
+        timings::line(format_args!(
             "dictation {run}: {} ms recorded, asking attn",
             recording.as_millis()
         ));
@@ -574,11 +586,11 @@ impl Lens {
             .as_ref()
             .filter(|d| matches!(d, Dictation::Refining { run: r, .. } if *r == run))
         else {
-            dictation_log(format_args!("dictation {run}: attn answered late, dropped"));
+            timings::line(format_args!("dictation {run}: attn answered late, dropped"));
             return;
         };
         let now = self.port.now();
-        dictation_log(format_args!(
+        timings::line(format_args!(
             "dictation {run}: attn answered {} ms after voice stopped (attn {} ms, {})",
             now.since(*stopped).as_millis(),
             now.since(*asked).as_millis(),
@@ -624,7 +636,7 @@ impl Lens {
         for (index, (_, read)) in screen.windows.into_iter().enumerate() {
             match read {
                 ScreenRead::Read(text) => texts.push(text),
-                ScreenRead::Reading => dictation_log(format_args!(
+                ScreenRead::Reading => timings::line(format_args!(
                     "dictation {run}: screen read {index} not back, refining without it"
                 )),
                 ScreenRead::Failed => {}
@@ -637,7 +649,7 @@ impl Lens {
         let picked = screen_words::pick(&text, |w| self.port.ordinary_word(w));
         let words = screen_words::matching(&picked, raw);
         let pairs = screen_words::sound_pairs(&text, raw);
-        dictation_log(format_args!(
+        timings::line(format_args!(
             "dictation {run}: {} of {} screen words match, {} sound pairs, from {} reads",
             words.len(),
             picked.len(),
@@ -712,7 +724,7 @@ impl Lens {
         text: String,
         how: Settled,
     ) -> MutexGuard<'a, State> {
-        dictation_log(format_args!("dictation {run}: settled, {}", how.note()));
+        timings::line(format_args!("dictation {run}: settled, {}", how.note()));
         if !text.is_empty() {
             state.last_dictation = Some(text.clone());
         }
@@ -744,6 +756,7 @@ impl Lens {
     }
 
     fn paste(self: &Arc<Self>, run: u64, text: String) {
+        let started = std::time::Instant::now();
         let how = if !self.port.accessibility() {
             match self.port.copy_text(&text) {
                 Ok(()) => Some(Settled::Copied),
@@ -752,7 +765,10 @@ impl Lens {
         } else {
             self.port.paste(&text).err().map(Settled::NotPasted)
         };
-        dictation_log(format_args!("dictation {run}: pasted"));
+        timings::line(format_args!(
+            "dictation {run}: pasted in {} ms",
+            started.elapsed().as_millis()
+        ));
         let now = self.port.now();
         let mut state = self.state.lock().unwrap();
         if let Some(Dictation::Settled {
@@ -863,13 +879,13 @@ impl Lens {
             }
         };
         self.sync_pill_keys(state);
-        dictation_log(format_args!("dictation handed to capture {id}"));
+        timings::line(format_args!("dictation handed to capture {id}"));
         Some(handed)
     }
 
     /// The pill's window came up, for the timings on the seed.
     pub fn pill_shown(&self) {
-        dictation_log(format_args!("pill shows"));
+        timings::line(format_args!("pill shows"));
     }
 
     /// Copy Last Dictation in the Dock menu (D8).
@@ -927,27 +943,5 @@ impl Lens {
 fn failure_text(failure: attn::Failure) -> String {
     match failure {
         attn::Failure::NotPaired(text) | attn::Failure::Error(text) => text,
-    }
-}
-
-/// `LENS_DICTATION_LOG=1` prints each step with the time since launch, for the
-/// timings on the seed.
-fn dictation_log(message: std::fmt::Arguments) {
-    static START: std::sync::OnceLock<Option<std::time::Instant>> = std::sync::OnceLock::new();
-    let start = START.get_or_init(|| {
-        std::env::var_os("LENS_DICTATION_LOG")
-            .is_some_and(|v| v == "1")
-            .then(std::time::Instant::now)
-    });
-    if let Some(start) = start {
-        // The wall clock too, so a check outside Lens can line its own times up.
-        let wall = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default();
-        eprintln!(
-            "Attn Lens dictation {:>8.1} ms (unix {} ms): {message}",
-            start.elapsed().as_secs_f64() * 1e3,
-            wall.as_millis()
-        );
     }
 }

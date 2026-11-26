@@ -12,7 +12,10 @@
 #[cfg(target_os = "macos")]
 mod mic;
 
-use super::session::{HostTime, Segment};
+use super::{
+    session::{HostTime, Segment},
+    timings,
+};
 use crate::platform_port::{Sink, Voice, VoiceEvent, VoiceSource, VoiceStatus};
 use serde_json::{Value, json};
 use std::{
@@ -161,7 +164,7 @@ impl Speech {
             source: Some(source),
             gate,
         });
-        let result = deliver(&answers, &base, sink);
+        let result = deliver(&answers, &base, clock, sink);
         helper.unroute(id);
         // Stopped by an error rather than by finish: the source is still open.
         run.stop_source();
@@ -184,7 +187,13 @@ fn prepare(answers: &mpsc::Receiver<Value>, sink: &Sink<VoiceEvent>) -> Result<(
                 }
                 _ => {}
             },
-            Some("ready") => return Ok(()),
+            Some("ready") => {
+                timings::line(format_args!(
+                    "voice: model ready, loaded in {} ms, warmed in {} ms",
+                    answer["load_ms"], answer["warm_ms"]
+                ));
+                return Ok(());
+            }
             Some("error") => return Err(helper_error(&answer)),
             _ => {}
         }
@@ -195,8 +204,10 @@ fn prepare(answers: &mpsc::Receiver<Value>, sink: &Sink<VoiceEvent>) -> Result<(
 fn deliver(
     answers: &mpsc::Receiver<Value>,
     base: &Mutex<Option<HostTime>>,
+    clock: &Clock,
     sink: &Sink<VoiceEvent>,
 ) -> Result<(), String> {
+    let mut phrases = 0;
     loop {
         let answer = answers.recv().map_err(|_| gone())?;
         match answer["event"].as_str() {
@@ -204,13 +215,26 @@ fn deliver(
                 // Segments come only from audio, so the base is known by now.
                 let base = base.lock().unwrap().unwrap_or_default();
                 let at = |ms: &Value| HostTime(base.0 + ms.as_u64().unwrap_or(0) * 1_000_000);
+                let (start, end) = (at(&answer["start_ms"]), at(&answer["end_ms"]));
+                timings::line(format_args!(
+                    "voice: phrase {phrases}, {} ms long, here {} ms after it ended",
+                    end.since(start).as_millis(),
+                    clock().since(end).as_millis()
+                ));
+                phrases += 1;
                 sink(VoiceEvent::Segment(Segment {
-                    start: at(&answer["start_ms"]),
-                    end: at(&answer["end_ms"]),
+                    start,
+                    end,
                     text: answer["text"].as_str().unwrap_or_default().to_string(),
                 }));
             }
-            Some("transcript") => return Ok(()),
+            Some("transcript") => {
+                timings::line(format_args!(
+                    "voice: transcript, {} phrases in {} ms of audio, asr {} ms in all, finish {} ms",
+                    answer["segments"], answer["audio_ms"], answer["asr_ms"], answer["finish_ms"]
+                ));
+                return Ok(());
+            }
             Some("error") => return Err(helper_error(&answer)),
             _ => {}
         }
@@ -365,6 +389,7 @@ struct Helper {
 
 impl Helper {
     fn spawn(path: &Path, cache: &Path) -> Result<Self, String> {
+        let started = Instant::now();
         let mut child = Command::new(path)
             .args(["serve", "--cache"])
             .arg(cache)
@@ -385,6 +410,10 @@ impl Helper {
                 hello["protocol"]
             ));
         }
+        timings::line(format_args!(
+            "voice: speech helper said hello {} ms after it was started",
+            started.elapsed().as_millis()
+        ));
         let routes: Arc<Mutex<HashMap<u64, mpsc::Sender<Value>>>> = Arc::default();
         let gone = Arc::new(AtomicBool::new(false));
         {

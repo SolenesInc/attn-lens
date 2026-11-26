@@ -52,4 +52,8 @@ settings! {
     /// When you dictate, read the window in front and send its names and
     /// identifiers with your words to attn's refiner.
     screen_words: bool = true, "dictation.screen_words";
+    /// Appends where each dictation's time goes to `timings.log` beside
+    /// `prefs.json` (`lens::timings`). Set by hand, read at launch; the window has
+    /// no row for it.
+    timings: bool = false, "diagnostics.timings";
 }

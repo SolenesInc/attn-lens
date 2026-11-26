@@ -118,9 +118,24 @@ capture. Cancel the pick and the dictation carries on.
 ## Checking it
 
 `LENS_DICTATION_LOG=1` prints each step with the time since launch: the voice key,
-the pill showing, voice reporting, each screen read's time and word count (or its
-error) with its index in the dictation, from 0, how many screen words matched and
-how many sound pairs were offered from how many reads, attn
-asked and answering, the paste. It never prints the words themselves. The
+the pill showing, each change of voice's status (loading, warming up, listening),
+each screen read's time and word count (or its error) with its index in the
+dictation, from 0, voice stopping and how long it ran, voice finished (the speech
+helper's last phrase) and how long after the stop, how many screen words matched and
+how many sound pairs were offered from how many reads, attn asked and answering,
+and the paste with how long it took. It never prints the words themselves. The
 answer's line gives the time from the end of voice to the refined text, attn's
 part of it, and the harness, model and model time.
+
+The speech helper's own times come in lines starting `voice:`, for a capture's
+voice too: how long the helper took to start, the model's load and warm-up the
+first time, each phrase's length and how long after its end it arrived (the
+pause that closes a phrase plus its transcription), and each transcript's audio,
+transcription time in all and finish time.
+
+To keep these lines from the installed app, whose stderr goes nowhere, set
+`"diagnostics.timings": true` in `~/Library/Application Support/dev.attn.lens/prefs.json`
+and relaunch Lens. Every line from then on is appended to `timings.log` in the
+same folder, across launches, each launch starting with a `timings log opens`
+line. Set it to `false` (or remove it) and relaunch to stop; delete the file to
+start over. It has no row in the Settings window.
